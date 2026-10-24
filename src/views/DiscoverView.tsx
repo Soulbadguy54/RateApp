@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from 'react'
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
-import type { PanInfo } from 'motion/react'
+import type { PanInfo, MotionStyle } from 'motion/react'
 import { Cover } from '../components/GameCard'
 import Icon from '../components/Icon'
 import type { Game } from '../data'
@@ -9,6 +10,19 @@ import type { Game } from '../data'
 type DiscoveryAction = 'like' | 'dislike' | 'wishlist'
 type Direction = 'left' | 'right' | 'up'
 type Feed = { items: Game[]; remaining: number }
+type DescriptionTranslation = { description: string; language: 'ru' | 'en'; translated: boolean }
+const STORE_ICONS: Record<string, string> = {
+  steam: '/brand/steam.svg', epic: '/brand/epicgames.svg',
+  gog: '/brand/gogdotcom.svg', itch: '/brand/itchdotio.svg',
+  playstation: '/brand/playstation.svg', xbox: '/brand/xbox.svg',
+  nintendo: '/brand/nintendoswitch.svg', youtube: '/brand/youtube.svg',
+}
+function ExternalIcon({ provider }: { provider: string }) {
+  const src = STORE_ICONS[provider]
+  return src
+    ? <img src={src} className="detail-external-link__icon" alt="" aria-hidden="true" width={20} height={20} />
+    : <Icon name="globe" size={20} />
+}
 type Pull = { pointerId: number; startY: number; startReveal: number; allowTap: boolean }
 
 const HELP_KEY = 'rateapp-discovery-integrated-v3'
@@ -51,6 +65,12 @@ export default function DiscoverView({
     try { return !localStorage.getItem(getHelpKey(nickname)) } catch { return true }
   })
   const [artworkReady, setArtworkReady] = useState(false)
+  const [descriptions, setDescriptions] = useState<Record<number, DescriptionTranslation>>({})
+  const [translationPendingId, setTranslationPendingId] = useState<number | null>(null)
+  const [feedbackDirection, setFeedbackDirection] = useState<Direction | null>(null)
+  const feedbackOpacity = useMotionValue(0)
+  const feedbackAnimationRef = useRef<{ stop: () => void } | null>(null)
+  const cardPivot = useMotionValue('center top')
 
   const stageRef = useRef<HTMLDivElement>(null)
   const summaryRef = useRef<HTMLDivElement>(null)
@@ -108,7 +128,7 @@ export default function DiscoverView({
   const fullSheetHeight = stageHeight
   const minimumPeek = Math.min(stageHeight - 8, 33 + summaryHeight + 8)
   const peekHeight = Math.min(stageHeight - 8, Math.max(minimumPeek,
-    posterBottom === null ? minimumPeek : stageHeight - posterBottom))
+    posterBottom === null ? minimumPeek : stageHeight - posterBottom - 12))
   const collapsedTop = stageHeight - peekHeight
   // Opening still reveals at least 80% of the viewport, or more when the
   // poster is unusually short and the closed glass already fills most of it.
@@ -116,6 +136,7 @@ export default function DiscoverView({
   const travel = Math.max(1, collapsedTop - expandedTop)
   const restingTop = useMotionValue(stageHeight - (33 + 74 + 8))
   const sheetY = useTransform(() => restingTop.get() * (1 - reveal.get()) + expandedTop * reveal.get())
+  const visibleSheetHeight = useTransform(() => `${Math.max(0, stageHeight - sheetY.get())}px`)
   useEffect(() => {
     const movement = animate(restingTop, collapsedTop, reducedMotion
       ? { duration: 0 }
@@ -138,7 +159,7 @@ export default function DiscoverView({
     if (busy || helpOpen || pullRef.current) return
     // Links must remain tappable in expanded details.
     const element = target instanceof Element ? target : null
-    if (element?.closest('a')) return
+    if (element?.closest('a') || (expanded && element?.closest('.discover-sheet__description'))) return
     sheetAnimationRef.current?.stop()
     pullRef.current = {
       pointerId: id, startY: y, startReveal: reveal.get(),
@@ -263,10 +284,35 @@ export default function DiscoverView({
     return () => {
       mountedRef.current = false
       sheetAnimationRef.current?.stop()
+      feedbackAnimationRef.current?.stop()
     }
   }, [loadFeed])
 
   const game = cards[index]
+  useEffect(() => {
+    if (!expanded || !game?.id || descriptions[game.id]) return
+    const id = game.id
+    const fallbackDescription = game.summary || game.storyline || ''
+    const controller = new AbortController()
+    setTranslationPendingId(id)
+    fetch('/api/discover/description/' + id + '?lang=ru', {
+      credentials: 'same-origin', signal: controller.signal,
+    })
+      .then(response => {
+        if (!response.ok) throw new Error('Description translation unavailable')
+        return response.json() as Promise<DescriptionTranslation>
+      })
+      .then(translation => setDescriptions(previous => ({ ...previous, [id]: translation })))
+      .catch(() => {
+        if (!controller.signal.aborted) setDescriptions(previous => ({
+          ...previous, [id]: { description: fallbackDescription, language: 'en', translated: false },
+        }))
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTranslationPendingId(previous => previous === id ? null : previous)
+      })
+    return () => controller.abort()
+  }, [expanded, game?.id, descriptions])
   useEffect(() => {
     const summary = summaryRef.current
     if (!summary) return
@@ -299,12 +345,22 @@ export default function DiscoverView({
     settleSheet(true)
   }
 
+  const showSwipeFeedback = (direction: Direction, strength: number, release = false) => {
+    if (reducedMotion) return
+    feedbackAnimationRef.current?.stop()
+    setFeedbackDirection(direction)
+    feedbackOpacity.set(strength)
+    if (release) feedbackAnimationRef.current = animate(feedbackOpacity, 0,
+      { duration: .6, ease: [0.22, 1, 0.36, 1] })
+  }
+
   const resetTilt = () => {
     const transition = reducedMotion ? { duration: 0 } : { duration: .22, ease: 'easeOut' as const }
     animate(cardShift, 0, transition)
     animate(cardTilt, 0, transition)
     animate(cardLift, 0, transition)
     animate(cardScale, 1, transition)
+    cardPivot.set('center top')
   }
   const decide = async (action: DiscoveryAction) => {
     if (!game || busy || helpOpen || expanded || pullRef.current || reveal.get() > .03) return
@@ -350,26 +406,39 @@ export default function DiscoverView({
   const onPosterPan = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (busy || expanded || helpOpen || pullRef.current) return
     const { x, y } = info.offset
-    if (y < -10 && Math.abs(y) > Math.abs(x) * 1.15) {
-      cardLift.set(clamp(y * .12, -18, 0))
-      cardScale.set(clamp(1 + y * .00012, .981, 1))
+    if (y < -5 && Math.abs(y) > Math.abs(x) * 1.15) {
+      cardPivot.set('center top')
+      cardLift.set(clamp(y * .21, -32, 0))
+      cardScale.set(1)
       cardShift.set(0)
       cardTilt.set(0)
-    } else if (Math.abs(x) > Math.abs(y) * 1.15) {
-      cardShift.set(clamp(x * .1, -13, 13))
-      cardTilt.set(clamp(x * .016, -2.3, 2.3))
+      showSwipeFeedback('up', clamp((Math.abs(y) - 12) / 115, 0, .8))
+    } else if (Math.abs(x) > 5 && Math.abs(x) > Math.abs(y) * 1.1) {
+      cardPivot.set(x < 0 ? 'right top' : 'left top')
+      cardShift.set(clamp(x * .22, -32, 32))
+      cardTilt.set(clamp(x * .034, -5.8, 5.8))
       cardLift.set(0)
       cardScale.set(1)
+      showSwipeFeedback(x > 0 ? 'right' : 'left', clamp((Math.abs(x) - 12) / 100, 0, .84))
     }
   }
   const onPosterPanEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    resetTilt()
-    if (busy || expanded || helpOpen || pullRef.current || reveal.get() > .03) return
-    const { x, y } = info.offset
-    if (y < -120 && Math.abs(y) > Math.abs(x) * 1.16) void decide('wishlist')
-    else if (Math.abs(x) > 115 && Math.abs(x) > Math.abs(y) * 1.12) {
-      void decide(x > 0 ? 'like' : 'dislike')
+    if (busy || expanded || helpOpen || pullRef.current || reveal.get() > .03) {
+      resetTilt()
+      return
     }
+    const { x, y } = info.offset
+    const up = y < -120 && Math.abs(y) > Math.abs(x) * 1.16
+    const sideways = Math.abs(x) > 115 && Math.abs(x) > Math.abs(y) * 1.12
+    if (up || sideways) {
+      const direction = up ? 'up' : x > 0 ? 'right' : 'left'
+      showSwipeFeedback(direction, 1, true)
+      void decide(up ? 'wishlist' : x > 0 ? 'like' : 'dislike')
+    } else {
+      feedbackAnimationRef.current?.stop()
+      feedbackAnimationRef.current = animate(feedbackOpacity, 0, { duration: .22 })
+    }
+    resetTilt()
   }
 
   const dismissHelp = () => {
@@ -392,7 +461,8 @@ export default function DiscoverView({
           aria-label="Показать обучение" onClick={() => setHelpOpen(true)}>i</button>
       </header>
 
-      <div className="discover-stage" ref={stageRef} aria-live="polite">
+      <div className="discover-stage" ref={stageRef} aria-live="polite"
+        style={{ '--discover-min-peek': `${minimumPeek}px` } as CSSProperties}>
         {loading ? (
           <div className="discover-state" role="status"><span className="discover-loader" />Подбираем игры…</div>
         ) : !game ? (
@@ -419,7 +489,7 @@ export default function DiscoverView({
               exit="exit"
               transition={{ duration: .36, ease: [0.22, 1, 0.36, 1] }}>
               <motion.div className="discover-artwork"
-                style={{ x: cardShift, y: cardLift, scale: cardScale, rotate: cardTilt }}>
+                style={{ x: cardShift, y: cardLift, scale: cardScale, rotate: cardTilt, transformOrigin: cardPivot }}>
                 <div className="discover-cover" aria-hidden="true">
                   {game.coverUrl ? (
                     <img ref={attachPoster} onLoad={measurePoster} className="discover-cover__image" src={heroCoverUrl(game.coverUrl)}
@@ -446,11 +516,13 @@ export default function DiscoverView({
             </motion.div>
           </AnimatePresence>
               <motion.div className={expanded ? 'discover-sheet discover-sheet--expanded' : 'discover-sheet'}
-                  style={{ height: fullSheetHeight, y: sheetY }}
+                  style={{ height: fullSheetHeight, y: sheetY, '--sheet-visible-height': visibleSheetHeight } as MotionStyle}
                   onPointerDown={onPointerStart}
                   onMouseDown={onMouseStart}
                   onTouchStart={onTouchStart}
-                  onPanEnd={(_event, info) => {
+                  onPanEnd={(event, info) => {
+                    if (expanded && event.target instanceof Element &&
+                        event.target.closest('.discover-sheet__description')) return
                     // Motion sees continuous pointer gestures even when native
                     // scrolling or a transformed panel interrupts the pointer-up
                     // fallback. Keep the same deliberate distance threshold.
@@ -482,24 +554,42 @@ export default function DiscoverView({
                       style={{ opacity: detailOpacity, y: detailRise, pointerEvents: expanded ? 'auto' : 'none' }}
                       aria-hidden={!expanded}>
                       {!!game.platforms.length && <p className="discover-sheet__platforms">{game.platforms.slice(0, 4).join(' · ')}</p>}
-                      <p className="discover-sheet__description">
-                        {currentDetails?.summary || currentDetails?.storyline || 'Описание пока не загружено в каталог.'}
-                      </p>
                       {(!!currentDetails?.storeLinks?.length || !!currentDetails?.trailerUrl) && (
-                        <div className="discover-sheet__links">
+                        <div className="discover-sheet__links" aria-label="Магазины и трейлер">
                           {currentDetails.storeLinks?.map(link => (
-                            <a key={link.provider} href={link.url} target="_blank" rel="noopener noreferrer">
-                              {link.label} <span aria-hidden="true">↗</span>
+                            <a key={link.provider}
+                              className={`detail-external-link detail-external-link--${link.provider}`}
+                              href={link.url} target="_blank" rel="noopener noreferrer"
+                              title={link.label} aria-label={`Открыть ${link.label}`}>
+                              <ExternalIcon provider={link.provider} />
                             </a>
                           ))}
-                          {!!currentDetails.trailerUrl && <a href={currentDetails.trailerUrl}
-                            target="_blank" rel="noopener noreferrer">▶ Трейлер <span aria-hidden="true">↗</span></a>}
+                          {!!currentDetails.trailerUrl && <a className="detail-external-link detail-external-link--trailer"
+                            href={currentDetails.trailerUrl} target="_blank" rel="noopener noreferrer"
+                            title="Смотреть трейлер" aria-label="Смотреть трейлер на YouTube">
+                            <ExternalIcon provider="youtube" />
+                          </a>}
                         </div>
                       )}
+                      <div className="discover-sheet__description" role="region" tabIndex={0}
+                        aria-label="Описание игры">
+                        {translationPendingId === game.id && !descriptions[game.id]
+                          ? 'Переводим описание…'
+                          : descriptions[game.id]?.description || currentDetails?.summary || currentDetails?.storyline || 'Описание пока не загружено в каталог.'}
+                        {descriptions[game.id]?.language === 'en' && !!descriptions[game.id]?.description && (
+                          <span className="discover-sheet__translation-note">Оригинал на английском — перевод временно недоступен</span>
+                        )}
+                      </div>
                     </motion.div>
                   </div>
                 </motion.div>
           </>
+        )}
+        {!loading && !!game && feedbackDirection && (
+          <motion.div className={`discover-swipe-feedback discover-swipe-feedback--${feedbackDirection}`}
+            style={{ opacity: feedbackOpacity }} aria-hidden="true">
+            <span>{feedbackDirection === 'up' ? 'Хочу поиграть' : feedbackDirection === 'left' ? 'Не нравится' : 'Нравится'}</span>
+          </motion.div>
         )}
         {error && <div className="discover-error" role="alert">{error}</div>}
         <AnimatePresence>

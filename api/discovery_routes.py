@@ -3,7 +3,11 @@
 No IGDB call per swipe. Rankings derive from actual rated games, genres,
 user feedback and a small deterministic exploration component.
 """
+import html
 import json
+import re
+import threading
+import httpx
 from collections import defaultdict
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
@@ -17,6 +21,88 @@ from api.models import CollectionGame, DiscoveryFeedback, Game, UserGame
 from api.security import _session, _current_user
 
 router = APIRouter()
+
+# Translated content contains only public IGDB prose. Never forward cookies,
+# account identifiers or secrets to the external translation-memory service.
+_RU_DESCRIPTION_CACHE: dict[tuple[int, str], str] = {}
+_RU_DESCRIPTION_LOCK = threading.Lock()
+
+
+def _text_chunks(source: str) -> list[str]:
+    """MyMemory's documented 'q' bound is 500 UTF-8 bytes per segment."""
+    chunks: list[str] = []
+    current = ""
+    for word in source.split():
+        if len(word.encode("utf-8")) > 450:
+            # Exceptionally long unbroken tokens are not safe to translate.
+            raise ValueError("Word exceeds translation segment limit")
+        candidate = f"{current} {word}".strip()
+        if len(candidate.encode("utf-8")) > 450:
+            if current:
+                chunks.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _translate_english_to_russian(source: str) -> str | None:
+    """Best-effort public text translation; no fabricated translated output."""
+    if not source.strip():
+        return None
+    chunks = _text_chunks(source)
+    if len(chunks) > 10:
+        return None
+    translated: list[str] = []
+    try:
+        with httpx.Client(timeout=4.0) as client:
+            for chunk in chunks:
+                response = client.get(
+                    "https://api.mymemory.translated.net/get",
+                    params={"q": chunk, "langpair": "en|ru"},
+                    headers={"Accept": "application/json"},
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if payload.get("responseStatus") != 200 or payload.get("quotaFinished"):
+                    return None
+                text = html.unescape(str((payload.get("responseData") or {}).get("translatedText") or "")).strip()
+                if not text or "MYMEMORY WARNING" in text.upper() or not re.search(r"[а-яё]", text, re.I):
+                    return None
+                translated.append(text)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return None
+    return " ".join(translated)
+
+
+@router.get("/api/discover/description/{igdb_id}")
+def discovery_description(igdb_id: int, request: Request, lang: str = "ru") -> dict[str, object]:
+    if lang not in ("ru", "en"):
+        raise HTTPException(422, detail="Неподдерживаемый язык.")
+    with _session() as session:
+        _current_user(request, session)
+        game = session.scalar(select(Game).where(Game.igdb_id == igdb_id))
+        if game is None:
+            raise HTTPException(404, detail="Игра не найдена.")
+        data = _game_payload(game)
+        source = str(data.get("summary") or data.get("storyline") or "").strip()
+    if lang == "en" or not source:
+        return {"description": source, "translated": False, "language": "en"}
+    cache_key = (igdb_id, source)
+    with _RU_DESCRIPTION_LOCK:
+        cached = _RU_DESCRIPTION_CACHE.get(cache_key)
+    if cached is not None:
+        return {"description": cached, "translated": True, "language": "ru"}
+    translated = _translate_english_to_russian(source)
+    if translated:
+        with _RU_DESCRIPTION_LOCK:
+            if len(_RU_DESCRIPTION_CACHE) >= 512:
+                _RU_DESCRIPTION_CACHE.pop(next(iter(_RU_DESCRIPTION_CACHE)))
+            _RU_DESCRIPTION_CACHE[cache_key] = translated
+        return {"description": translated, "translated": True, "language": "ru"}
+    return {"description": source, "translated": False, "language": "en"}
 
 
 def _genres(game: Game) -> list[str]:

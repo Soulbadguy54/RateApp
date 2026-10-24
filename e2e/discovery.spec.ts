@@ -80,9 +80,21 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     })
   })
   const actions: string[] = []
-  await page.route('**/api/discover/feed', route => route.fulfill({
+  let releaseFeed: () => void = () => {}
+  const feedGate = new Promise<void>(resolve => { releaseFeed = resolve })
+  await page.route('**/api/discover/feed', async route => {
+    await feedGate
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ items: [game(900000001, 'Discovery One'), game(900000002, 'Discovery Two')], remaining: 2 }),
+    })
+  })
+  await page.route(/\/api\/discover\/description\/\d+/, route => route.fulfill({
     status: 200, contentType: 'application/json',
-    body: JSON.stringify({ items: [game(900000001, 'Discovery One'), game(900000002, 'Discovery Two')], remaining: 2 }),
+    body: JSON.stringify({
+      description: 'Это история о звёздах. '.repeat(90),
+      translated: true, language: 'ru',
+    }),
   }))
   await page.route('**/api/discover/feedback', async route => {
     const post = route.request().postDataJSON() as { action: string }
@@ -110,6 +122,11 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await page.locator('.bottom-nav__item').filter({ hasText: 'База игр' }).click()
   await page.getByRole('button', { name: 'Открыть рекомендации игр' }).click()
   await expect(page.locator('.discover-screen')).toBeVisible()
+  // Loading and empty states must NEVER flash a foreign dark gradient.
+  await expect(page.locator('.discover-state')).toHaveCSS('background-color', await page.locator('body').evaluate(
+    el => getComputedStyle(el).backgroundColor,
+  ))
+  releaseFeed()
   await expect(page.locator('.bottom-nav')).toBeVisible()
   await expect(page.locator('.page')).toHaveClass(/page--discovery/)
   await expect(page.locator('.bottom-nav')).toBeVisible()
@@ -180,7 +197,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     const style = getComputedStyle(element)
     return { background: style.backgroundImage, backdrop: style.backdropFilter }
   })
-  expect(sheetStyle.background).toContain('0.74')
+  expect(sheetStyle.background).toContain('0.46')
   expect(sheetStyle.backdrop).toContain('blur(12px)')
   const glassAtRest = await page.locator('.discover-sheet').boundingBox()
   if (!glassAtRest) throw new Error('Glass absent')
@@ -193,7 +210,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     const summary = await page.locator('.discover-sheet__summary-row').boundingBox()
     if (!art || !stage || !glass || !summary) return 999
     const limit = stage.y + stage.height - (33 + summary.height + 8)
-    return Math.abs(glass.y - Math.min(art.y + art.height, limit))
+    return Math.abs(glass.y - Math.min(art.y + art.height + 12, limit))
   }, { timeout: 6500 }).toBeLessThan(4)
   // Artwork never gets an ambient clone / artificial full-height dark backdrop.
   await expect(page.locator('.discover-cover')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
@@ -231,8 +248,19 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   }, { timeout: 3500 }).toBeGreaterThan(.77)
   const posterExpanded = await image.boundingBox()
   expect(posterExpanded?.y).toBeCloseTo(posterBeforePull?.y ?? 0, 0)
-  await expect(page.getByText('A great story about stars.')).toBeVisible()
-  await expect(page.getByRole('link', { name: /Steam/ })).toBeVisible()
+  const description = page.getByRole('region', { name: 'Описание игры' })
+  await expect(description).toContainText('Это история о звёздах.')
+  await expect(description).toHaveCSS('overflow-y', 'auto')
+  await expect(page.locator('.discover-sheet__body')).toHaveCSS('overflow-y', 'hidden')
+  await expect.poll(() => description.evaluate(node => node.scrollHeight - node.clientHeight)).toBeGreaterThan(40)
+  await description.evaluate(node => { node.scrollTop = 90 })
+  await expect.poll(() => description.evaluate(node => node.scrollTop)).toBeGreaterThan(40)
+  await expect(page.getByRole('button', { name: 'Свернуть подробности' })).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.getByRole('link', { name: 'Открыть Steam' })).toHaveCount(1)
+  await expect(page.locator('.discover-sheet__links img[src="/brand/steam.svg"]')).toHaveCount(1)
+  const linksRect = await page.locator('.discover-sheet__links').boundingBox()
+  const descRect = await description.boundingBox()
+  expect(linksRect && descRect && linksRect.y + linksRect.height <= descRect.y + 1).toBeTruthy()
   expect(detailRequests).toBe(0)
   // While details are expanded, swiping the poster must not submit a like/dislike.
   await dragCover(page, 'right')
@@ -264,6 +292,8 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   // Right means LIKE, left means DISLIKE; not the reversed direction from v1.
   await dragCover(page, 'right')
   await expect(page.getByText('Discovery Two')).toBeVisible()
+  await expect(page.locator('.discover-swipe-feedback--right')).toHaveCount(1)
+  await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('color', 'rgb(145, 255, 208)')
   // Game Two is a wide poster: it must be shorter than the portrait poster
   // rather than filling the remaining screen with a fake blurred extension.
   const wideImage = page.locator('.discover-cover__image')
@@ -278,7 +308,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect.poll(async () => {
     const art = await wideImage.boundingBox()
     const glass = await page.locator('.discover-sheet').boundingBox()
-    return !art || !glass ? 999 : Math.abs(glass.y - (art.y + art.height))
+    return !art || !glass ? 999 : Math.abs(glass.y - (art.y + art.height + 12))
   }, { timeout: 6500 }).toBeLessThan(4)
   expect(actions).toEqual(['like'])
   await page.getByRole('button', { name: 'Шаг назад' }).click()
@@ -290,6 +320,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await dragCover(page, 'left')
   await expect(page.getByText('Discovery Two')).toBeVisible()
   expect(actions).toEqual(['like', 'dislike'])
+  await expect(page.locator('.discover-swipe-feedback--left')).toHaveCount(1)
   // The info icon reopens the same ONE-frame onboarding.
   await page.getByRole('button', { name: 'Показать обучение' }).click()
   await expect(page.getByText('Новые игры для тебя')).toBeVisible()
@@ -300,6 +331,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await dragCover(page, 'up')
   await expect(page.getByText('Пока всё просмотрено')).toBeVisible()
   expect(actions).toEqual(['like', 'dislike', 'wishlist'])
+  await expect(page.locator('.discover-swipe-feedback--up')).toHaveCount(0)
   await page.getByRole('button', { name: 'Вернуться в базу игр' }).click()
   await expect(page.getByRole('heading', { name: 'База игр' })).toBeVisible()
   await expect(page.locator('.bottom-nav')).toBeVisible()
