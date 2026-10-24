@@ -92,7 +92,7 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(TestClient(app).get(route).status_code, 401)
         self.assertEqual(self.client.get(route + "?lang=es").status_code, 422)
         self.assertEqual(self.client.get(route + "?lang=en").json()["description"], "A great story about stars.")
-        self.assertEqual(self.client.get("/api/discover/description/1").status_code, 404)
+        self.assertEqual(self.client.get("/api/discover/description/2147483647").status_code, 404)
         with patch("api.discovery_routes._translate_english_to_russian",
                    return_value="Отличная история о звёздах.") as translator:
             first = self.client.get(route)
