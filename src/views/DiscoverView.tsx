@@ -520,7 +520,9 @@ export default function DiscoverView({
                   onPointerDown={onPointerStart}
                   onMouseDown={onMouseStart}
                   onTouchStart={onTouchStart}
-                  onPanEnd={(_event, info) => {
+                  onPanEnd={(event, info) => {
+                    if (expanded && event.target instanceof Element &&
+                        event.target.closest('.discover-sheet__description')) return
                     // Motion sees continuous pointer gestures even when native
                     // scrolling or a transformed panel interrupts the pointer-up
                     // fallback. Keep the same deliberate distance threshold.
