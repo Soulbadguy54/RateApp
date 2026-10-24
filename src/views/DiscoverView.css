@@ -35,7 +35,7 @@
 /* The poster has its OWN natural bounding rectangle, not a full-height image
    layer. Fit without stretching or cropping, and anchor it just below the header.
    On short/wide covers the gap to the bottom glass is the normal app background. */
-.discover-cover{position:absolute;inset:12px 0 0;display:flex;justify-content:center;align-items:flex-start;pointer-events:none;background:transparent}
+.discover-cover{position:absolute;inset:12px 0 calc(var(--discover-min-peek,120px) + 12px);display:flex;justify-content:center;align-items:flex-start;pointer-events:none;background:transparent}
 .discover-cover__image{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center top;border-radius:22px;box-shadow:0 4px 18px rgba(0,0,0,.16)}
 .discover-cover__fallback{width:min(100%,390px);aspect-ratio:3/4;max-height:100%;overflow:hidden;border-radius:22px}
 .discover-cover__fallback .cover{width:100%;height:100%;min-height:0}
@@ -44,7 +44,7 @@
 
 /* Bottom-anchored glass is independent of the top poster. It can overlay a
    tall poster; with a shorter poster, the gap stays the regular app background. */
-.discover-sheet{position:absolute;z-index:3;left:0;right:0;top:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;border-top:1px solid rgba(255,255,255,.29);border-left:1px solid rgba(255,255,255,.13);border-right:1px solid rgba(255,255,255,.13);border-radius:22px 22px 0 0;background:linear-gradient(150deg,rgba(14,19,32,.74),rgba(16,24,41,.70) 52%,rgba(10,17,31,.80));-webkit-backdrop-filter:blur(12px) saturate(120%);backdrop-filter:blur(12px) saturate(120%);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 -4px 20px rgba(3,8,20,.16);will-change:transform}
+.discover-sheet{position:absolute;z-index:3;left:0;right:0;top:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;border-top:1px solid rgba(255,255,255,.29);border-left:1px solid rgba(255,255,255,.13);border-right:1px solid rgba(255,255,255,.13);border-radius:22px 22px 0 0;background:linear-gradient(150deg,rgba(14,19,32,.46),rgba(16,24,41,.43) 52%,rgba(10,17,31,.52));-webkit-backdrop-filter:blur(12px) saturate(120%);backdrop-filter:blur(12px) saturate(120%);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 -4px 20px rgba(3,8,20,.16);will-change:transform}
 .discover-sheet::before{position:absolute;inset:0;pointer-events:none;content:'';background:linear-gradient(125deg,rgba(255,255,255,.055) 0%,transparent 32%,rgba(255,255,255,.016) 65%,transparent 100%)}
 .discover-sheet__handle{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:center;width:100%;height:33px;padding:7px 0 0;border:0;background:transparent;touch-action:none;cursor:grab}
 .discover-sheet__handle:active{cursor:grabbing}
@@ -57,7 +57,7 @@
 }
 .discover-sheet__chevron{display:block;width:13px;height:13px;border-top:2.5px solid rgba(255,255,255,.94);border-left:2.5px solid rgba(255,255,255,.94);border-radius:2px;transform:translateY(4px) rotate(45deg);filter:drop-shadow(0 1px 3px rgba(5,8,18,.5));transition:transform .3s cubic-bezier(.22,1,.36,1)}
 .discover-sheet__chevron--down{transform:translateY(-3px) rotate(225deg)}
-.discover-sheet__body{position:relative;z-index:1;height:calc(100% - 33px);min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:none;padding:0 13px 8px}
+.discover-sheet__body{position:relative;z-index:1;display:flex;flex-direction:column;height:max(0px,calc(var(--sheet-visible-height,400px) - 33px));min-height:0;overflow:hidden;touch-action:pan-y;padding:0 13px 8px}
 .discover-sheet__summary-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:9px}
 .discover-sheet__identity{min-width:0}
 .discover-sheet__identity h2{margin:0 0 5px;font-size:clamp(18px,5.15vw,25px);line-height:1.12;letter-spacing:-.045em;overflow-wrap:anywhere;text-wrap:balance;text-shadow:0 1px 8px rgba(5,8,19,.5)}
@@ -68,11 +68,13 @@
 .discover-rating strong{color:#fff;font-size:14px;line-height:1;font-weight:800}
 .discover-rating--igdb{border-color:rgba(218,168,255,.58);color:#dfb6ff}
 .discover-rating--rateapp{border-color:rgba(247,205,128,.6);color:#ffe4ac}
-.discover-sheet__extra{padding-top:13px;margin-top:15px;border-top:1px solid rgba(255,255,255,.28)}
+.discover-sheet__extra{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;padding-top:13px;margin-top:15px;border-top:1px solid rgba(255,255,255,.28)}
 .discover-sheet__platforms{margin:0 0 13px;color:#e5e8f5;font-size:11px;font-weight:750;line-height:1.5}
-.discover-sheet__description{margin:0 0 15px;font-size:13px;line-height:1.65;color:#fff;white-space:pre-wrap;text-shadow:0 1px 6px rgba(3,7,17,.2)}
-.discover-sheet__links{display:flex;flex-wrap:wrap;gap:9px}
-.discover-sheet__links a{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:39px;padding:9px 13px;border:1px solid rgba(242,244,255,.39);border-radius:12px;background:rgba(24,34,57,.46);color:#fff;font-size:12px;font-weight:800;text-decoration:none}
+.discover-sheet__description{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;margin:10px 0 0;padding:0 0 22px;font-size:13px;line-height:1.65;color:#fff;white-space:pre-wrap;text-shadow:0 1px 6px rgba(3,7,17,.2)}
+.discover-sheet__description:focus-visible{outline:1px solid rgba(220,210,255,.6);outline-offset:-1px}
+.discover-sheet__translation-note{display:block;margin-top:10px;color:#d7cadc;font-size:11px}
+.discover-sheet__links{display:flex;flex:0 0 auto;align-items:center;flex-wrap:wrap;gap:9px;margin:2px 0 8px}
+.discover-sheet__links .detail-external-link{width:42px;height:42px;min-width:42px;padding:8px}
 .discover-sheet__links a:focus-visible{outline:2px solid #d7ccff;outline-offset:2px}
 
 /* Three guidance labels fade IN TOGETHER, remain ~2s, then vanish for ~5s. */
@@ -104,7 +106,7 @@
 @keyframes discover-guide-breathe{0%,100%{opacity:.88;filter:brightness(.95)}50%{opacity:1;filter:brightness(1.12)}}
 @media(max-height:510px){.discover-guide__intro{top:54%}.discover-guide__intro h2{margin-bottom:9px}.discover-guide__intro .discover-guide__detail-tip{margin-top:8px}.discover-guide__direction--left,.discover-guide__direction--right{top:19%}.discover-guide__tap-hint{bottom:10px}}
 
-.discover-state{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:25px;text-align:center;background:linear-gradient(135deg,#19243e,#0b0f19)}
+.discover-state{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:25px;text-align:center;background:var(--bg)}
 .discover-state__icon{font-size:46px;color:#cfadfa}
 .discover-state h2{margin:0;font-size:21px}
 .discover-state p{margin:0;font-size:12px;line-height:1.6;color:#b1bacd}
@@ -114,3 +116,14 @@
 .discover-error{position:absolute;z-index:9;top:8px;left:9px;right:9px;padding:10px;border:1px solid rgba(255,160,180,.42);border-radius:10px;background:rgba(48,18,28,.91);color:#ffc8cc;text-align:center;font-size:11px}
 @media(max-width:365px){.game-database-discovery-button{padding:9px;font-size:11px}.discover-sheet__body{padding-left:9px;padding-right:9px}.discover-sheet__identity h2{font-size:17px}.discover-rating{min-width:87px;padding:6px}.discover-rating small{font-size:9px}.discover-rating strong{font-size:12px}.discover-guide__intro{width:88%}.discover-guide__direction strong{font-size:11px}.discover-guide__direction span{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.discover-sheet__chevron{animation:none!important}.discover-hint{animation:none;opacity:.75}.discover-guide__direction{animation:none}.discover-loader{animation:none}.discover-sheet__chevron{transition:none}}
+
+/* Native touch scrolling belongs to the expanded DESCRIPTION ONLY. */
+.discover-sheet--expanded{touch-action:pan-y}
+.discover-sheet--expanded .discover-sheet__description{touch-action:pan-y}
+/* Direction-colored glow never acts as a confirmation control. */
+.discover-swipe-feedback{position:absolute;inset:7px;z-index:5;display:grid;place-items:center;pointer-events:none;border:2px solid currentColor;border-radius:23px;box-shadow:inset 0 0 20px currentColor,0 0 22px currentColor;background:radial-gradient(ellipse at center,transparent 40%,rgba(3,8,17,.12));}
+.discover-swipe-feedback span{font-size:clamp(22px,6.2vw,32px);font-weight:900;letter-spacing:-.03em;text-shadow:0 0 18px currentColor,0 2px 9px #050711}
+.discover-swipe-feedback--left{color:#ff97a5}
+.discover-swipe-feedback--right{color:#91ffd0}
+.discover-swipe-feedback--up{color:#e7adff}
+@media(prefers-reduced-motion:reduce){.discover-swipe-feedback{display:none}}
