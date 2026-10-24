@@ -1,6 +1,7 @@
 """Discovery feed, swipe feedback, wishlist and undo against isolated CI PostgreSQL."""
 import secrets
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -29,6 +30,7 @@ class DiscoveryTests(unittest.TestCase):
                 cover_url="https://images.igdb.com/igdb/image/upload/t_cover_big_2x/test.jpg",
                 igdb_rating=88,
                 popularity_count=99999,
+                details_json='{"summary": "A great story about stars."}',
                 genres_json='["Action", "RPG"]',
                 platforms_json='["PC"]',
             ))
@@ -84,3 +86,34 @@ class DiscoveryTests(unittest.TestCase):
         }).status_code, 409)
         self.assertEqual(self.client.delete(f"/api/discover/feedback/{self.igdb_id}").status_code, 200)
         self.assertEqual(self.client.delete(f"/api/discover/feedback/{self.igdb_id}").status_code, 404)
+
+    def test_description_localization_authorization_cache_and_fallback(self):
+        route = f"/api/discover/description/{self.igdb_id}"
+        self.assertEqual(TestClient(app).get(route).status_code, 401)
+        self.assertEqual(self.client.get(route + "?lang=es").status_code, 422)
+        self.assertEqual(self.client.get(route + "?lang=en").json()["description"], "A great story about stars.")
+        self.assertEqual(self.client.get("/api/discover/description/1").status_code, 404)
+        with patch("api.discovery_routes._translate_english_to_russian",
+                   return_value="Отличная история о звёздах.") as translator:
+            first = self.client.get(route)
+            second = self.client.get(route)
+            self.assertEqual(first.status_code, 200)
+            self.assertEqual(first.json(), second.json())
+            self.assertEqual(first.json()["language"], "ru")
+            self.assertIn("история", first.json()["description"])
+            translator.assert_called_once()
+        with patch("api.discovery_routes._translate_english_to_russian", return_value=None):
+            with SessionLocal() as session:
+                game = session.scalar(select(Game).where(Game.igdb_id == self.igdb_id))
+                game.details_json = '{"summary":"An untranslated second summary."}'
+                session.commit()
+            failed = self.client.get(route)
+            self.assertEqual(failed.json()["language"], "en")
+            self.assertFalse(failed.json()["translated"])
+
+    def test_translation_chunks_have_bounded_utf8_size(self):
+        from api.discovery_routes import _text_chunks
+        long_text = ("An elaborate description. " * 40).strip()
+        chunks = _text_chunks(long_text)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(chunk.encode("utf-8")) <= 450 for chunk in chunks))
