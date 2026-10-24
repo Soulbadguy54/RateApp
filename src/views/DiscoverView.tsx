@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from 'react'
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
-import type { PanInfo } from 'motion/react'
+import type { PanInfo, MotionStyle } from 'motion/react'
 import { Cover } from '../components/GameCard'
 import Icon from '../components/Icon'
 import type { Game } from '../data'
@@ -516,7 +516,7 @@ export default function DiscoverView({
             </motion.div>
           </AnimatePresence>
               <motion.div className={expanded ? 'discover-sheet discover-sheet--expanded' : 'discover-sheet'}
-                  style={{ height: fullSheetHeight, y: sheetY, '--sheet-visible-height': visibleSheetHeight }}
+                  style={{ height: fullSheetHeight, y: sheetY, '--sheet-visible-height': visibleSheetHeight } as MotionStyle}
                   onPointerDown={onPointerStart}
                   onMouseDown={onMouseStart}
                   onTouchStart={onTouchStart}
