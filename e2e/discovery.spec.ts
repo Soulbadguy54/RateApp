@@ -260,7 +260,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.locator('.discover-sheet__links img[src="/brand/steam.svg"]')).toHaveCount(1)
   const linksRect = await page.locator('.discover-sheet__links').boundingBox()
   const descRect = await description.boundingBox()
-  expect(linksRect && descRect && linksRect.bottom <= descRect.top).toBeTruthy()
+  expect(linksRect && descRect && linksRect.y + linksRect.height <= descRect.y + 1).toBeTruthy()
   expect(detailRequests).toBe(0)
   // While details are expanded, swiping the poster must not submit a like/dislike.
   await dragCover(page, 'right')
