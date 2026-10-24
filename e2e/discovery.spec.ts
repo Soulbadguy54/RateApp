@@ -80,8 +80,10 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     })
   })
   const actions: string[] = []
+  let releaseFeed: () => void = () => {}
+  const feedGate = new Promise<void>(resolve => { releaseFeed = resolve })
   await page.route('**/api/discover/feed', async route => {
-    await new Promise(resolve => setTimeout(resolve, 300))
+    await feedGate
     return route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({ items: [game(900000001, 'Discovery One'), game(900000002, 'Discovery Two')], remaining: 2 }),
@@ -124,6 +126,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.locator('.discover-state')).toHaveCSS('background-color', await page.locator('body').evaluate(
     el => getComputedStyle(el).backgroundColor,
   ))
+  releaseFeed()
   await expect(page.locator('.bottom-nav')).toBeVisible()
   await expect(page.locator('.page')).toHaveClass(/page--discovery/)
   await expect(page.locator('.bottom-nav')).toBeVisible()
