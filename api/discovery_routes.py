@@ -6,7 +6,6 @@ user feedback and a small deterministic exploration component.
 import html
 import json
 import re
-import threading
 import httpx
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -22,10 +21,8 @@ from api.security import _session, _current_user
 
 router = APIRouter()
 
-# Translated content contains only public IGDB prose. Never forward cookies,
-# account identifiers or secrets to the external translation-memory service.
-_RU_DESCRIPTION_CACHE: dict[tuple[int, str], str] = {}
-_RU_DESCRIPTION_LOCK = threading.Lock()
+# Only public IGDB descriptions go to MyMemory; never account data.
+# Successful translations are persisted in games.details_json, not process RAM.
 
 
 def _text_chunks(source: str) -> list[str]:
@@ -86,21 +83,38 @@ def discovery_description(igdb_id: int, request: Request, lang: str = "ru") -> d
         game = session.scalar(select(Game).where(Game.igdb_id == igdb_id))
         if game is None:
             raise HTTPException(404, detail="Игра не найдена.")
-        data = _game_payload(game)
-        source = str(data.get("summary") or data.get("storyline") or "").strip()
+        details = json.loads(game.details_json) if game.details_json else None
+        details = details if isinstance(details, dict) else {}
+        raw = game.igdb_payload if isinstance(game.igdb_payload, dict) else {}
+        source = str(details.get("summary_en") or details.get("summary")
+                     or raw.get("summary") or raw.get("storyline") or "").strip()
+        saved_ru = (str(details.get("summary_ru") or "")
+                    if details.get("summary_ru_source") == source else "")
     if lang == "en" or not source:
         return {"description": source, "translated": False, "language": "en"}
-    cache_key = (igdb_id, source)
-    with _RU_DESCRIPTION_LOCK:
-        cached = _RU_DESCRIPTION_CACHE.get(cache_key)
-    if cached is not None:
-        return {"description": cached, "translated": True, "language": "ru"}
+    if saved_ru:
+        return {"description": saved_ru, "translated": True, "language": "ru"}
+
     translated = _translate_english_to_russian(source)
     if translated:
-        with _RU_DESCRIPTION_LOCK:
-            if len(_RU_DESCRIPTION_CACHE) >= 512:
-                _RU_DESCRIPTION_CACHE.pop(next(iter(_RU_DESCRIPTION_CACHE)))
-            _RU_DESCRIPTION_CACHE[cache_key] = translated
+        # A network call may overlap an IGDB refresh. Lock and recheck the
+        # original before writing so stale Russian prose never wins.
+        with _session() as session:
+            game = session.scalar(select(Game).where(Game.igdb_id == igdb_id).with_for_update())
+            if game is None:
+                raise HTTPException(404, detail="Игра не найдена.")
+            details = json.loads(game.details_json) if game.details_json else None
+            details = details if isinstance(details, dict) else {}
+            raw = game.igdb_payload if isinstance(game.igdb_payload, dict) else {}
+            current_source = str(details.get("summary_en") or details.get("summary")
+                                 or raw.get("summary") or raw.get("storyline") or "").strip()
+            if current_source != source:
+                return {"description": current_source, "translated": False, "language": "en"}
+            details["summary_en"] = source
+            details["summary_ru"] = translated
+            details["summary_ru_source"] = source
+            game.details_json = json.dumps(details, ensure_ascii=False)
+            session.commit()
         return {"description": translated, "translated": True, "language": "ru"}
     return {"description": source, "translated": False, "language": "en"}
 

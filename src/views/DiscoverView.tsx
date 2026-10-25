@@ -23,7 +23,10 @@ function ExternalIcon({ provider }: { provider: string }) {
     ? <img src={src} className="detail-external-link__icon" alt="" aria-hidden="true" width={20} height={20} />
     : <Icon name="globe" size={20} />
 }
-type Pull = { pointerId: number; startY: number; startReveal: number; allowTap: boolean }
+type Pull = {
+  pointerId: number; startY: number; startReveal: number; allowTap: boolean
+  samples: { y: number; time: number }[]
+}
 
 const HELP_KEY = 'rateapp-discovery-integrated-v3'
 const getHelpKey = (nickname: string) => HELP_KEY + ':' + nickname.toLowerCase()
@@ -70,6 +73,7 @@ export default function DiscoverView({
   const [feedbackDirection, setFeedbackDirection] = useState<Direction | null>(null)
   const feedbackOpacity = useMotionValue(0)
   const feedbackAnimationRef = useRef<{ stop: () => void } | null>(null)
+  const feedbackHoldRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cardPivot = useMotionValue('center top')
 
   const stageRef = useRef<HTMLDivElement>(null)
@@ -164,12 +168,16 @@ export default function DiscoverView({
     pullRef.current = {
       pointerId: id, startY: y, startReveal: reveal.get(),
       allowTap: !!element?.closest('.discover-sheet__handle'),
+      samples: [{ y, time: performance.now() }],
     }
   }
   const movePull = (id: number, y: number) => {
     const pull = pullRef.current
     if (!pull || pull.pointerId !== id) return
     // Dead zone and gentle resistance prevent jerky half-screen pulls.
+    const now = performance.now()
+    pull.samples.push({ y, time: now })
+    while (pull.samples.length > 2 && now - pull.samples[0].time > 110) pull.samples.shift()
     const difference = pull.startY - y
     const useful = Math.sign(difference) * Math.max(0, Math.abs(difference) - 18)
     reveal.set(clamp(pull.startReveal + useful / (travel * 1.13), 0, 1))
@@ -187,8 +195,21 @@ export default function DiscoverView({
       }
       return
     }
-    if (reveal.get() >= .46) void showDetails()
-    else settleSheet(false)
+    // Quick deliberate flicks complete the gesture without a long drag.
+    // Require real movement to avoid treating small taps as fast flicks.
+    const distance = y - pull.startY
+    const first = pull.samples[0]
+    const last = pull.samples[pull.samples.length - 1]
+    const elapsed = last.time - first.time
+    const velocity = elapsed >= 12 ? (last.y - first.y) / elapsed : 0 // px/ms
+    const flick = Math.abs(distance) >= 50 && Math.abs(velocity) >= .48
+    if (!expanded && (reveal.get() >= .46 || (distance < 0 && flick && velocity < 0))) {
+      void showDetails()
+    } else if (expanded && (reveal.get() <= .54 || (distance > 0 && flick && velocity > 0))) {
+      settleSheet(false)
+    } else {
+      settleSheet(expanded)
+    }
   }
   const onPointerStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.stopPropagation()
@@ -285,6 +306,7 @@ export default function DiscoverView({
       mountedRef.current = false
       sheetAnimationRef.current?.stop()
       feedbackAnimationRef.current?.stop()
+      if (feedbackHoldRef.current) window.clearTimeout(feedbackHoldRef.current)
     }
   }, [loadFeed])
 
@@ -348,10 +370,17 @@ export default function DiscoverView({
   const showSwipeFeedback = (direction: Direction, strength: number, release = false) => {
     if (reducedMotion) return
     feedbackAnimationRef.current?.stop()
+    if (feedbackHoldRef.current) window.clearTimeout(feedbackHoldRef.current)
     setFeedbackDirection(direction)
     feedbackOpacity.set(strength)
-    if (release) feedbackAnimationRef.current = animate(feedbackOpacity, 0,
-      { duration: .6, ease: [0.22, 1, 0.36, 1] })
+    if (release) {
+      // Retain the label and glow over the next card, then fade smoothly.
+      feedbackHoldRef.current = window.setTimeout(() => {
+        feedbackHoldRef.current = null
+        feedbackAnimationRef.current = animate(feedbackOpacity, 0,
+          { duration: .7, ease: [0.22, 1, 0.36, 1] })
+      }, 550)
+    }
   }
 
   const resetTilt = () => {
@@ -373,11 +402,15 @@ export default function DiscoverView({
         body: JSON.stringify({ gameId: game.id, action }),
       })
       if (!response.ok) throw new Error('Не получилось сохранить свайп — попробуй ещё раз.')
-      setDeparture(action === 'like' ? 'right' : action === 'dislike' ? 'left' : 'up')
+      const direction = action === 'like' ? 'right' : action === 'dislike' ? 'left' : 'up'
+      setDeparture(direction)
+      showSwipeFeedback(direction, 1, true)
       setHistory(previous => [...previous, { gameId: game.id, action }])
       setIndex(value => value + 1)
       if (action === 'wishlist') onWishlistChange()
     } catch (reason) {
+      feedbackAnimationRef.current?.stop()
+      feedbackAnimationRef.current = animate(feedbackOpacity, 0, { duration: .22 })
       setError(reason instanceof Error ? reason.message : 'Ошибка соединения.')
     } finally {
       resetTilt()
@@ -432,7 +465,7 @@ export default function DiscoverView({
     const sideways = Math.abs(x) > 115 && Math.abs(x) > Math.abs(y) * 1.12
     if (up || sideways) {
       const direction = up ? 'up' : x > 0 ? 'right' : 'left'
-      showSwipeFeedback(direction, 1, true)
+      showSwipeFeedback(direction, 1)
       void decide(up ? 'wishlist' : x > 0 ? 'like' : 'dislike')
     } else {
       feedbackAnimationRef.current?.stop()
@@ -519,20 +552,7 @@ export default function DiscoverView({
                   style={{ height: fullSheetHeight, y: sheetY, '--sheet-visible-height': visibleSheetHeight } as MotionStyle}
                   onPointerDown={onPointerStart}
                   onMouseDown={onMouseStart}
-                  onTouchStart={onTouchStart}
-                  onPanEnd={(event, info) => {
-                    if (expanded && event.target instanceof Element &&
-                        event.target.closest('.discover-sheet__description')) return
-                    // Motion sees continuous pointer gestures even when native
-                    // scrolling or a transformed panel interrupts the pointer-up
-                    // fallback. Keep the same deliberate distance threshold.
-                    const distance = info.offset.y
-                    if (Math.abs(distance) < Math.max(125, travel * .42) ||
-                        Math.abs(distance) < Math.abs(info.offset.x) * 1.15) return
-                    pullRef.current = null
-                    if (distance > 0 && expanded) settleSheet(false)
-                    else if (distance < 0 && !expanded) showDetails()
-                  }}>
+                  onTouchStart={onTouchStart}>
                   <button type="button" className="discover-sheet__handle"
                     aria-label={expanded ? 'Свернуть подробности' : 'Развернуть подробности'}
                     aria-expanded={expanded}>
@@ -585,12 +605,6 @@ export default function DiscoverView({
                 </motion.div>
           </>
         )}
-        {!loading && !!game && feedbackDirection && (
-          <motion.div className={`discover-swipe-feedback discover-swipe-feedback--${feedbackDirection}`}
-            style={{ opacity: feedbackOpacity }} aria-hidden="true">
-            <span>{feedbackDirection === 'up' ? 'Хочу поиграть' : feedbackDirection === 'left' ? 'Не нравится' : 'Нравится'}</span>
-          </motion.div>
-        )}
         {error && <div className="discover-error" role="alert">{error}</div>}
         <AnimatePresence>
           {helpOpen && game && artworkReady && !loading && (
@@ -628,6 +642,12 @@ export default function DiscoverView({
           )}
         </AnimatePresence>
       </div>
+      {!helpOpen && feedbackDirection && (
+        <motion.div className={`discover-swipe-feedback discover-swipe-feedback--${feedbackDirection}`}
+          style={{ opacity: feedbackOpacity }} aria-hidden="true">
+          <span>{feedbackDirection === 'up' ? 'Хочу поиграть' : feedbackDirection === 'left' ? 'Не нравится' : 'Нравится'}</span>
+        </motion.div>
+      )}
     </section>
   )
 }

@@ -96,6 +96,31 @@ class GameMetadataCacheTests(unittest.TestCase):
             self.assertEqual(game.igdb_payload["keywords"], [8, 15, 26])
             self.assertEqual(json.loads(game.details_json)["storyHours"], 18)
 
+    def test_new_igdb_prose_invalidates_outdated_russian_translation(self):
+        self._cache_igdb_result()
+        with SessionLocal() as session:
+            game = session.scalar(select(Game).where(Game.igdb_id == self.game_id))
+            details = json.loads(game.details_json)
+            details["summary_en"] = details["summary"]
+            details["summary_ru"] = "Путешествие среди звёзд."
+            details["summary_ru_source"] = details["summary_en"]
+            game.details_json = json.dumps(details, ensure_ascii=False)
+            session.commit()
+        same = index._cache_igdb_games([{
+            "id": self.game_id, "name": "Starfall Horizon",
+            "summary": "A journey across the stars.",
+        }])
+        self.assertEqual(same[0]["summary"], "Путешествие среди звёзд.")
+        changed = index._cache_igdb_games([{
+            "id": self.game_id, "name": "Starfall Horizon",
+            "summary": "A completely new journey.",
+        }])
+        self.assertEqual(changed[0]["summary"], "A completely new journey.")
+        self.assertEqual(changed[0]["summaryRu"], "")
+        with SessionLocal() as session:
+            game = session.scalar(select(Game).where(Game.igdb_id == self.game_id))
+            self.assertNotIn("summary_ru", json.loads(game.details_json))
+
     def test_igdb_search_requests_all_game_fields(self):
         self.assertTrue(IGDB_GAME_FIELDS.startswith("*,"))
         query = _igdb_search_body("Starfall", 0)

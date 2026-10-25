@@ -147,7 +147,12 @@ def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             if "videos" in row:
                 details["trailerUrl"] = _safe_trailer_url(row.get("videos"))
             if "summary" in row or "storyline" in row:
-                details["summary"] = str(row.get("summary") or row.get("storyline") or "")
+                source_en = str(row.get("summary") or row.get("storyline") or "")
+                if details.get("summary_ru_source") != source_en:
+                    details.pop("summary_ru", None)
+                    details.pop("summary_ru_source", None)
+                details["summary"] = source_en  # Legacy raw IGDB field.
+                details["summary_en"] = source_en
                 details["storyline"] = str(row.get("storyline") or "")
                 details.pop("_linksOnly", None)
             if "game_time_to_beats" in row and isinstance(row["game_time_to_beats"], dict):
@@ -473,7 +478,12 @@ def _hours_from_igdb(value: object) -> int | None:
 
 def _detail_response(session, game: Game, details: dict[str, object]) -> dict[str, object]:
     ratings = _community_rating_map(session, [game.id])
-    return {**details, "game": _game_payload(game, ratings.get(game.id))}
+    payload = _game_payload(game, ratings.get(game.id))
+    return {
+        **details, "summary": payload["summary"],
+        "summaryEn": payload["summaryEn"], "summaryRu": payload["summaryRu"],
+        "game": payload,
+    }
 
 
 @router.get("/api/games/{game_id}/details")
