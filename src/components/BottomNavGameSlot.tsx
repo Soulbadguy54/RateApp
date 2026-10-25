@@ -49,9 +49,11 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const pressRef = useRef<Press | null>(null)
   // Ignore only the click belonging to the handled gesture, not a later tap.
   const ignoreGestureClickRef = useRef(false)
+  const gestureClickTimerRef = useRef<number | null>(null)
   // A synchronous ref avoids stale values when swipe and tap share a render batch.
   const pinnedRef = useRef<GameNavTab>(pinned)
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const bubbleAnchorRef = useRef<HTMLDivElement>(null)
   const option = options.find(item => item.id === pinned) ?? options[0]
 
   useEffect(() => {
@@ -63,6 +65,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
 
   useEffect(() => () => {
     if (pressRef.current) window.clearTimeout(pressRef.current.timer)
+    if (gestureClickTimerRef.current !== null) window.clearTimeout(gestureClickTimerRef.current)
   }, [])
 
   const pin = (tab: GameNavTab) => {
@@ -85,7 +88,14 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const findChoice = (x: number, y: number): GameNavTab | null => {
     const candidate = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-game-nav-choice]')
     const id = candidate?.dataset.gameNavChoice
-    return id === 'add' || id === 'discovery' ? id : null
+    if (id === 'add' || id === 'discovery') return id
+    // During liquid expansion the visual bubble starts as a tiny droplet.
+    // Resolve against its full layout box so a fast drag/release still works.
+    const bounds = bubbleAnchorRef.current?.getBoundingClientRect()
+    if (bounds && x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom) {
+      return x < bounds.left + bounds.width / 2 ? 'add' : 'discovery'
+    }
+    return null
   }
 
   const clearPress = () => {
@@ -93,10 +103,23 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
     pressRef.current = null
   }
 
+  const suppressGestureClick = () => {
+    ignoreGestureClickRef.current = true
+    if (gestureClickTimerRef.current !== null) window.clearTimeout(gestureClickTimerRef.current)
+    // A swipe's synthetic click is dispatched immediately after pointerup.
+    // Do not suppress the next independent tap when the browser omits it.
+    gestureClickTimerRef.current = window.setTimeout(() => {
+      ignoreGestureClickRef.current = false
+      gestureClickTimerRef.current = null
+    }, 0)
+  }
+
   const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0 || !event.isPrimary) return
     clearPress()
     ignoreGestureClickRef.current = false
+    if (gestureClickTimerRef.current !== null) window.clearTimeout(gestureClickTimerRef.current)
+    gestureClickTimerRef.current = null
     dismiss()
     const press: Press = {
       pointerId: event.pointerId,
@@ -139,7 +162,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
     clearPress()
 
     if (longPressed) {
-      ignoreGestureClickRef.current = true
+      suppressGestureClick()
       const choice = findChoice(event.clientX, event.clientY)
       if (choice) select(choice)
       else dismiss() // Releasing on the original button or outside cancels.
@@ -149,17 +172,17 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
       Math.abs(dy) <= SWIPE_MAX_VERTICAL_PX &&
       Math.abs(dx) >= Math.abs(dy) * 1.5
     ) {
-      ignoreGestureClickRef.current = true
+      suppressGestureClick()
       // A swipe changes the persistent shortcut, not the page underneath it.
       pin(pinnedRef.current === 'add' ? 'discovery' : 'add')
     } else if (Math.abs(dy) > SWIPE_MAX_VERTICAL_PX) {
-      ignoreGestureClickRef.current = true
+      suppressGestureClick()
     }
   }
 
   const onPointerCancel = () => {
     clearPress()
-    ignoreGestureClickRef.current = true
+    suppressGestureClick()
     dismiss()
   }
 
@@ -225,28 +248,58 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
         </span>
       </motion.button>
 
-      <div className="bottom-nav__bubble-anchor">
+      <div ref={bubbleAnchorRef} className="bottom-nav__bubble-anchor">
+        <AnimatePresence>
+          {menuOpen && !reduceMotion && (
+                <motion.span
+                  className="bottom-nav__liquid-bridge"
+                  aria-hidden="true"
+                  initial={{ opacity: .95, scaleX: .25, scaleY: .65, y: 0 }}
+                  animate={{
+                    opacity: [ .95, .95, 0 ],
+                    scaleX: [ .25, 1.25, .72 ],
+                    scaleY: [ .65, 1.35, .12 ],
+                    y: [ 0, -1, -9 ],
+                  }}
+                  exit={{ opacity: 0, scaleX: .25, scaleY: .15, y: 0 }}
+                  transition={{ duration: .39, ease: [ .24, .7, .28, 1 ], times: [ 0, .42, 1 ] }}
+                />
+          )}
+        </AnimatePresence>
         <AnimatePresence>
           {menuOpen && (
-            <motion.div
-              className="bottom-nav__bubble"
-              role="group"
-              aria-label="Выбрать раздел базы игр"
-              initial={reduceMotion ? false : {
-                opacity: 0, y: 35, scaleX: .68, scaleY: .36, filter: 'blur(8px)',
-              }}
-              animate={{ opacity: 1, y: 0, scaleX: 1, scaleY: 1, filter: 'blur(0px)' }}
-              exit={reduceMotion ? undefined : {
-                opacity: 0, y: 18, scaleX: .86, scaleY: .54, filter: 'blur(4px)',
-              }}
-              transition={reduceMotion ? { duration: 0 } : {
-                opacity: { duration: .16 },
-                filter: { duration: .19 },
-                scaleX: { type: 'spring', stiffness: 420, damping: 23, mass: .7 },
-                scaleY: { type: 'spring', stiffness: 460, damping: 18, mass: .75 },
-                y: { type: 'spring', stiffness: 430, damping: 20, mass: .75 },
-              }}
-            >
+              <motion.div
+                className="bottom-nav__bubble"
+                role="group"
+                aria-label="Выбрать раздел базы игр"
+                initial={reduceMotion ? false : {
+                  opacity: 1,
+                  y: 4,
+                  scaleX: .22,
+                  scaleY: .2,
+                  borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                  scaleX: 1,
+                  scaleY: 1,
+                  borderRadius: '11% 11% 11% 11% / 32% 32% 32% 32%',
+                }}
+                exit={reduceMotion ? undefined : {
+                  opacity: 1,
+                  y: 4,
+                  scaleX: .22,
+                  scaleY: .2,
+                  borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
+                }}
+                transition={reduceMotion ? { duration: 0 } : {
+                  scaleX: { type: 'spring', stiffness: 340, damping: 19, mass: .72 },
+                  scaleY: { type: 'spring', stiffness: 370, damping: 17, mass: .72 },
+                  y: { type: 'spring', stiffness: 365, damping: 21, mass: .72 },
+                  borderRadius: { duration: .29, ease: [ .2, .68, .22, 1 ] },
+                }}
+              >
               {options.map(choice => (
                 <button
                   key={choice.id}
@@ -271,7 +324,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                     }
                   }}
                 >
-                  {hovered === choice.id && (
+                  {(hovered ?? pinned) === choice.id && (
                     <motion.span
                       className="bottom-nav__active-surface bottom-nav__bubble-highlight"
                       layoutId="bottom-nav-game-bubble-highlight"
@@ -292,7 +345,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                   </motion.span>
                 </button>
               ))}
-            </motion.div>
+              </motion.div>
           )}
         </AnimatePresence>
       </div>
