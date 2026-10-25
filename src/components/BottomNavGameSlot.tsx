@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { PointerEvent as ReactPointerEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, animate, motion, useMotionValue, usePresence, useReducedMotion, useTransform } from 'motion/react'
 import Icon, { type IconName } from './Icon'
 import './BottomNavGameSlot.css'
 
@@ -31,6 +31,61 @@ const LIQUID_STRETCH =
 const LIQUID_PANEL =
   'M 24 3 C 12 3 3 12 3 24 C 3 36 3 44 3 56 C 3 65 12 69 24 69 C 70 69 132 69 178 69 C 190 69 199 65 199 56 C 199 44 199 36 199 24 C 199 12 190 3 178 3 C 132 3 70 3 24 3 Z'
 
+
+/**
+ * Owns one reversible animation value for the full morph lifecycle.
+ * Closing animates the CURRENT progress back to zero, rather than restarting
+ * another exit keyframe timeline; this removes the jump/hitch on a fast release.
+ * usePresence keeps the SVG mounted until the reverse actually finishes.
+ */
+function LiquidMorph({ reduceMotion }: { reduceMotion: boolean }) {
+  const [isPresent, safeToRemove] = usePresence()
+  const progress = useMotionValue(reduceMotion ? 1 : 0)
+  const shape = useTransform(progress, [0, .46, 1], [
+    LIQUID_DROP, LIQUID_STRETCH, LIQUID_PANEL,
+  ])
+  const rimOpacity = useTransform(progress, [0, .46, .85, 1], [.85, .5, .12, 0])
+
+  useEffect(() => {
+    if (reduceMotion) {
+      progress.set(isPresent ? 1 : 0)
+      if (!isPresent) safeToRemove()
+      return
+    }
+    let interrupted = false
+    const animation = animate(progress, isPresent ? 1 : 0, {
+      duration: isPresent ? .66 : .48,
+      ease: isPresent ? [.22, .73, .2, 1] : [.44, 0, .4, 1],
+    })
+    if (!isPresent) {
+      void animation.then(() => {
+        if (!interrupted) safeToRemove()
+      })
+    }
+    return () => {
+      interrupted = true
+      animation.stop()
+    }
+  }, [isPresent, progress, reduceMotion, safeToRemove])
+
+  return (
+    <svg
+      className="bottom-nav__liquid-surface"
+      viewBox="0 0 202 88"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <motion.path className="bottom-nav__liquid-path" d={shape} />
+      {!reduceMotion && (
+        <motion.path
+          className="bottom-nav__liquid-rim"
+          d={shape}
+          opacity={rimOpacity}
+        />
+      )}
+    </svg>
+  )
+}
 
 function readPinned(nickname: string): GameNavTab {
   try {
@@ -291,49 +346,8 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
           '--game-nav-item-height': `${navItemSize.height}px`,
         } as CSSProperties}
       >
-        <AnimatePresence>
-          {menuOpen && (
-            <motion.svg
-              className="bottom-nav__liquid-surface"
-              exit={{ opacity: 0, transition: { duration: reduceMotion ? 0 : .26 } }}
-              viewBox="0 0 202 88"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-            >
-              <motion.path
-                className="bottom-nav__liquid-path"
-                initial={reduceMotion ? false : { d: LIQUID_DROP }}
-                animate={{
-                  d: reduceMotion
-                    ? LIQUID_PANEL
-                    : [LIQUID_DROP, LIQUID_STRETCH, LIQUID_PANEL],
-                }}
-                exit={reduceMotion ? undefined : {
-                  d: LIQUID_DROP,
-                  opacity: 0,
-                  transition: { duration: .26, ease: 'easeInOut' },
-                }}
-                transition={reduceMotion ? { duration: 0 } : {
-                  d: { duration: .72, times: [0, .46, 1], ease: [ .25, .72, .22, 1 ] },
-                }}
-              />
-              {!reduceMotion && (
-                <motion.path
-                  className="bottom-nav__liquid-rim"
-                  initial={{ d: LIQUID_DROP, opacity: .86 }}
-                  animate={{
-                    d: [LIQUID_DROP, LIQUID_STRETCH, LIQUID_PANEL],
-                    opacity: [ .86, .48, 0 ],
-                  }}
-                  exit={{ opacity: 0 }}
-                  transition={{
-                    d: { duration: .72, times: [0, .46, 1], ease: [ .25, .72, .22, 1 ] },
-                    opacity: { duration: .72, times: [0, .46, 1] },
-                  }}
-                />
-              )}
-            </motion.svg>
-          )}
+        <AnimatePresence initial={false}>
+          {menuOpen && <LiquidMorph key="liquid" reduceMotion={Boolean(reduceMotion)} />}
         </AnimatePresence>
         <AnimatePresence>
           {menuOpen && (
