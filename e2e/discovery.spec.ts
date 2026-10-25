@@ -123,7 +123,10 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   const installClose = page.getByRole('button', { name: 'Закрыть предложение установки' })
   if (await installClose.isVisible()) await installClose.click()
   await page.locator('.bottom-nav__item').filter({ hasText: 'База игр' }).click()
-  await page.getByRole('button', { name: 'Открыть рекомендации игр' }).click()
+  await page.locator('.bottom-nav__item--switchable').focus()
+  await page.keyboard.press('ArrowRight') // switch shortcut without leaving the database
+  await expect(page.locator('.bottom-nav__item--switchable')).toContainText('Для тебя')
+  await page.locator('.bottom-nav__item--switchable').click()
   await expect(page.locator('.discover-screen')).toBeVisible()
   // Loading and empty states must NEVER flash a foreign dark gradient.
   await expect(page.locator('.discover-state')).toHaveCSS('background-color', await page.locator('body').evaluate(
