@@ -68,10 +68,13 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     storeLinks: [{ provider: 'steam', label: 'Steam', url: 'https://store.steampowered.com/app/1234' }],
     trailerUrl: null,
   })
-  // Deterministic poster dimensions test portrait and wide-format art without
-  // relying on IGDB CDN availability during CI or on the simulator.
-  await page.route('https://images.igdb.com/igdb/image/upload/**', route => {
+  // Deterministic dimensions, with the NEXT poster intentionally delayed:
+  // even on a slow network, the new card must not pop in half-painted.
+  let releaseWidePoster: () => void = () => {}
+  const wideGate = new Promise<void>(resolve => { releaseWidePoster = resolve })
+  await page.route('https://images.igdb.com/igdb/image/upload/**', async route => {
     const wide = route.request().url().includes('co456')
+    if (wide) await wideGate
     const width = wide ? 1000 : 600
     const height = wide ? 500 : 900
     return route.fulfill({
@@ -155,7 +158,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   const image = page.locator('.discover-cover__image')
   await expect(image).toBeVisible()
   await expect(image).toHaveCSS('object-fit', 'contain')
-  await expect(image).toHaveAttribute('src', /\/t_1080p\//)
+  await expect(image).toHaveAttribute('src', /\/t_cover_big_2x\//)
   for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right']) {
     await expect(image).toHaveCSS(`border-${corner}-radius`, '22px')
   }
@@ -261,6 +264,8 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y + 78 }))
   })
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
+  // Finish the spring before another long gesture on its moving handle.
+  await page.waitForTimeout(440)
   // Long pull expands and reveals actual details.
   // A smaller content-wrapped peek means a longer deliberate pull is required.
   await dragHandle(page, -345, onIPhone)
@@ -315,20 +320,51 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   // The sheet finishes its deliberate, non-jelly snap before a new gesture.
   await page.waitForTimeout(420)
 
+  // One uninterrupted touch must move smoothly left→right→centre; no
+  // pivot jump, dead zone, 32px sticking or accidental vote on release.
+  const activePoster = await page.locator('.discover-cover__image').boundingBox()
+  if (!activePoster) throw new Error('Missing active cover for continuous touch')
+  const touchX = activePoster.x + activePoster.width / 2
+  const touchY = activePoster.y + Math.min(activePoster.height * .28, 180)
+  const translationX = () => page.locator('.discover-artwork').evaluate(node => {
+    return new DOMMatrixReadOnly(getComputedStyle(node).transform).m41
+  })
+  await page.mouse.move(touchX, touchY)
+  await page.mouse.down()
+  await page.mouse.move(touchX - 95, touchY, { steps: 10 })
+  await expect.poll(translationX).toBeLessThan(-15)
+  await page.mouse.move(touchX + 95, touchY, { steps: 15 })
+  await expect.poll(translationX).toBeGreaterThan(15)
+  await page.mouse.move(touchX, touchY, { steps: 10 })
+  await expect.poll(async () => Math.abs(await translationX())).toBeLessThan(10)
+  await page.mouse.up()
+  expect(actions).toHaveLength(0)
+
   // Right means LIKE, left means DISLIKE; not the reversed direction from v1.
   await dragCover(page, 'right')
   await expect(page.getByText('Discovery Two')).toBeVisible()
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCount(1)
+  // Check the held fog immediately after the decision, before intentionally
+  // delaying the network request beyond the short afterglow duration.
+  await expect.poll(() => page.locator('.discover-swipe-feedback--right')
+    .evaluate(node => Number(getComputedStyle(node).opacity)), { timeout: 1800 }).toBeGreaterThan(.1)
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('color', 'rgb(145, 255, 208)')
+  await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('border-top-width', '0px')
+  await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('box-shadow', 'none')
+  expect(await page.locator('.discover-swipe-feedback--right').evaluate(node =>
+    getComputedStyle(node, '::before').backgroundImage)).toContain('radial-gradient')
+  // A pending next image is covered by the animated soft placeholder.
+  await expect(page.getByTestId('poster-loading')).toBeVisible()
+  await expect(page.locator('.discover-cover__image')).toHaveCSS('opacity', '0')
+  releaseWidePoster()
+  await expect(page.locator('.discover-cover__image')).toHaveCSS('opacity', '1')
+  await expect(page.getByTestId('poster-loading')).toHaveCount(0)
   const glowRect = await page.locator('.discover-swipe-feedback--right').boundingBox()
   const screenRect = await page.locator('.discover-screen').boundingBox()
   const navRect = await page.locator('.bottom-nav').boundingBox()
   expect(glowRect && screenRect && navRect).toBeTruthy()
-  expect(Math.abs(glowRect!.y - screenRect!.y)).toBeLessThan(8)
+  expect(Math.abs(glowRect!.y - screenRect!.y)).toBeLessThan(2)
   expect(glowRect!.y + glowRect!.height).toBeLessThanOrEqual(navRect!.y + 1)
-  // Feedback lives outside the old poster and remains on the arriving card.
-  await expect.poll(() => page.locator('.discover-swipe-feedback--right')
-    .evaluate(node => Number(getComputedStyle(node).opacity))).toBeGreaterThan(.1)
   // Game Two is a wide poster: it must be shorter than the portrait poster
   // rather than filling the remaining screen with a fake blurred extension.
   const wideImage = page.locator('.discover-cover__image')

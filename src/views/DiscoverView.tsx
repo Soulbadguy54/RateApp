@@ -11,6 +11,7 @@ type DiscoveryAction = 'like' | 'dislike' | 'wishlist'
 type Direction = 'left' | 'right' | 'up'
 type Feed = { items: Game[]; remaining: number }
 type DescriptionTranslation = { description: string; language: 'ru' | 'en'; translated: boolean }
+type PosterState = { width: number; height: number; failed?: boolean }
 const STORE_ICONS: Record<string, string> = {
   steam: '/brand/steam.svg', epic: '/brand/epicgames.svg',
   gog: '/brand/gogdotcom.svg', itch: '/brand/itchdotio.svg',
@@ -33,9 +34,9 @@ const getHelpKey = (nickname: string) => HELP_KEY + ':' + nickname.toLowerCase()
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
 
 function heroCoverUrl(url?: string): string | undefined {
-  // Request a larger IGDB image for this poster only, never for catalog tiles.
-  if (!url?.startsWith('https://images.igdb.com/igdb/image/upload/')) return url
-  return url.replace(/\/t_cover_big_2x\//, '/t_1080p/')
+  // Reuse the feed's high-density cover URL instead of downloading a much
+  // heavier 1080p duplicate on mobile. It is shared with the catalog cache.
+  return url
 }
 
 function releaseLabel(game: Game) {
@@ -68,6 +69,8 @@ export default function DiscoverView({
     try { return !localStorage.getItem(getHelpKey(nickname)) } catch { return true }
   })
   const [artworkReady, setArtworkReady] = useState(false)
+  const [posters, setPosters] = useState<Record<string, PosterState>>({})
+  const preloadedPostersRef = useRef(new Map<string, HTMLImageElement>())
   const [descriptions, setDescriptions] = useState<Record<number, DescriptionTranslation>>({})
   const [translationPendingId, setTranslationPendingId] = useState<number | null>(null)
   const [feedbackDirection, setFeedbackDirection] = useState<Direction | null>(null)
@@ -75,6 +78,7 @@ export default function DiscoverView({
   const feedbackAnimationRef = useRef<{ stop: () => void } | null>(null)
   const feedbackHoldRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cardPivot = useMotionValue('center top')
+  const cardResetRef = useRef<{ stop: () => void }[]>([])
 
   const stageRef = useRef<HTMLDivElement>(null)
   const summaryRef = useRef<HTMLDivElement>(null)
@@ -307,10 +311,54 @@ export default function DiscoverView({
       sheetAnimationRef.current?.stop()
       feedbackAnimationRef.current?.stop()
       if (feedbackHoldRef.current) window.clearTimeout(feedbackHoldRef.current)
+      for (const control of cardResetRef.current) control.stop()
+      preloadedPostersRef.current.clear()
     }
   }, [loadFeed])
 
   const game = cards[index]
+  const posterUrl = heroCoverUrl(game?.coverUrl)
+  const posterState = posterUrl ? posters[posterUrl] : undefined
+
+  useEffect(() => {
+    // Prefetch and decode the visible cover plus three upcoming cards. Keep the
+    // decoded Image objects nearby: a fast flick should not wait on the CDN.
+    const upcoming = cards.slice(Math.max(0, index - 1), index + 4)
+    const urls = new Set(upcoming.map(item => heroCoverUrl(item.coverUrl)).filter((url): url is string => !!url))
+    const cached = preloadedPostersRef.current
+    for (const url of urls) {
+      if (cached.has(url)) continue
+      const picture = new Image()
+      picture.decoding = 'async'
+      cached.set(url, picture)
+      picture.onload = () => {
+        const done = () => {
+          if (!mountedRef.current || !picture.naturalWidth || !picture.naturalHeight) return
+          setPosters(previous => previous[url] ? previous : {
+            ...previous, [url]: { width: picture.naturalWidth, height: picture.naturalHeight },
+          })
+        }
+        // decode() is supported in Chromium and WebKit; the fallback still
+        // gives slow connections a complete image before the fade-in.
+        if (picture.decode) void picture.decode().then(done, done)
+        else done()
+      }
+      picture.onerror = () => {
+        if (mountedRef.current) setPosters(previous => ({
+          ...previous, [url]: { width: 0, height: 0, failed: true },
+        }))
+      }
+      picture.src = url
+    }
+    // Do not accumulate full-size decoded covers while swiping a long feed.
+    for (const [url, picture] of cached) {
+      if (urls.has(url) || cached.size <= 5) continue
+      picture.onload = null
+      picture.onerror = null
+      cached.delete(url)
+    }
+  }, [cards, index])
+
   useEffect(() => {
     if (!expanded || !game?.id || descriptions[game.id]) return
     const id = game.id
@@ -371,7 +419,7 @@ export default function DiscoverView({
     if (reducedMotion) return
     feedbackAnimationRef.current?.stop()
     if (feedbackHoldRef.current) window.clearTimeout(feedbackHoldRef.current)
-    setFeedbackDirection(direction)
+    setFeedbackDirection(previous => previous === direction ? previous : direction)
     feedbackOpacity.set(strength)
     if (release) {
       // Retain the label and glow over the next card, then fade smoothly.
@@ -383,13 +431,19 @@ export default function DiscoverView({
     }
   }
 
+  const stopCardReset = () => {
+    for (const control of cardResetRef.current) control.stop()
+    cardResetRef.current = []
+  }
   const resetTilt = () => {
+    stopCardReset()
     const transition = reducedMotion ? { duration: 0 } : { duration: .22, ease: 'easeOut' as const }
-    animate(cardShift, 0, transition)
-    animate(cardTilt, 0, transition)
-    animate(cardLift, 0, transition)
-    animate(cardScale, 1, transition)
-    cardPivot.set('center top')
+    cardResetRef.current = [
+      animate(cardShift, 0, transition),
+      animate(cardTilt, 0, transition),
+      animate(cardLift, 0, transition),
+      animate(cardScale, 1, transition),
+    ]
   }
   const decide = async (action: DiscoveryAction) => {
     if (!game || busy || helpOpen || expanded || pullRef.current || reveal.get() > .03) return
@@ -438,21 +492,28 @@ export default function DiscoverView({
 
   const onPosterPan = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (busy || expanded || helpOpen || pullRef.current) return
+    stopCardReset()
     const { x, y } = info.offset
+    // Keep a single pivot when reversing direction. Switching between left
+    // and right transform-origins mid-touch made the poster visibly jump.
+    // No dead zone or 32px movement cap: the card follows the same finger
+    // continuously through centre, even left→right→left in one touch.
     if (y < -5 && Math.abs(y) > Math.abs(x) * 1.15) {
-      cardPivot.set('center top')
-      cardLift.set(clamp(y * .21, -32, 0))
+      cardLift.set(clamp(y * .26, -45, 0))
       cardScale.set(1)
       cardShift.set(0)
       cardTilt.set(0)
-      showSwipeFeedback('up', clamp((Math.abs(y) - 12) / 115, 0, .8))
-    } else if (Math.abs(x) > 5 && Math.abs(x) > Math.abs(y) * 1.1) {
-      cardPivot.set(x < 0 ? 'right top' : 'left top')
-      cardShift.set(clamp(x * .22, -32, 32))
-      cardTilt.set(clamp(x * .034, -5.8, 5.8))
+      showSwipeFeedback('up', clamp((Math.abs(y) - 12) / 135, 0, .72))
+    } else {
+      cardShift.set(clamp(x * .55, -stageHeight * .27, stageHeight * .27))
+      cardTilt.set(clamp(x * .027, -9, 9))
       cardLift.set(0)
       cardScale.set(1)
-      showSwipeFeedback(x > 0 ? 'right' : 'left', clamp((Math.abs(x) - 12) / 100, 0, .84))
+      if (Math.abs(x) > 10 && Math.abs(x) > Math.abs(y) * .95) {
+        showSwipeFeedback(x > 0 ? 'right' : 'left', clamp((Math.abs(x) - 10) / 125, 0, .75))
+      } else {
+        feedbackOpacity.set(0)
+      }
     }
   }
   const onPosterPanEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
@@ -524,9 +585,31 @@ export default function DiscoverView({
               <motion.div className="discover-artwork"
                 style={{ x: cardShift, y: cardLift, scale: cardScale, rotate: cardTilt, transformOrigin: cardPivot }}>
                 <div className="discover-cover" aria-hidden="true">
-                  {game.coverUrl ? (
-                    <img ref={attachPoster} onLoad={measurePoster} className="discover-cover__image" src={heroCoverUrl(game.coverUrl)}
-                      alt="" loading="eager" fetchPriority="high" decoding="async" />
+                  {posterUrl && !posterState?.failed ? (
+                    <>
+                      {!posterState && <div className="discover-cover__skeleton" data-testid="poster-loading" />}
+                      <img ref={attachPoster}
+                        onLoad={event => {
+                          const element = event.currentTarget
+                          const done = () => {
+                            if (!element.isConnected || !element.naturalWidth || !element.naturalHeight) return
+                            setPosters(previous => previous[posterUrl]?.failed ? previous : {
+                              ...previous, [posterUrl]: {
+                                width: element.naturalWidth, height: element.naturalHeight,
+                              },
+                            })
+                            measurePoster()
+                          }
+                          if (element.decode) void element.decode().then(done, done)
+                          else done()
+                        }}
+                        onError={() => setPosters(previous => ({
+                          ...previous, [posterUrl]: { width: 0, height: 0, failed: true },
+                        }))}
+                        className={posterState ? 'discover-cover__image discover-cover__image--ready' : 'discover-cover__image'}
+                        src={posterUrl} width={posterState?.width || undefined} height={posterState?.height || undefined}
+                        alt="" loading="eager" fetchPriority="high" decoding="async" />
+                    </>
                   ) : (
                     <div ref={attachPoster} className="discover-cover__fallback"><Cover game={game} priority /></div>
                   )}
