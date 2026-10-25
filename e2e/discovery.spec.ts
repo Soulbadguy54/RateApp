@@ -149,6 +149,25 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.locator('.discover-guide__intro')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(page.locator('.discover-guide__backdrop')).toHaveCSS('backdrop-filter', /blur\(7px\)/)
   await expect(page.locator('.discover-guide__backdrop')).toHaveCSS('background-color', 'rgba(6, 10, 23, 0.32)')
+  // The backdrop settles first; onboarding copy fades in on a delayed layer.
+  await expect(page.locator('.discover-guide__content')).toHaveCSS('opacity', '1')
+  const guideGeometry = await page.evaluate(() => {
+    const poster = document.querySelector('.discover-cover__image')!.getBoundingClientRect()
+    const guides = document.querySelector('.discover-guide__directions')!.getBoundingClientRect()
+    const getCenter = (sel: string) => {
+      const box = document.querySelector(sel)!.getBoundingClientRect()
+      return box.left + box.width / 2
+    }
+    return {
+      posterX: poster.left, posterWidth: poster.width, guidesX: guides.left,
+      guidesWidth: guides.width, upCenter: getCenter('.discover-guide__direction--up'),
+    }
+  })
+  expect(Math.abs(guideGeometry.guidesX - guideGeometry.posterX)).toBeLessThan(5)
+  expect(Math.abs(guideGeometry.guidesWidth - guideGeometry.posterWidth)).toBeLessThan(5)
+  expect(Math.abs(guideGeometry.upCenter - (guideGeometry.posterX + guideGeometry.posterWidth / 2))).toBeLessThan(5)
+  await expect(page.locator('.discover-guide__direction--left')).toHaveCSS('color', 'rgb(142, 186, 255)')
+  await expect(page.locator('.discover-guide__direction--up')).toHaveCSS('color', 'rgb(255, 162, 202)')
   await expect(page.getByText('Хочу поиграть').first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Закрыть обучение' })).toHaveCount(1)
   // The invisible full-surface hit target accepts a tap away from all text.
@@ -166,6 +185,9 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.locator('.discover-cover__fade')).toHaveCount(0)
   await expect(page.locator('.discover-stage')).toHaveCSS('border-top-left-radius', '0px')
   await expect(page.locator('.discover-hint--up')).toHaveCSS('top', '10px')
+  await expect(page.locator('.discover-hint--left')).toHaveCSS('color', 'rgb(142, 186, 255)')
+  await expect(page.locator('.discover-hint--right')).toHaveCSS('color', 'rgb(146, 233, 174)')
+  await expect(page.locator('.discover-hint--up')).toHaveCSS('color', 'rgb(255, 162, 202)')
   const stageRect = await page.locator('.discover-stage').boundingBox()
   await expect.poll(() => image.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBe(600)
   const coverRect = await image.boundingBox()
@@ -186,6 +208,14 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   expect(coverRect.height).toBeLessThanOrEqual(stageRect.height + 1)
   expect(Math.abs(coverRect.y - stageRect.y - 12)).toBeLessThan(2)
   expect(Math.abs(coverRect.width / coverRect.height - 600 / 900)).toBeLessThan(.025)
+  const hintsRect = await page.locator('.discover-hints').boundingBox()
+  const leftHint = await page.locator('.discover-hint--left').boundingBox()
+  const rightHint = await page.locator('.discover-hint--right').boundingBox()
+  if (!hintsRect || !leftHint || !rightHint) throw new Error('Discovery hints not measured')
+  expect(Math.abs(hintsRect.x - coverRect.x)).toBeLessThan(5)
+  expect(Math.abs(hintsRect.width - coverRect.width)).toBeLessThan(5)
+  expect(leftHint.x).toBeGreaterThanOrEqual(coverRect.x - 3)
+  expect(rightHint.x + rightHint.width).toBeLessThanOrEqual(coverRect.x + coverRect.width + 3)
   const background = await page.locator('.discover-stage').evaluate(stage => ({
     stage: getComputedStyle(stage).backgroundColor,
     deck: getComputedStyle(stage.querySelector('.discover-deck')!).backgroundColor,
@@ -348,7 +378,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   // delaying the network request beyond the short afterglow duration.
   await expect.poll(() => page.locator('.discover-swipe-feedback--right')
     .evaluate(node => Number(getComputedStyle(node).opacity)), { timeout: 1800 }).toBeGreaterThan(.1)
-  await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('color', 'rgb(145, 255, 208)')
+  await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('color', 'rgb(146, 233, 174)')
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('border-top-width', '0px')
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('box-shadow', 'none')
   // These are broad RGBA ramps; unlike a filtered radial bloom they keep
@@ -358,7 +388,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     return { background: pseudo.backgroundImage, filter: pseudo.filter }
   })
   expect(fogStyle.background).toContain('linear-gradient')
-  expect(fogStyle.background).toContain('rgba(145, 255, 208, 0.7)')
+  expect(fogStyle.background).toContain('rgba(146, 233, 174, 0.7)')
   expect(fogStyle.background).toContain('108px')
   expect(fogStyle.background).not.toContain('radial-gradient')
   expect(fogStyle.filter).toBe('none')
@@ -401,6 +431,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.getByText('Discovery Two')).toBeVisible()
   expect(actions).toEqual(['like', 'dislike'])
   await expect(page.locator('.discover-swipe-feedback--left')).toHaveCount(1)
+  await expect(page.locator('.discover-swipe-feedback--left')).toHaveCSS('color', 'rgb(142, 186, 255)')
   // The info icon reopens the same ONE-frame onboarding.
   await page.getByRole('button', { name: 'Показать обучение' }).click()
   await expect(page.getByText('Новые игры для тебя')).toBeVisible()
@@ -412,6 +443,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.getByText('Пока всё просмотрено')).toBeVisible()
   expect(actions).toEqual(['like', 'dislike', 'wishlist'])
   await expect(page.locator('.discover-swipe-feedback--up')).toHaveCount(1)
+  await expect(page.locator('.discover-swipe-feedback--up')).toHaveCSS('color', 'rgb(255, 162, 202)')
   await page.getByRole('button', { name: 'Вернуться в базу игр' }).click()
   await expect(page.getByRole('heading', { name: 'База игр' })).toBeVisible()
   await expect(page.locator('.bottom-nav')).toBeVisible()

@@ -17,11 +17,16 @@ function emojiUnified(emoji: string): string {
   return Array.from(emoji).map((character) => character.codePointAt(0)!.toString(16)).join('-')
 }
 
+/** Same red ❤️ used by the protected wishlist icon across every screen. */
+export function WishlistHeart({ size = 19 }: { size?: number }) {
+  return <RenderEmoji unified="2764-fe0f" size={size} />
+}
+
 export function CollectionIcon({ collection, size = 19 }: { collection: GameCollection; size?: number }) {
   // Protected system collection always uses the same red emoji, including
   // for clients that still have the old outlined heart in their cached data.
   if (collection.id === WISHLIST_COLLECTION_ID) {
-    return <RenderEmoji unified="2764-fe0f" size={size} />
+    return <WishlistHeart size={size} />
   }
   if (collection.emoji) {
     return <RenderEmoji unified={emojiUnified(collection.emoji)} size={size} />

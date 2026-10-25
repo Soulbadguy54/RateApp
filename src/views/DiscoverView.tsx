@@ -4,6 +4,7 @@ import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, 
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
 import type { PanInfo, MotionStyle } from 'motion/react'
 import { Cover } from '../components/GameCard'
+import { WishlistHeart } from '../components/CollectionAppearance'
 import Icon from '../components/Icon'
 import type { Game } from '../data'
 
@@ -12,6 +13,10 @@ type Direction = 'left' | 'right' | 'up'
 type Feed = { items: Game[]; remaining: number }
 type DescriptionTranslation = { description: string; language: 'ru' | 'en'; translated: boolean }
 type PosterState = { width: number; height: number; failed?: boolean }
+type PosterBounds = {
+  index: number; left: number; top: number; width: number; height: number
+  screenLeft: number; screenTop: number
+}
 const STORE_ICONS: Record<string, string> = {
   steam: '/brand/steam.svg', epic: '/brand/epicgames.svg',
   gog: '/brand/gogdotcom.svg', itch: '/brand/itchdotio.svg',
@@ -87,6 +92,7 @@ export default function DiscoverView({
   // Keep the sheet independent of the keyed artwork: its top edge springs to
   // the actual bottom of each fitted poster, while its foot stays at the nav.
   const [posterBottom, setPosterBottom] = useState<number | null>(null)
+  const [posterBounds, setPosterBounds] = useState<PosterBounds | null>(null)
   const posterNodeRef = useRef<HTMLElement | null>(null)
   const posterObserverRef = useRef<ResizeObserver | null>(null)
   const measurePoster = useCallback(() => {
@@ -95,9 +101,22 @@ export default function DiscoverView({
     if (!poster || !stage) return
     const art = poster.getBoundingClientRect()
     if (art.width < 1 || art.height < 1) return
-    const bottom = art.bottom - stage.getBoundingClientRect().top
+    const stageRect = stage.getBoundingClientRect()
+    const screenRect = stage.closest('.discover-screen')?.getBoundingClientRect() ?? stageRect
+    const bottom = art.bottom - stageRect.top
+    const nextBounds: PosterBounds = {
+      index, left: art.left - stageRect.left, top: art.top - stageRect.top,
+      width: art.width, height: art.height,
+      screenLeft: art.left - screenRect.left, screenTop: art.top - screenRect.top,
+    }
     setPosterBottom(previous => previous === null || Math.abs(previous - bottom) > .5 ? bottom : previous)
-  }, [])
+    setPosterBounds(previous => previous && previous.index === nextBounds.index &&
+      Math.abs(previous.left - nextBounds.left) < .5 &&
+      Math.abs(previous.top - nextBounds.top) < .5 &&
+      Math.abs(previous.width - nextBounds.width) < .5 &&
+      Math.abs(previous.height - nextBounds.height) < .5
+      ? previous : nextBounds)
+  }, [index])
   const attachPoster = useCallback((node: HTMLElement | null) => {
     posterObserverRef.current?.disconnect()
     posterObserverRef.current = null
@@ -317,6 +336,7 @@ export default function DiscoverView({
   }, [loadFeed])
 
   const game = cards[index]
+  const activePosterBounds = posterBounds?.index === index ? posterBounds : null
   const posterUrl = heroCoverUrl(game?.coverUrl)
   const posterState = posterUrl ? posters[posterUrl] : undefined
 
@@ -621,8 +641,12 @@ export default function DiscoverView({
                   aria-label={'Свайпы для игры ' + game.title}
                 />
                 {!helpOpen && !expanded && (
-                  <div className="discover-hints" aria-hidden="true">
-                    <span className="discover-hint discover-hint--up">↑ Хочу поиграть</span>
+                  <div className="discover-hints" aria-hidden="true"
+                    style={activePosterBounds ? {
+                      left: activePosterBounds.left, top: activePosterBounds.top,
+                      width: activePosterBounds.width, height: activePosterBounds.height,
+                    } : { visibility: 'hidden' }}>
+                    <span className="discover-hint discover-hint--up">↑ <WishlistHeart size={13} /> Хочу поиграть</span>
                     <span className="discover-hint discover-hint--left">← Не нравится</span>
                     <span className="discover-hint discover-hint--right">Нравится →</span>
                   </div>
@@ -692,21 +716,29 @@ export default function DiscoverView({
         <AnimatePresence>
           {helpOpen && game && artworkReady && !loading && (
             <motion.div className="discover-guide" role="dialog" aria-modal="true" aria-label="Обучение рекомендациям"
-              initial={reducedMotion ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }} transition={{ duration: .32 }}>
+              initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: reducedMotion ? 0 : .2 }}>
               <motion.div className="discover-guide__backdrop"
-                initial={{ backdropFilter: 'blur(0px)', backgroundColor: 'rgba(6,10,23,0)' }}
+                initial={reducedMotion ? false : { backdropFilter: 'blur(0px)', backgroundColor: 'rgba(6,10,23,0)' }}
                 animate={{ backdropFilter: 'blur(7px)', backgroundColor: 'rgba(6,10,23,.32)' }}
                 exit={{ backdropFilter: 'blur(0px)', backgroundColor: 'rgba(6,10,23,0)' }}
-                transition={{ duration: .52, ease: [0.22, 1, 0.36, 1] }} />
+                transition={{ duration: reducedMotion ? 0 : .24, ease: [0.22, 1, 0.36, 1] }} />
               {/* Full-screen invisible dismissal target: no framed card or visible
                   action button. First poster stays in place behind the blur. */}
               <button type="button" className="discover-guide__dismiss"
                 aria-label="Закрыть обучение" onClick={dismissHelp} />
-              <div className="discover-guide__directions" aria-hidden="true">
+              <motion.div className="discover-guide__content"
+                initial={reducedMotion ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ delay: reducedMotion ? 0 : .2, duration: reducedMotion ? 0 : .25 }}>
+              <div className="discover-guide__directions" aria-hidden="true"
+                style={activePosterBounds ? {
+                  left: activePosterBounds.left, top: activePosterBounds.top,
+                  width: activePosterBounds.width, height: activePosterBounds.height,
+                } : { inset: 0 }}>
                 <div className="discover-guide__direction discover-guide__direction--up">
-                  <strong>↑ Хочу поиграть</strong><span>В список желаемого</span>
+                  <strong>↑ <WishlistHeart size={14} /> Хочу поиграть</strong><span>В список желаемого</span>
                 </div>
                 <div className="discover-guide__direction discover-guide__direction--left">
                   <strong>← Не нравится</strong><span>Меньше похожих</span>
@@ -721,6 +753,7 @@ export default function DiscoverView({
                 <p className="discover-guide__detail-tip">Потяни стеклянную панель вверх, чтобы узнать об игре больше.</p>
               </div>
               <p className="discover-guide__tap-hint" aria-hidden="true">Коснись экрана, чтобы продолжить</p>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -728,7 +761,13 @@ export default function DiscoverView({
       {!helpOpen && feedbackDirection && (
         <motion.div className={`discover-swipe-feedback discover-swipe-feedback--${feedbackDirection}`}
           style={{ opacity: feedbackOpacity }} aria-hidden="true">
-          <span>{feedbackDirection === 'up' ? 'Хочу поиграть' : feedbackDirection === 'left' ? 'Не нравится' : 'Нравится'}</span>
+          <span style={activePosterBounds ? {
+            left: activePosterBounds.screenLeft + activePosterBounds.width / 2,
+            top: activePosterBounds.screenTop + activePosterBounds.height / 2,
+          } : undefined}>
+            {feedbackDirection === 'up' ? <><WishlistHeart size={26} /> Хочу поиграть</> :
+              feedbackDirection === 'left' ? 'Не нравится' : 'Нравится'}
+          </span>
         </motion.div>
       )}
     </section>
