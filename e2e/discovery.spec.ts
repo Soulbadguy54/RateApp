@@ -264,6 +264,8 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y + 78 }))
   })
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
+  // Finish the spring before another long gesture on its moving handle.
+  await page.waitForTimeout(440)
   // Long pull expands and reveals actual details.
   // A smaller content-wrapped peek means a longer deliberate pull is required.
   await dragHandle(page, -345, onIPhone)
@@ -330,11 +332,11 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await page.mouse.move(touchX, touchY)
   await page.mouse.down()
   await page.mouse.move(touchX - 95, touchY, { steps: 10 })
-  expect(await translationX()).toBeLessThan(-15)
+  await expect.poll(translationX).toBeLessThan(-15)
   await page.mouse.move(touchX + 95, touchY, { steps: 15 })
-  expect(await translationX()).toBeGreaterThan(15)
+  await expect.poll(translationX).toBeGreaterThan(15)
   await page.mouse.move(touchX, touchY, { steps: 10 })
-  expect(Math.abs(await translationX())).toBeLessThan(10)
+  await expect.poll(async () => Math.abs(await translationX())).toBeLessThan(10)
   await page.mouse.up()
   expect(actions).toHaveLength(0)
 
