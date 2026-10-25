@@ -33,6 +33,7 @@
   width: min(242px, 86vw);
   transform: translateX(-50%);
   transform-origin: 50% 100%;
+  pointer-events: none;
 }
 
 .bottom-nav__bubble {
@@ -48,6 +49,7 @@
   -webkit-backdrop-filter: blur(22px) saturate(150%);
   backdrop-filter: blur(22px) saturate(150%);
   transform-origin: 50% 100%;
+  pointer-events: auto;
 }
 
 .bottom-nav__bubble::after {
