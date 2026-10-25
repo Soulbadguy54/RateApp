@@ -95,6 +95,6 @@ test('game nav: releasing long press on original button does not navigate', asyn
   await expect(page.locator('.bottom-nav__bubble')).toBeVisible({ timeout: 3500 })
   await page.mouse.up()
   await expect(page.locator('.bottom-nav__bubble')).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: 'Мои игры' })).toBeVisible()
+  await expect(page.locator('.page--library')).toBeVisible()
   await expect(slot).toContainText('База игр')
 })
