@@ -53,6 +53,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   // A synchronous ref avoids stale values when swipe and tap share a render batch.
   const pinnedRef = useRef<GameNavTab>(pinned)
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const bubbleAnchorRef = useRef<HTMLDivElement>(null)
   const option = options.find(item => item.id === pinned) ?? options[0]
 
   useEffect(() => {
@@ -87,7 +88,14 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const findChoice = (x: number, y: number): GameNavTab | null => {
     const candidate = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-game-nav-choice]')
     const id = candidate?.dataset.gameNavChoice
-    return id === 'add' || id === 'discovery' ? id : null
+    if (id === 'add' || id === 'discovery') return id
+    // During liquid expansion the visual bubble starts as a tiny droplet.
+    // Resolve against its full layout box so a fast drag/release still works.
+    const bounds = bubbleAnchorRef.current?.getBoundingClientRect()
+    if (bounds && x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom) {
+      return x < bounds.left + bounds.width / 2 ? 'add' : 'discovery'
+    }
+    return null
   }
 
   const clearPress = () => {
@@ -240,7 +248,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
         </span>
       </motion.button>
 
-      <div className="bottom-nav__bubble-anchor">
+      <div ref={bubbleAnchorRef} className="bottom-nav__bubble-anchor">
         <AnimatePresence>
           {menuOpen && (
             <>
