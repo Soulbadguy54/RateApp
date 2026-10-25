@@ -351,8 +351,17 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('color', 'rgb(145, 255, 208)')
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('border-top-width', '0px')
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('box-shadow', 'none')
-  expect(await page.locator('.discover-swipe-feedback--right').evaluate(node =>
-    getComputedStyle(node, '::before').backgroundImage)).toContain('radial-gradient')
+  // These are broad RGBA ramps; unlike a filtered radial bloom they keep
+  // enough color visible on real phone screens. No thin border is drawn.
+  const fogStyle = await page.locator('.discover-swipe-feedback--right').evaluate(node => {
+    const pseudo = getComputedStyle(node, '::before')
+    return { background: pseudo.backgroundImage, filter: pseudo.filter }
+  })
+  expect(fogStyle.background).toContain('linear-gradient')
+  expect(fogStyle.background).toContain('rgba(145, 255, 208, 0.7)')
+  expect(fogStyle.background).toContain('108px')
+  expect(fogStyle.background).not.toContain('radial-gradient')
+  expect(fogStyle.filter).toBe('none')
   // A pending next image is covered by the animated soft placeholder.
   await expect(page.getByTestId('poster-loading')).toBeVisible()
   await expect(page.locator('.discover-cover__image')).toHaveCSS('opacity', '0')
