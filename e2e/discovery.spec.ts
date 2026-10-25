@@ -168,6 +168,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   expect(Math.abs(guideGeometry.upCenter - (guideGeometry.posterX + guideGeometry.posterWidth / 2))).toBeLessThan(5)
   await expect(page.locator('.discover-guide__direction--left')).toHaveCSS('color', 'rgb(142, 186, 255)')
   await expect(page.locator('.discover-guide__direction--up')).toHaveCSS('color', 'rgb(255, 162, 202)')
+  await expect(page.locator('.discover-guide__direction--up .discover-action-line')).toHaveCSS('column-gap', '6px')
   await expect(page.getByText('Хочу поиграть').first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Закрыть обучение' })).toHaveCount(1)
   // The invisible full-surface hit target accepts a tap away from all text.
@@ -185,6 +186,16 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.locator('.discover-cover__fade')).toHaveCount(0)
   await expect(page.locator('.discover-stage')).toHaveCSS('border-top-left-radius', '0px')
   await expect(page.locator('.discover-hint--up')).toHaveCSS('top', '10px')
+  for (const action of ['.discover-hint--up', '.discover-hint--left', '.discover-hint--right']) {
+    const target = page.locator(action + ' .discover-action-line')
+    // Flex children are blockified: inline-flex computes to flex in WebKit/Chromium.
+    await expect(target).toHaveCSS('display', 'flex')
+    await expect(target).toHaveCSS('align-items', 'center')
+    await expect(target).toHaveCSS('column-gap', '6px')
+  }
+  const heart = page.locator('.discover-hint--up .discover-action-line__emoji')
+  await expect(heart).toHaveCSS('height', '16px')
+  await expect(heart).toHaveCSS('align-items', 'center')
   await expect(page.locator('.discover-hint--left')).toHaveCSS('color', 'rgb(142, 186, 255)')
   await expect(page.locator('.discover-hint--right')).toHaveCSS('color', 'rgb(146, 233, 174)')
   await expect(page.locator('.discover-hint--up')).toHaveCSS('color', 'rgb(255, 162, 202)')
@@ -376,14 +387,16 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCount(1)
   // Check the held fog immediately after the decision, before intentionally
   // delaying the network request beyond the short afterglow duration.
-  await expect.poll(() => page.locator('.discover-swipe-feedback--right')
+  await expect.poll(() => page.locator('.discover-swipe-feedback--right .discover-swipe-feedback__haze')
     .evaluate(node => Number(getComputedStyle(node).opacity)), { timeout: 1800 }).toBeGreaterThan(.1)
+  // The label brightens independently of haze during partial drag.
+  await expect(page.locator('.discover-swipe-feedback__label')).toHaveCSS('text-shadow', /20px/)
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('color', 'rgb(146, 233, 174)')
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('border-top-width', '0px')
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('box-shadow', 'none')
   // These are broad RGBA ramps; unlike a filtered radial bloom they keep
   // enough color visible on real phone screens. No thin border is drawn.
-  const fogStyle = await page.locator('.discover-swipe-feedback--right').evaluate(node => {
+  const fogStyle = await page.locator('.discover-swipe-feedback__haze').evaluate(node => {
     const pseudo = getComputedStyle(node, '::before')
     return { background: pseudo.backgroundImage, filter: pseudo.filter }
   })

@@ -80,6 +80,9 @@ export default function DiscoverView({
   const [translationPendingId, setTranslationPendingId] = useState<number | null>(null)
   const [feedbackDirection, setFeedbackDirection] = useState<Direction | null>(null)
   const feedbackOpacity = useMotionValue(0)
+  // The words become legible faster than the atmospheric fog during a drag.
+  // They must not inherit the haze layer's half-opacity.
+  const feedbackLabelOpacity = useTransform(feedbackOpacity, value => clamp(value * 1.9, 0, 1))
   const feedbackAnimationRef = useRef<{ stop: () => void } | null>(null)
   const feedbackHoldRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cardPivot = useMotionValue('center top')
@@ -646,9 +649,17 @@ export default function DiscoverView({
                       left: activePosterBounds.left, top: activePosterBounds.top,
                       width: activePosterBounds.width, height: activePosterBounds.height,
                     } : { visibility: 'hidden' }}>
-                    <span className="discover-hint discover-hint--up">↑ <WishlistHeart size={13} /> Хочу поиграть</span>
-                    <span className="discover-hint discover-hint--left">← Не нравится</span>
-                    <span className="discover-hint discover-hint--right">Нравится →</span>
+                    <span className="discover-hint discover-hint--up"><span className="discover-action-line">
+                      <span className="discover-action-line__arrow">↑</span>
+                      <span className="discover-action-line__emoji"><WishlistHeart size={13} /></span>
+                      <span>Хочу поиграть</span>
+                    </span></span>
+                    <span className="discover-hint discover-hint--left"><span className="discover-action-line">
+                      <span className="discover-action-line__arrow">←</span><span>Не нравится</span>
+                    </span></span>
+                    <span className="discover-hint discover-hint--right"><span className="discover-action-line">
+                      <span>Нравится</span><span className="discover-action-line__arrow">→</span>
+                    </span></span>
                   </div>
                 )}
               </motion.div>
@@ -738,13 +749,15 @@ export default function DiscoverView({
                   width: activePosterBounds.width, height: activePosterBounds.height,
                 } : { inset: 0 }}>
                 <div className="discover-guide__direction discover-guide__direction--up">
-                  <strong>↑ <WishlistHeart size={14} /> Хочу поиграть</strong><span>В список желаемого</span>
+                  <strong className="discover-action-line"><span className="discover-action-line__arrow">↑</span>
+                    <span className="discover-action-line__emoji"><WishlistHeart size={14} /></span>
+                    <span>Хочу поиграть</span></strong><span>В список желаемого</span>
                 </div>
                 <div className="discover-guide__direction discover-guide__direction--left">
-                  <strong>← Не нравится</strong><span>Меньше похожих</span>
+                  <strong className="discover-action-line"><span className="discover-action-line__arrow">←</span><span>Не нравится</span></strong><span>Меньше похожих</span>
                 </div>
                 <div className="discover-guide__direction discover-guide__direction--right">
-                  <strong>Нравится →</strong><span>Больше похожих</span>
+                  <strong className="discover-action-line"><span>Нравится</span><span className="discover-action-line__arrow">→</span></strong><span>Больше похожих</span>
                 </div>
               </div>
               <div className="discover-guide__intro">
@@ -759,16 +772,22 @@ export default function DiscoverView({
         </AnimatePresence>
       </div>
       {!helpOpen && feedbackDirection && (
-        <motion.div className={`discover-swipe-feedback discover-swipe-feedback--${feedbackDirection}`}
-          style={{ opacity: feedbackOpacity }} aria-hidden="true">
-          <span style={activePosterBounds ? {
-            left: activePosterBounds.screenLeft + activePosterBounds.width / 2,
-            top: activePosterBounds.screenTop + activePosterBounds.height / 2,
-          } : undefined}>
-            {feedbackDirection === 'up' ? <><WishlistHeart size={26} /> Хочу поиграть</> :
-              feedbackDirection === 'left' ? 'Не нравится' : 'Нравится'}
-          </span>
-        </motion.div>
+        <div className={`discover-swipe-feedback discover-swipe-feedback--${feedbackDirection}`}
+          aria-hidden="true">
+          <motion.div className="discover-swipe-feedback__haze" style={{ opacity: feedbackOpacity }} />
+          <motion.span className="discover-swipe-feedback__label" style={{
+            opacity: feedbackLabelOpacity,
+            ...(activePosterBounds ? {
+              left: activePosterBounds.screenLeft + activePosterBounds.width / 2,
+              top: activePosterBounds.screenTop + activePosterBounds.height / 2,
+            } : {}),
+          }}>
+            {feedbackDirection === 'up' ? <span className="discover-action-line">
+              <span className="discover-action-line__emoji"><WishlistHeart size={26} /></span>
+              <span>Хочу поиграть</span>
+            </span> : feedbackDirection === 'left' ? 'Не нравится' : 'Нравится'}
+          </motion.span>
+        </div>
       )}
     </section>
   )
