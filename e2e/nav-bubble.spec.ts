@@ -183,3 +183,45 @@ test('game nav: releasing long press on original button does not navigate', asyn
   await expect(page.locator('.page--library')).toBeVisible()
   await expect(slot).toContainText('База игр')
 })
+
+
+// Deliberately not run during staging design iterations. Executed by the
+// full mobile suite before the eventual main/production release.
+test('game nav: liquid path retracts without an orphan and rapid reopen works', async ({ page }) => {
+  const nickname = 'morph_' + Date.now().toString(36).slice(-8)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Регистрация' }).click()
+  await page.locator('input[type=email]').fill(nickname + '@example.com')
+  await page.locator('input[autocomplete=username]').fill(nickname)
+  await page.locator('input[autocomplete=new-password]').first().fill('29843571')
+  await page.locator('input[autocomplete=new-password]').last().fill('29843571')
+  await page.getByRole('button', { name: 'Создать аккаунт' }).click()
+  await expect(page.locator('.bottom-nav')).toBeVisible()
+  const close = page.getByRole('button', { name: 'Закрыть предложение установки' })
+  if (await close.isVisible()) await close.click()
+
+  const slot = page.locator('.bottom-nav__item--switchable')
+  const coords = await slot.boundingBox()
+  if (!coords) throw new Error('Navigation slot missing')
+  const x = coords.x + coords.width / 2
+  const y = coords.y + coords.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  const liquid = page.locator('.bottom-nav__liquid-surface')
+  await expect(liquid).toBeVisible({ timeout: 3500 })
+  await page.mouse.up()
+  // Closing starts before the opening has necessarily completed; it must
+  // reverse from the actual progress, and unmount the old SVG by completion.
+  await expect(liquid).toHaveCount(0, { timeout: 2000 })
+  await expect(page.locator('.bottom-nav__bubble')).toHaveCount(0)
+
+  await page.mouse.down()
+  await expect(liquid).toBeVisible({ timeout: 3500 })
+  await page.mouse.up()
+  // Reopen quickly while the previous exit is still in flight.
+  await page.mouse.down()
+  await expect(liquid).toHaveCount(1, { timeout: 3500 })
+  await page.mouse.up()
+  await expect(liquid).toHaveCount(0, { timeout: 2000 })
+  await expect(page.locator('.page--library')).toBeVisible()
+})
