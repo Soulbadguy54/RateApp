@@ -158,7 +158,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   const image = page.locator('.discover-cover__image')
   await expect(image).toBeVisible()
   await expect(image).toHaveCSS('object-fit', 'contain')
-  await expect(image).toHaveAttribute('src', /\/t_1080p\//)
+  await expect(image).toHaveAttribute('src', /\/t_cover_big_2x\//)
   for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right']) {
     await expect(image).toHaveCSS(`border-${corner}-radius`, '22px')
   }
