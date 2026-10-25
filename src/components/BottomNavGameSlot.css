@@ -69,6 +69,16 @@
   vector-effect: non-scaling-stroke;
 }
 
+/* Brief specular rim makes the morph legible over the dark page, then
+   disappears so the settled surface stays in the bottom-nav's palette. */
+.bottom-nav__liquid-rim {
+  fill: none;
+  stroke: rgba(var(--igdb-accent-rgb), .34);
+  stroke-width: 2.4px;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(var(--igdb-accent-rgb), .18));
+}
+
 .bottom-nav__bubble {
   position: relative;
   z-index: 1;
