@@ -250,9 +250,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
 
       <div ref={bubbleAnchorRef} className="bottom-nav__bubble-anchor">
         <AnimatePresence>
-          {menuOpen && (
-            <>
-              {!reduceMotion && (
+          {menuOpen && !reduceMotion && (
                 <motion.span
                   className="bottom-nav__liquid-bridge"
                   aria-hidden="true"
@@ -266,7 +264,10 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                   exit={{ opacity: 0, scaleX: .25, scaleY: .15, y: 0 }}
                   transition={{ duration: .39, ease: [ .24, .7, .28, 1 ], times: [ 0, .42, 1 ] }}
                 />
-              )}
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {menuOpen && (
               <motion.div
                 className="bottom-nav__bubble"
                 role="group"
@@ -345,7 +346,6 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                 </button>
               ))}
               </motion.div>
-            </>
           )}
         </AnimatePresence>
       </div>
