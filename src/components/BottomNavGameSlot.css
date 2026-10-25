@@ -43,6 +43,9 @@
   left: 50%;
   /* 7px padding on both sides and a 3px gap between two cells. */
   width: calc(var(--game-nav-item-width, 92px) + var(--game-nav-item-width, 92px) + 17px);
+  /* Keep the SVG's coordinate system stationary while the interactive overlay
+     exits; otherwise absolute SVG top:0 jumps when children are unmounted. */
+  height: calc(var(--game-nav-item-height, 44px) + 14px);
   transform: translateX(-50%);
   transform-origin: 50% 100%;
   pointer-events: none;
@@ -59,7 +62,7 @@
   height: calc(var(--game-nav-item-height, 44px) + 29px);
   overflow: visible;
   pointer-events: none;
-  filter: drop-shadow(0 -8px 17px rgba(0, 0, 0, .25));
+  /* No animated SVG filter: costly repaints on older mobile WebKit. */
 }
 
 .bottom-nav__liquid-path {
@@ -76,11 +79,12 @@
   stroke: rgba(var(--igdb-accent-rgb), .34);
   stroke-width: 2.4px;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 4px rgba(var(--igdb-accent-rgb), .18));
+  /* A plain stroke stays cheap to rasterize as the path changes. */
 }
 
 .bottom-nav__bubble {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
