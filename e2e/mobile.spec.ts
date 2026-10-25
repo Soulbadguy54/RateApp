@@ -86,6 +86,13 @@ test('search -> game -> new playthrough -> back returns to search with fresh rat
   const result = page.getByRole('button', { name: 'Открыть игру «Neon Divide»' })
   await expect(result).toBeVisible()
   await result.click()
+  // Same violet IGDB family as the Discover rating badge; the RateApp
+  // community panel retains its own green treatment.
+  const igdbPanel = page.locator('.detail-rating-panel--igdb')
+  await expect(igdbPanel).toHaveCSS('border-top-color', 'rgba(223, 182, 255, 0.45)')
+  await expect(igdbPanel).toHaveCSS('background-image', /linear-gradient/)
+  await expect(igdbPanel.locator('.detail-rating-panel__label')).toHaveCSS('color', 'rgb(223, 182, 255)')
+  await expect(igdbPanel.locator('.detail-rating-panel__score strong')).toHaveCSS('color', 'rgb(223, 182, 255)')
   await page.getByRole('button', { name: 'Добавить прохождение' }).click()
   await expect(page.getByRole('heading', { name: 'Прохождение' })).toBeVisible()
 

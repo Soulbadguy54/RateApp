@@ -24,6 +24,7 @@ html, body {
   --palette-like-rgb: 146, 233, 174;     /* emerald collection */
   --palette-dislike-rgb: 142, 186, 255;  /* blue collection */
   --palette-wishlist-rgb: 255, 162, 202; /* rose / wishlist collection */
+  --palette-igdb-rgb: 223, 182, 255;     /* IGDB score (Discovery + game details) */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -1540,6 +1541,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-radius: 17px;
   background: rgba(88, 121, 173, .075);
 }
+.detail-rating-panel--igdb {
+  border-color: rgba(var(--palette-igdb-rgb), .45);
+  background: linear-gradient(145deg,
+    rgba(var(--palette-igdb-rgb), .17),
+    rgba(var(--palette-igdb-rgb), .065));
+}
 .detail-rating-panel--community {
   border-color: rgba(140, 242, 125, .18);
   background: rgba(140, 242, 125, .045);
@@ -1549,6 +1556,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: .035em;
+}
+.detail-rating-panel--igdb .detail-rating-panel__label {
+  color: rgb(var(--palette-igdb-rgb));
 }
 .detail-rating-panel--community .detail-rating-panel__label {
   color: #a0d7a0;
@@ -1566,6 +1576,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   line-height: 1;
   letter-spacing: -.05em;
   font-variant-numeric: tabular-nums;
+}
+.detail-rating-panel--igdb .detail-rating-panel__score strong {
+  color: rgb(var(--palette-igdb-rgb));
 }
 .detail-rating-panel--community .detail-rating-panel__score strong {
   color: var(--accent);
