@@ -125,17 +125,18 @@
 /* Native touch scrolling belongs to the expanded DESCRIPTION ONLY. */
 .discover-sheet--expanded{touch-action:none}
 .discover-sheet--expanded .discover-sheet__description{touch-action:pan-y}
-/* A soft, non-interactive haze originates at the screen edges, not a bright
-   border drawn over the toolbar / poster. Global bottom nav is outside. */
+/* Wide alpha ramps visibly illuminate the screen edges without drawing a
+   line or shadow. Do not blur the whole overlay: on small mobile displays the
+   old filtered radial gradients dispersed nearly all of the perceived color.
+   This layer includes the topbar, but not the global bottom navigation. */
 .discover-swipe-feedback{position:absolute;inset:0;z-index:12;display:grid;place-items:center;pointer-events:none;border:0;box-shadow:none;background:none}
 .discover-swipe-feedback::before{content:'';position:absolute;inset:0;pointer-events:none;background:
-  radial-gradient(ellipse 60px 80% at 0% 50%,color-mix(in srgb,currentColor 47%,transparent),transparent 100%),
-  radial-gradient(ellipse 60px 80% at 100% 50%,color-mix(in srgb,currentColor 47%,transparent),transparent 100%),
-  radial-gradient(ellipse 90% 50px at 50% 0%,color-mix(in srgb,currentColor 35%,transparent),transparent 100%),
-  radial-gradient(ellipse 90% 50px at 50% 100%,color-mix(in srgb,currentColor 35%,transparent),transparent 100%);
-  filter:blur(11px)}
+  linear-gradient(90deg,rgba(var(--discover-fog-rgb),.7) 0px,rgba(var(--discover-fog-rgb),.43) 18px,rgba(var(--discover-fog-rgb),.19) 48px,transparent 108px),
+  linear-gradient(270deg,rgba(var(--discover-fog-rgb),.7) 0px,rgba(var(--discover-fog-rgb),.43) 18px,rgba(var(--discover-fog-rgb),.19) 48px,transparent 108px),
+  linear-gradient(180deg,rgba(var(--discover-fog-rgb),.54) 0px,rgba(var(--discover-fog-rgb),.3) 18px,rgba(var(--discover-fog-rgb),.11) 42px,transparent 86px),
+  linear-gradient(0deg,rgba(var(--discover-fog-rgb),.54) 0px,rgba(var(--discover-fog-rgb),.3) 18px,rgba(var(--discover-fog-rgb),.11) 42px,transparent 86px)}
 .discover-swipe-feedback span{position:relative;font-size:clamp(22px,6.2vw,32px);font-weight:850;letter-spacing:-.03em;text-shadow:0 0 14px currentColor,0 2px 9px #050711}
-.discover-swipe-feedback--left{color:#ff97a5}
-.discover-swipe-feedback--right{color:#91ffd0}
-.discover-swipe-feedback--up{color:#e7adff}
+.discover-swipe-feedback--left{color:#ff97a5;--discover-fog-rgb:255,151,165}
+.discover-swipe-feedback--right{color:#91ffd0;--discover-fog-rgb:145,255,208}
+.discover-swipe-feedback--up{color:#e7adff;--discover-fog-rgb:231,173,255}
 @media(prefers-reduced-motion:reduce){.discover-swipe-feedback{display:none}.discover-cover__image{transition:none;filter:none}.discover-cover__skeleton{animation:none}}
