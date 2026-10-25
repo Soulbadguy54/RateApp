@@ -18,6 +18,9 @@ html, body {
   --muted: #8d94a3;
   --accent: #8cf27d;
   --accent-soft: rgba(140, 242, 125, 0.12);
+  /* IGDB's established lilac rating accent, reused by the game navigation. */
+  --igdb-accent: #dfb6ff;
+  --igdb-accent-rgb: 218, 168, 255;
   /* Semantic action palette: shared with collection colors & Discovery.
      Keep one RGB source per family (rgb(...) for text, rgba(...) for fog).
      Never introduce a one-off reaction hue in a component stylesheet. */
