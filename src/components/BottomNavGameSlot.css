@@ -50,7 +50,7 @@
 .bottom-nav__liquid-bridge {
   position: absolute;
   z-index: 0;
-  bottom: -9px;
+  bottom: -5px;
   left: calc(50% - 23px);
   width: 46px;
   height: 25px;
