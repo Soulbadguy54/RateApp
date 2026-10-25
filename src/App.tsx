@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import GameCard, { Cover } from './components/GameCard'
 import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
+import BottomNavGameSlot from './components/BottomNavGameSlot'
 import RatingWheel, { closestHalfPoint } from './components/RatingWheel'
 import { CollectionIcon, CollectionAppearanceEditor } from './components/CollectionAppearance'
 import {
@@ -2593,12 +2594,6 @@ function App() {
             <h1>База игр</h1>
             <p className="game-database-powered">powered by <strong>IGDB</strong></p>
           </div>
-          <button
-            className="game-database-discovery-button"
-            type="button"
-            aria-label="Открыть рекомендации игр"
-            onClick={() => navigateTo({ tab: 'discovery', gameId: null, collectionId: null, formGameId: null })}
-          ><Icon name="sparkles" size={17} /> Для тебя</button>
         </header>
 
         <p className="game-database-input-hint">Введи хотя бы 3 символа для поиска</p>
@@ -3284,7 +3279,17 @@ function App() {
       )}
 
       <nav className="bottom-nav" aria-label="Основная навигация">
-          {nav.map((item) => (
+          {nav.map((item) => item.id === 'add' ? (
+            <BottomNavGameSlot
+              key="add"
+              nickname={authUser.nickname}
+              active={activeTab === 'add' || activeTab === 'discovery'}
+              onNavigate={(tab) => {
+                if (activeTab === tab) resetTab(tab)
+                else openTab(tab)
+              }}
+            />
+          ) : (
             <motion.button
               layout
               key={item.id}
