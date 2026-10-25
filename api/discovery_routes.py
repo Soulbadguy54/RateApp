@@ -6,7 +6,7 @@ user feedback and a small deterministic exploration component.
 import html
 import json
 import re
- import httpx
+import httpx
 from collections import defaultdict
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
