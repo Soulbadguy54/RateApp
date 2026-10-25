@@ -256,14 +256,14 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                 <motion.span
                   className="bottom-nav__liquid-bridge"
                   aria-hidden="true"
-                  initial={{ opacity: .95, scaleX: .25, scaleY: .65, y: 12 }}
+                  initial={{ opacity: .95, scaleX: .25, scaleY: .65, y: 0 }}
                   animate={{
                     opacity: [ .95, .95, 0 ],
                     scaleX: [ .25, 1.25, .72 ],
                     scaleY: [ .65, 1.35, .12 ],
-                    y: [ 12, 0, -9 ],
+                    y: [ 0, -1, -9 ],
                   }}
-                  exit={{ opacity: 0, scaleX: .25, scaleY: .15, y: 10 }}
+                  exit={{ opacity: 0, scaleX: .25, scaleY: .15, y: 0 }}
                   transition={{ duration: .39, ease: [ .24, .7, .28, 1 ], times: [ 0, .42, 1 ] }}
                 />
               )}
@@ -273,7 +273,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                 aria-label="Выбрать раздел базы игр"
                 initial={reduceMotion ? false : {
                   opacity: 1,
-                  y: 18,
+                  y: 4,
                   scaleX: .22,
                   scaleY: .2,
                   borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
@@ -287,7 +287,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                 }}
                 exit={reduceMotion ? undefined : {
                   opacity: 1,
-                  y: 16,
+                  y: 4,
                   scaleX: .22,
                   scaleY: .2,
                   borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
