@@ -36,7 +36,12 @@
    layer. Fit without stretching or cropping, and anchor it just below the header.
    On short/wide covers the gap to the bottom glass is the normal app background. */
 .discover-cover{position:absolute;inset:12px 0 calc(var(--discover-min-peek,120px) + 12px);display:flex;justify-content:center;align-items:flex-start;pointer-events:none;background:transparent}
-.discover-cover__image{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center top;border-radius:22px;box-shadow:0 4px 18px rgba(0,0,0,.16)}
+.discover-cover__image{position:relative;z-index:1;display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center top;border-radius:22px;box-shadow:0 4px 18px rgba(0,0,0,.16);opacity:0;filter:blur(14px);transition:opacity .32s ease-out,filter .42s ease-out}
+.discover-cover__image--ready{opacity:1;filter:blur(0)}
+/* An understated poster-shaped placeholder stays visible on slow networks.
+   Layout never waits for the image request, and the final poster softly clears. */
+.discover-cover__skeleton{position:absolute;top:0;left:50%;transform:translateX(-50%);width:min(78%,390px);height:100%;border-radius:22px;background:linear-gradient(110deg,rgba(164,151,189,.09) 15%,rgba(181,174,205,.2) 45%,rgba(164,151,189,.09) 75%);background-size:200% 100%;animation:discover-cover-shimmer 1.8s ease-in-out infinite}
+@keyframes discover-cover-shimmer{0%{background-position:180% 0}100%{background-position:-180% 0}}
 .discover-cover__fallback{width:min(100%,390px);aspect-ratio:3/4;max-height:100%;overflow:hidden;border-radius:22px}
 .discover-cover__fallback .cover{width:100%;height:100%;min-height:0}
 .discover-cover__gesture{position:absolute;inset:0;z-index:1;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
@@ -120,10 +125,17 @@
 /* Native touch scrolling belongs to the expanded DESCRIPTION ONLY. */
 .discover-sheet--expanded{touch-action:none}
 .discover-sheet--expanded .discover-sheet__description{touch-action:pan-y}
-/* Full discovery screen incl. topbar; nav remains outside. Retain after swipe. */
-.discover-swipe-feedback{position:absolute;inset:5px 6px;z-index:15;display:grid;place-items:center;pointer-events:none;border:2px solid currentColor;border-radius:23px;box-shadow:inset 0 0 20px currentColor,0 0 22px currentColor;background:radial-gradient(ellipse at center,transparent 40%,rgba(3,8,17,.12));}
-.discover-swipe-feedback span{font-size:clamp(22px,6.2vw,32px);font-weight:900;letter-spacing:-.03em;text-shadow:0 0 18px currentColor,0 2px 9px #050711}
+/* A soft, non-interactive haze originates at the screen edges, not a bright
+   border drawn over the toolbar / poster. Global bottom nav is outside. */
+.discover-swipe-feedback{position:absolute;inset:0;z-index:12;display:grid;place-items:center;pointer-events:none;border:0;box-shadow:none;background:none}
+.discover-swipe-feedback::before{content:'';position:absolute;inset:0;pointer-events:none;background:
+  radial-gradient(ellipse 60px 80% at 0% 50%,color-mix(in srgb,currentColor 31%,transparent),transparent 100%),
+  radial-gradient(ellipse 60px 80% at 100% 50%,color-mix(in srgb,currentColor 31%,transparent),transparent 100%),
+  radial-gradient(ellipse 90% 50px at 50% 0%,color-mix(in srgb,currentColor 24%,transparent),transparent 100%),
+  radial-gradient(ellipse 90% 50px at 50% 100%,color-mix(in srgb,currentColor 24%,transparent),transparent 100%);
+  filter:blur(12px)}
+.discover-swipe-feedback span{position:relative;font-size:clamp(22px,6.2vw,32px);font-weight:850;letter-spacing:-.03em;text-shadow:0 0 14px currentColor,0 2px 9px #050711}
 .discover-swipe-feedback--left{color:#ff97a5}
 .discover-swipe-feedback--right{color:#91ffd0}
 .discover-swipe-feedback--up{color:#e7adff}
-@media(prefers-reduced-motion:reduce){.discover-swipe-feedback{display:none}}
+@media(prefers-reduced-motion:reduce){.discover-swipe-feedback{display:none}.discover-cover__image{transition:none;filter:none}.discover-cover__skeleton{animation:none}}
