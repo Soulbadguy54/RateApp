@@ -50,6 +50,16 @@ test('game nav: tap priority, hold-and-drag bubble, swipe-only pinning, history 
   const tail = await page.locator('.bottom-nav__bubble').evaluate(el => getComputedStyle(el, '::after').content)
   expect(tail).toBe('none')
   await expect(page.locator('.bottom-nav__bubble-choice .bottom-nav__content')).toHaveCount(2)
+  // The bubble must rest above the nav's top border, not overlap its padding.
+  await expect.poll(async () => {
+    const nav = await page.locator('.bottom-nav').boundingBox()
+    const menu = await page.locator('.bottom-nav__bubble').boundingBox()
+    return nav && menu ? nav.y - (menu.y + menu.height) : -100
+  }).toBeGreaterThanOrEqual(3)
+  const iconSizes = await page.locator('.bottom-nav__bubble-choice svg').evaluateAll(els =>
+    els.map(el => [getComputedStyle(el).width, getComputedStyle(el).height])
+  )
+  expect(iconSizes).toEqual([['22px', '22px'], ['22px', '22px']])
   const target = await discovery.boundingBox()
   if (!target) throw new Error('Discovery bubble target missing')
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 })
