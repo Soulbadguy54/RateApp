@@ -80,6 +80,21 @@ test('game nav: tap priority, hold-and-drag bubble, swipe-only pinning, history 
   await expect(page.getByRole('heading', { name: 'База игр' })).toBeVisible()
   await expect(slot).toContainText('Для тебя')
 
+  // Drag/release right after the droplet appears: hit testing must use the
+  // final anchor geometry, even while its visual surface is still expanding.
+  box = await slot.boundingBox()
+  if (!box) throw new Error('Switchable navigation slot missing')
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await expect(page.locator('.bottom-nav__bubble')).toBeVisible()
+  const anchor = await page.locator('.bottom-nav__bubble-anchor').boundingBox()
+  if (!anchor) throw new Error('Bubble anchor missing')
+  await page.mouse.move(anchor.x + anchor.width * .75, anchor.y + anchor.height / 2)
+  await page.mouse.up()
+  await expect(page.locator('.discover-screen')).toBeVisible()
+  await page.goBack()
+  await expect(page.getByRole('heading', { name: 'База игр' })).toBeVisible()
+
   // A deliberate sideways gesture changes ONLY the pinned shortcut.
   box = await slot.boundingBox()
   if (!box) throw new Error('Switchable navigation slot missing')
