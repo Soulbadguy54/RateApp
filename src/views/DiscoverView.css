@@ -2,7 +2,6 @@
 .game-database-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .game-database-heading__row{min-width:0}
 .game-database-heading h1{font-size:clamp(25px,7vw,34px)}
-.game-database-discovery-button{display:flex;align-items:center;justify-content:center;gap:6px;margin-left:auto;padding:10px 13px;border-radius:14px;border:1px solid rgba(178,139,241,.4);background:linear-gradient(120deg,rgba(104,68,166,.27),rgba(98,55,137,.14));color:#e6d3ff;font-weight:800;font-size:12px;white-space:nowrap}
 
 /* No inherited .page side padding, bottom gap, max-width or scroll: these
    caused the previous inset “picture in picture” poster. Navigation remains
@@ -121,7 +120,7 @@
 .discover-loader{width:28px;height:28px;border-radius:50%;border:2px solid rgba(180,160,244,.35);border-top-color:#fff;animation:discover-spin .85s linear infinite}
 @keyframes discover-spin{to{transform:rotate(360deg)}}
 .discover-error{position:absolute;z-index:9;top:8px;left:9px;right:9px;padding:10px;border:1px solid rgba(255,160,180,.42);border-radius:10px;background:rgba(48,18,28,.91);color:#ffc8cc;text-align:center;font-size:11px}
-@media(max-width:365px){.game-database-discovery-button{padding:9px;font-size:11px}.discover-sheet__body{padding-left:9px;padding-right:9px}.discover-sheet__identity h2{font-size:17px}.discover-rating{min-width:87px;padding:6px}.discover-rating small{font-size:9px}.discover-rating strong{font-size:12px}.discover-guide__intro{width:88%}.discover-guide__direction strong{font-size:11px}.discover-guide__direction span{font-size:9px}}
+@media(max-width:365px){.discover-sheet__body{padding-left:9px;padding-right:9px}.discover-sheet__identity h2{font-size:17px}.discover-rating{min-width:87px;padding:6px}.discover-rating small{font-size:9px}.discover-rating strong{font-size:12px}.discover-guide__intro{width:88%}.discover-guide__direction strong{font-size:11px}.discover-guide__direction span{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.discover-sheet__chevron{animation:none!important}.discover-hint{animation:none;opacity:.75}.discover-guide__direction{animation:none}.discover-loader{animation:none}.discover-sheet__chevron{transition:none}}
 
 /* Native touch scrolling belongs to the expanded DESCRIPTION ONLY. */
