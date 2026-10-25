@@ -1,4 +1,5 @@
 """Discovery feed, swipe feedback, wishlist and undo against isolated CI PostgreSQL."""
+import json
 import secrets
 import unittest
 from unittest.mock import patch
@@ -102,6 +103,22 @@ class DiscoveryTests(unittest.TestCase):
             self.assertEqual(first.json()["language"], "ru")
             self.assertIn("история", first.json()["description"])
             translator.assert_called_once()
+        with SessionLocal() as session:
+            game = session.scalar(select(Game).where(Game.igdb_id == self.igdb_id))
+            saved = json.loads(game.details_json)
+            self.assertEqual(saved["summary_en"], "A great story about stars.")
+            self.assertEqual(saved["summary_ru"], "Отличная история о звёздах.")
+            self.assertEqual(saved["summary_ru_source"], saved["summary_en"])
+        # Prove it survives a fresh request, without translating again.
+        with patch("api.discovery_routes._translate_english_to_russian",
+                   side_effect=AssertionError("Translation must be persisted")):
+            self.assertEqual(self.client.get(route).json()["language"], "ru")
+            self.assertEqual(self.client.get(route + "?lang=en").json()["description"],
+                             "A great story about stars.")
+            detail = self.client.get(f"/api/games/{self.igdb_id}/details").json()
+            self.assertEqual(detail["summary"], "Отличная история о звёздах.")
+            self.assertEqual(detail["summaryEn"], "A great story about stars.")
+            self.assertEqual(detail["summaryRu"], "Отличная история о звёздах.")
         with patch("api.discovery_routes._translate_english_to_russian", return_value=None):
             with SessionLocal() as session:
                 game = session.scalar(select(Game).where(Game.igdb_id == self.igdb_id))
