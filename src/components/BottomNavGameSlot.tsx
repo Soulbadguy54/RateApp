@@ -49,6 +49,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const pressRef = useRef<Press | null>(null)
   // Ignore only the click belonging to the handled gesture, not a later tap.
   const ignoreGestureClickRef = useRef(false)
+  const gestureClickTimerRef = useRef<number | null>(null)
   // A synchronous ref avoids stale values when swipe and tap share a render batch.
   const pinnedRef = useRef<GameNavTab>(pinned)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -63,6 +64,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
 
   useEffect(() => () => {
     if (pressRef.current) window.clearTimeout(pressRef.current.timer)
+    if (gestureClickTimerRef.current !== null) window.clearTimeout(gestureClickTimerRef.current)
   }, [])
 
   const pin = (tab: GameNavTab) => {
@@ -93,10 +95,23 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
     pressRef.current = null
   }
 
+  const suppressGestureClick = () => {
+    ignoreGestureClickRef.current = true
+    if (gestureClickTimerRef.current !== null) window.clearTimeout(gestureClickTimerRef.current)
+    // A swipe's synthetic click is dispatched immediately after pointerup.
+    // Do not suppress the next independent tap when the browser omits it.
+    gestureClickTimerRef.current = window.setTimeout(() => {
+      ignoreGestureClickRef.current = false
+      gestureClickTimerRef.current = null
+    }, 0)
+  }
+
   const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0 || !event.isPrimary) return
     clearPress()
     ignoreGestureClickRef.current = false
+    if (gestureClickTimerRef.current !== null) window.clearTimeout(gestureClickTimerRef.current)
+    gestureClickTimerRef.current = null
     dismiss()
     const press: Press = {
       pointerId: event.pointerId,
@@ -139,7 +154,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
     clearPress()
 
     if (longPressed) {
-      ignoreGestureClickRef.current = true
+      suppressGestureClick()
       const choice = findChoice(event.clientX, event.clientY)
       if (choice) select(choice)
       else dismiss() // Releasing on the original button or outside cancels.
@@ -149,17 +164,17 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
       Math.abs(dy) <= SWIPE_MAX_VERTICAL_PX &&
       Math.abs(dx) >= Math.abs(dy) * 1.5
     ) {
-      ignoreGestureClickRef.current = true
+      suppressGestureClick()
       // A swipe changes the persistent shortcut, not the page underneath it.
       pin(pinnedRef.current === 'add' ? 'discovery' : 'add')
     } else if (Math.abs(dy) > SWIPE_MAX_VERTICAL_PX) {
-      ignoreGestureClickRef.current = true
+      suppressGestureClick()
     }
   }
 
   const onPointerCancel = () => {
     clearPress()
-    ignoreGestureClickRef.current = true
+    suppressGestureClick()
     dismiss()
   }
 
