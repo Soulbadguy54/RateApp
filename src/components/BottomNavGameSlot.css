@@ -42,7 +42,7 @@
   bottom: calc(100% + 15px);
   left: 50%;
   /* 7px padding on both sides and a 3px gap between two cells. */
-  width: calc(var(--game-nav-item-width, 92px) * 2 + 17px);
+  width: calc(var(--game-nav-item-width, 92px) + var(--game-nav-item-width, 92px) + 17px);
   transform: translateX(-50%);
   transform-origin: 50% 100%;
   pointer-events: none;
