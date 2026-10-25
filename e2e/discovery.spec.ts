@@ -188,7 +188,8 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.locator('.discover-hint--up')).toHaveCSS('top', '10px')
   for (const action of ['.discover-hint--up', '.discover-hint--left', '.discover-hint--right']) {
     const target = page.locator(action + ' .discover-action-line')
-    await expect(target).toHaveCSS('display', 'inline-flex')
+    // Flex children are blockified: inline-flex computes to flex in WebKit/Chromium.
+    await expect(target).toHaveCSS('display', 'flex')
     await expect(target).toHaveCSS('align-items', 'center')
     await expect(target).toHaveCSS('column-gap', '6px')
   }
