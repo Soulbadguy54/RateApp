@@ -47,12 +47,18 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const [menuOpen, setMenuOpen] = useState(false)
   const [hovered, setHovered] = useState<GameNavTab | null>(null)
   const pressRef = useRef<Press | null>(null)
-  const suppressedClickAtRef = useRef(0)
+  // Ignore only the click belonging to the handled gesture, not a later tap.
+  const ignoreGestureClickRef = useRef(false)
+  // A synchronous ref avoids stale values when swipe and tap share a render batch.
+  const pinnedRef = useRef<GameNavTab>(pinned)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const option = options.find(item => item.id === pinned) ?? options[0]
 
   useEffect(() => {
-    setPinned(readPinned(nickname))
+    const next = readPinned(nickname)
+    pinnedRef.current = next
+    setPinned(next)
+    ignoreGestureClickRef.current = false
   }, [nickname])
 
   useEffect(() => () => {
@@ -60,6 +66,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   }, [])
 
   const pin = (tab: GameNavTab) => {
+    pinnedRef.current = tab
     setPinned(tab)
     try { localStorage.setItem(STORAGE_PREFIX + nickname, tab) } catch { /* storage disabled */ }
   }
@@ -89,7 +96,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0 || !event.isPrimary) return
     clearPress()
-    suppressedClickAtRef.current = 0
+    ignoreGestureClickRef.current = false
     dismiss()
     const press: Press = {
       pointerId: event.pointerId,
@@ -132,7 +139,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
     clearPress()
 
     if (longPressed) {
-      suppressedClickAtRef.current = Date.now()
+      ignoreGestureClickRef.current = true
       const choice = findChoice(event.clientX, event.clientY)
       if (choice) select(choice)
       else dismiss() // Releasing on the original button or outside cancels.
@@ -142,24 +149,24 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
       Math.abs(dy) <= SWIPE_MAX_VERTICAL_PX &&
       Math.abs(dx) >= Math.abs(dy) * 1.5
     ) {
-      suppressedClickAtRef.current = Date.now()
+      ignoreGestureClickRef.current = true
       // A swipe changes the persistent shortcut, not the page underneath it.
-      pin(pinned === 'add' ? 'discovery' : 'add')
+      pin(pinnedRef.current === 'add' ? 'discovery' : 'add')
     } else if (Math.abs(dy) > SWIPE_MAX_VERTICAL_PX) {
-      suppressedClickAtRef.current = Date.now()
+      ignoreGestureClickRef.current = true
     }
   }
 
   const onPointerCancel = () => {
     clearPress()
-    suppressedClickAtRef.current = Date.now()
+    ignoreGestureClickRef.current = true
     dismiss()
   }
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault()
-      pin(pinned === 'add' ? 'discovery' : 'add')
+      pin(pinnedRef.current === 'add' ? 'discovery' : 'add')
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
       setMenuOpen(true)
@@ -189,9 +196,12 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
         onContextMenu={event => event.preventDefault()}
         onKeyDown={onKeyDown}
         onClick={() => {
-          if (Date.now() - suppressedClickAtRef.current < 750) return
+          if (ignoreGestureClickRef.current) {
+            ignoreGestureClickRef.current = false
+            return
+          }
           dismiss()
-          onNavigate(pinned)
+          onNavigate(pinnedRef.current)
         }}
         whileTap={reduceMotion ? undefined : { scale: .92 }}
         transition={{ type: 'spring', stiffness: 500, damping: 34 }}
@@ -222,16 +232,26 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
               className="bottom-nav__bubble"
               role="group"
               aria-label="Выбрать раздел базы игр"
-              initial={reduceMotion ? false : { opacity: 0, y: 16, scale: .62 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={reduceMotion ? undefined : { opacity: 0, y: 7, scale: .85 }}
-              transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 470, damping: 22, mass: .7 }}
+              initial={reduceMotion ? false : {
+                opacity: 0, y: 35, scaleX: .68, scaleY: .36, filter: 'blur(8px)',
+              }}
+              animate={{ opacity: 1, y: 0, scaleX: 1, scaleY: 1, filter: 'blur(0px)' }}
+              exit={reduceMotion ? undefined : {
+                opacity: 0, y: 18, scaleX: .86, scaleY: .54, filter: 'blur(4px)',
+              }}
+              transition={reduceMotion ? { duration: 0 } : {
+                opacity: { duration: .16 },
+                filter: { duration: .19 },
+                scaleX: { type: 'spring', stiffness: 420, damping: 23, mass: .7 },
+                scaleY: { type: 'spring', stiffness: 460, damping: 18, mass: .75 },
+                y: { type: 'spring', stiffness: 430, damping: 20, mass: .75 },
+              }}
             >
               {options.map(choice => (
                 <button
                   key={choice.id}
                   type="button"
-                  className="bottom-nav__bubble-choice"
+                  className="bottom-nav__item bottom-nav__bubble-choice"
                   data-game-nav-choice={choice.id}
                   data-highlighted={hovered === choice.id}
                   aria-pressed={pinned === choice.id}
@@ -253,15 +273,23 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                 >
                   {hovered === choice.id && (
                     <motion.span
-                      className="bottom-nav__bubble-highlight"
+                      className="bottom-nav__active-surface bottom-nav__bubble-highlight"
                       layoutId="bottom-nav-game-bubble-highlight"
                       transition={{ type: 'spring', stiffness: 500, damping: 32 }}
                     />
                   )}
-                  <span className="bottom-nav__bubble-choice-content">
-                    <Icon name={choice.icon} size={20} />
+                  <motion.span
+                    className="bottom-nav__content bottom-nav__bubble-choice-content"
+                    initial={reduceMotion ? false : { opacity: 0, y: 9, scale: .85 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={reduceMotion ? { duration: 0 } : {
+                      type: 'spring', stiffness: 380, damping: 22,
+                      delay: choice.id === 'add' ? .035 : .07,
+                    }}
+                  >
+                    <Icon name={choice.icon} />
                     <span>{choice.label}</span>
-                  </span>
+                  </motion.span>
                 </button>
               ))}
             </motion.div>
