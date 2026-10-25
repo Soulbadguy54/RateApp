@@ -215,9 +215,9 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
         </span>
       </motion.button>
 
-      <AnimatePresence>
-        {menuOpen && (
-          <div className="bottom-nav__bubble-anchor">
+      <div className="bottom-nav__bubble-anchor">
+        <AnimatePresence>
+          {menuOpen && (
             <motion.div
               className="bottom-nav__bubble"
               role="group"
@@ -265,9 +265,9 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                 </button>
               ))}
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   )
 }
