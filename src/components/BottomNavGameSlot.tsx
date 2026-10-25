@@ -243,25 +243,54 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
       <div className="bottom-nav__bubble-anchor">
         <AnimatePresence>
           {menuOpen && (
-            <motion.div
-              className="bottom-nav__bubble"
-              role="group"
-              aria-label="Выбрать раздел базы игр"
-              initial={reduceMotion ? false : {
-                opacity: 0, y: 35, scaleX: .68, scaleY: .36, filter: 'blur(8px)',
-              }}
-              animate={{ opacity: 1, y: 0, scaleX: 1, scaleY: 1, filter: 'blur(0px)' }}
-              exit={reduceMotion ? undefined : {
-                opacity: 0, y: 18, scaleX: .86, scaleY: .54, filter: 'blur(4px)',
-              }}
-              transition={reduceMotion ? { duration: 0 } : {
-                opacity: { duration: .16 },
-                filter: { duration: .19 },
-                scaleX: { type: 'spring', stiffness: 420, damping: 23, mass: .7 },
-                scaleY: { type: 'spring', stiffness: 460, damping: 18, mass: .75 },
-                y: { type: 'spring', stiffness: 430, damping: 20, mass: .75 },
-              }}
-            >
+            <>
+              {!reduceMotion && (
+                <motion.span
+                  className="bottom-nav__liquid-bridge"
+                  aria-hidden="true"
+                  initial={{ opacity: .95, scaleX: .25, scaleY: .65, y: 12 }}
+                  animate={{
+                    opacity: [ .95, .95, 0 ],
+                    scaleX: [ .25, 1.25, .72 ],
+                    scaleY: [ .65, 1.35, .12 ],
+                    y: [ 12, 0, -9 ],
+                  }}
+                  exit={{ opacity: 0, scaleX: .25, scaleY: .15, y: 10 }}
+                  transition={{ duration: .39, ease: [ .24, .7, .28, 1 ], times: [ 0, .42, 1 ] }}
+                />
+              )}
+              <motion.div
+                className="bottom-nav__bubble"
+                role="group"
+                aria-label="Выбрать раздел базы игр"
+                initial={reduceMotion ? false : {
+                  opacity: 1,
+                  y: 18,
+                  scaleX: .22,
+                  scaleY: .2,
+                  borderRadius: '48% 48% 46% 46% / 54% 54% 46% 46%',
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                  scaleX: 1,
+                  scaleY: 1,
+                  borderRadius: '21px',
+                }}
+                exit={reduceMotion ? undefined : {
+                  opacity: 1,
+                  y: 16,
+                  scaleX: .22,
+                  scaleY: .2,
+                  borderRadius: '48% 48% 46% 46% / 54% 54% 46% 46%',
+                }}
+                transition={reduceMotion ? { duration: 0 } : {
+                  scaleX: { type: 'spring', stiffness: 340, damping: 19, mass: .72 },
+                  scaleY: { type: 'spring', stiffness: 370, damping: 17, mass: .72 },
+                  y: { type: 'spring', stiffness: 365, damping: 21, mass: .72 },
+                  borderRadius: { duration: .29, ease: [ .2, .68, .22, 1 ] },
+                }}
+              >
               {options.map(choice => (
                 <button
                   key={choice.id}
@@ -286,7 +315,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                     }
                   }}
                 >
-                  {hovered === choice.id && (
+                  {(hovered ?? pinned) === choice.id && (
                     <motion.span
                       className="bottom-nav__active-surface bottom-nav__bubble-highlight"
                       layoutId="bottom-nav-game-bubble-highlight"
@@ -307,7 +336,8 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                   </motion.span>
                 </button>
               ))}
-            </motion.div>
+              </motion.div>
+            </>
           )}
         </AnimatePresence>
       </div>
