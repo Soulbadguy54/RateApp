@@ -317,6 +317,21 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                   d: { duration: .72, times: [0, .46, 1], ease: [ .25, .72, .22, 1 ] },
                 }}
               />
+              {!reduceMotion && (
+                <motion.path
+                  className="bottom-nav__liquid-rim"
+                  initial={{ d: LIQUID_DROP, opacity: .86 }}
+                  animate={{
+                    d: [LIQUID_DROP, LIQUID_STRETCH, LIQUID_PANEL],
+                    opacity: [ .86, .48, 0 ],
+                  }}
+                  exit={{ opacity: 0 }}
+                  transition={{
+                    d: { duration: .72, times: [0, .46, 1], ease: [ .25, .72, .22, 1 ] },
+                    opacity: { duration: .72, times: [0, .46, 1] },
+                  }}
+                />
+              )}
             </motion.svg>
           )}
         </AnimatePresence>
