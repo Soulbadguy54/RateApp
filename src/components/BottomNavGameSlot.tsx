@@ -268,21 +268,21 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                   y: 18,
                   scaleX: .22,
                   scaleY: .2,
-                  borderRadius: '48% 48% 46% 46% / 54% 54% 46% 46%',
+                  borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
                 }}
                 animate={{
                   opacity: 1,
                   y: 0,
                   scaleX: 1,
                   scaleY: 1,
-                  borderRadius: '21px',
+                  borderRadius: '11% 11% 11% 11% / 32% 32% 32% 32%',
                 }}
                 exit={reduceMotion ? undefined : {
                   opacity: 1,
                   y: 16,
                   scaleX: .22,
                   scaleY: .2,
-                  borderRadius: '48% 48% 46% 46% / 54% 54% 46% 46%',
+                  borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
                 }}
                 transition={reduceMotion ? { duration: 0 } : {
                   scaleX: { type: 'spring', stiffness: 340, damping: 19, mass: .72 },
