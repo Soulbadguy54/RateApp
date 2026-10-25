@@ -235,6 +235,32 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
   const posterAfterPull = await image.boundingBox()
   expect(posterAfterPull?.y).toBeCloseTo(posterBeforePull?.y ?? 0, 0)
+  // Short fast flicks should open and close, even below the old long-drag
+  // threshold. The synthetic mouse stream also exercises WebKit fallback.
+  await page.evaluate(async () => {
+    const handle = document.querySelector<HTMLElement>('.discover-sheet__handle')!
+    const rect = handle.getBoundingClientRect()
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+    handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, buttons: 1 }))
+    for (let i = 1; i <= 6; i++) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y - i * 13, buttons: 1 }))
+    }
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y - 78 }))
+  })
+  await expect(page.getByRole('button', { name: 'Свернуть подробности' })).toHaveAttribute('aria-expanded', 'true')
+  await page.evaluate(async () => {
+    const row = document.querySelector<HTMLElement>('.discover-sheet__summary-row')!
+    const rect = row.getBoundingClientRect()
+    const x = rect.left + 20, y = rect.top + 20
+    row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, buttons: 1 }))
+    for (let i = 1; i <= 6; i++) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y + i * 13, buttons: 1 }))
+    }
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y + 78 }))
+  })
+  await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
   // Long pull expands and reveals actual details.
   // A smaller content-wrapped peek means a longer deliberate pull is required.
   await dragHandle(page, -345, onIPhone)
@@ -294,6 +320,15 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.getByText('Discovery Two')).toBeVisible()
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCount(1)
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('color', 'rgb(145, 255, 208)')
+  const glowRect = await page.locator('.discover-swipe-feedback--right').boundingBox()
+  const screenRect = await page.locator('.discover-screen').boundingBox()
+  const navRect = await page.locator('.bottom-nav').boundingBox()
+  expect(glowRect && screenRect && navRect).toBeTruthy()
+  expect(Math.abs(glowRect!.y - screenRect!.y)).toBeLessThan(8)
+  expect(glowRect!.y + glowRect!.height).toBeLessThanOrEqual(navRect!.y + 1)
+  // Feedback lives outside the old poster and remains on the arriving card.
+  await expect.poll(() => page.locator('.discover-swipe-feedback--right')
+    .evaluate(node => Number(getComputedStyle(node).opacity))).toBeGreaterThan(.1)
   // Game Two is a wide poster: it must be shorter than the portrait poster
   // rather than filling the remaining screen with a fake blurred extension.
   const wideImage = page.locator('.discover-cover__image')
@@ -331,7 +366,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await dragCover(page, 'up')
   await expect(page.getByText('Пока всё просмотрено')).toBeVisible()
   expect(actions).toEqual(['like', 'dislike', 'wishlist'])
-  await expect(page.locator('.discover-swipe-feedback--up')).toHaveCount(0)
+  await expect(page.locator('.discover-swipe-feedback--up')).toHaveCount(1)
   await page.getByRole('button', { name: 'Вернуться в базу игр' }).click()
   await expect(page.getByRole('heading', { name: 'База игр' })).toBeVisible()
   await expect(page.locator('.bottom-nav')).toBeVisible()
