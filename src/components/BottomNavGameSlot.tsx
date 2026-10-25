@@ -60,7 +60,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const [pinned, setPinned] = useState<GameNavTab>(() => readPinned(nickname))
   const [menuOpen, setMenuOpen] = useState(false)
   const [hovered, setHovered] = useState<GameNavTab | null>(null)
-  const [navItemHeight, setNavItemHeight] = useState(44)
+  const [navItemSize, setNavItemSize] = useState({ width: 92, height: 44 })
   const pressRef = useRef<Press | null>(null)
   // Ignore only the click belonging to the handled gesture, not a later tap.
   const ignoreGestureClickRef = useRef(false)
@@ -77,8 +77,12 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
     const reference = bar?.querySelector<HTMLButtonElement>(':scope > button.bottom-nav__item')
     if (!reference) return
     const sync = () => {
-      const height = reference.getBoundingClientRect().height
-      if (height > 0) setNavItemHeight(height)
+      const { width, height } = reference.getBoundingClientRect()
+      if (width > 0 && height > 0) {
+        setNavItemSize(current => current.width === width && current.height === height
+          ? current
+          : { width, height })
+      }
     }
     sync()
     const observer = new ResizeObserver(sync)
@@ -282,12 +286,16 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
       <div
         ref={bubbleAnchorRef}
         className="bottom-nav__bubble-anchor"
-        style={{ '--game-nav-item-height': `${navItemHeight}px` } as CSSProperties}
+        style={{
+          '--game-nav-item-width': `${navItemSize.width}px`,
+          '--game-nav-item-height': `${navItemSize.height}px`,
+        } as CSSProperties}
       >
         <AnimatePresence>
           {menuOpen && (
-            <svg
+            <motion.svg
               className="bottom-nav__liquid-surface"
+              exit={{ opacity: 0, transition: { duration: reduceMotion ? 0 : .26 } }}
               viewBox="0 0 202 88"
               preserveAspectRatio="none"
               aria-hidden="true"
@@ -309,7 +317,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                   d: { duration: .72, times: [0, .46, 1], ease: [ .25, .72, .22, 1 ] },
                 }}
               />
-            </svg>
+            </motion.svg>
           )}
         </AnimatePresence>
         <AnimatePresence>
