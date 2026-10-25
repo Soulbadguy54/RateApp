@@ -129,11 +129,11 @@
    border drawn over the toolbar / poster. Global bottom nav is outside. */
 .discover-swipe-feedback{position:absolute;inset:0;z-index:12;display:grid;place-items:center;pointer-events:none;border:0;box-shadow:none;background:none}
 .discover-swipe-feedback::before{content:'';position:absolute;inset:0;pointer-events:none;background:
-  radial-gradient(ellipse 60px 80% at 0% 50%,color-mix(in srgb,currentColor 31%,transparent),transparent 100%),
-  radial-gradient(ellipse 60px 80% at 100% 50%,color-mix(in srgb,currentColor 31%,transparent),transparent 100%),
-  radial-gradient(ellipse 90% 50px at 50% 0%,color-mix(in srgb,currentColor 24%,transparent),transparent 100%),
-  radial-gradient(ellipse 90% 50px at 50% 100%,color-mix(in srgb,currentColor 24%,transparent),transparent 100%);
-  filter:blur(12px)}
+  radial-gradient(ellipse 60px 80% at 0% 50%,color-mix(in srgb,currentColor 47%,transparent),transparent 100%),
+  radial-gradient(ellipse 60px 80% at 100% 50%,color-mix(in srgb,currentColor 47%,transparent),transparent 100%),
+  radial-gradient(ellipse 90% 50px at 50% 0%,color-mix(in srgb,currentColor 35%,transparent),transparent 100%),
+  radial-gradient(ellipse 90% 50px at 50% 100%,color-mix(in srgb,currentColor 35%,transparent),transparent 100%);
+  filter:blur(11px)}
 .discover-swipe-feedback span{position:relative;font-size:clamp(22px,6.2vw,32px);font-weight:850;letter-spacing:-.03em;text-shadow:0 0 14px currentColor,0 2px 9px #050711}
 .discover-swipe-feedback--left{color:#ff97a5}
 .discover-swipe-feedback--right{color:#91ffd0}
