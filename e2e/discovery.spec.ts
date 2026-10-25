@@ -344,6 +344,10 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await dragCover(page, 'right')
   await expect(page.getByText('Discovery Two')).toBeVisible()
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCount(1)
+  // Check the held fog immediately after the decision, before intentionally
+  // delaying the network request beyond the short afterglow duration.
+  await expect.poll(() => page.locator('.discover-swipe-feedback--right')
+    .evaluate(node => Number(getComputedStyle(node).opacity)), { timeout: 1800 }).toBeGreaterThan(.1)
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('color', 'rgb(145, 255, 208)')
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('border-top-width', '0px')
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('box-shadow', 'none')
@@ -361,9 +365,6 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   expect(glowRect && screenRect && navRect).toBeTruthy()
   expect(Math.abs(glowRect!.y - screenRect!.y)).toBeLessThan(2)
   expect(glowRect!.y + glowRect!.height).toBeLessThanOrEqual(navRect!.y + 1)
-  // Feedback lives outside the old poster and remains on the arriving card.
-  await expect.poll(() => page.locator('.discover-swipe-feedback--right')
-    .evaluate(node => Number(getComputedStyle(node).opacity))).toBeGreaterThan(.1)
   // Game Two is a wide poster: it must be shorter than the portrait poster
   // rather than filling the remaining screen with a fake blurred extension.
   const wideImage = page.locator('.discover-cover__image')
