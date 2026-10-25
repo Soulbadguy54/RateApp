@@ -209,10 +209,32 @@ test('game nav: liquid path retracts without an orphan and rapid reopen works', 
   await page.mouse.down()
   const liquid = page.locator('.bottom-nav__liquid-surface')
   await expect(liquid).toBeVisible({ timeout: 3500 })
+  // Record painted exit frames. A former regression stopped shrinking at a
+  // persistent 29×27px rounded square and then removed it abruptly.
+  await page.evaluate(() => {
+    const frames: Array<{ opacity: number; width: number }> = []
+    ;(window as Window & { __liquidExitFrames?: typeof frames }).__liquidExitFrames = frames
+    const sample = () => {
+      const surface = document.querySelector<SVGSVGElement>('.bottom-nav__liquid-surface')
+      if (!surface) return
+      const shape = surface.querySelector<SVGGraphicsElement>('.bottom-nav__liquid-path')
+      if (shape) frames.push({
+        opacity: Number(getComputedStyle(surface).opacity),
+        width: shape.getBBox().width,
+      })
+      requestAnimationFrame(sample)
+    }
+    sample()
+  })
   await page.mouse.up()
-  // Closing starts before the opening has necessarily completed; it must
-  // reverse from the actual progress, and unmount the old SVG by completion.
+  // Exit continues beyond the old 29px droplet: both the contour and its
+  // opacity must approach zero BEFORE the SVG is removed from the DOM.
   await expect(liquid).toHaveCount(0, { timeout: 2000 })
+  const frames = await page.evaluate(() =>
+    (window as Window & { __liquidExitFrames?: Array<{ opacity: number; width: number }> })
+      .__liquidExitFrames ?? []
+  )
+  expect(frames.some(frame => frame.width < 24 && frame.opacity < .7)).toBe(true)
   await expect(page.locator('.bottom-nav__bubble')).toHaveCount(0)
 
   await page.mouse.down()
