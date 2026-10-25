@@ -70,7 +70,7 @@
 .discover-rating{display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:98px;padding:7px 8px;border:1px solid rgba(255,255,255,.36);border-radius:11px;background:rgba(11,17,34,.38);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
 .discover-rating small{font-size:9px;line-height:1;font-weight:900}
 .discover-rating strong{color:#fff;font-size:14px;line-height:1;font-weight:800}
-.discover-rating--igdb{border-color:rgba(218,168,255,.58);color:#dfb6ff}
+.discover-rating--igdb{border-color:rgba(var(--igdb-accent-rgb),.58);color:var(--igdb-accent)}
 .discover-rating--rateapp{border-color:rgba(247,205,128,.6);color:#ffe4ac}
 .discover-sheet__extra{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;padding-top:13px;margin-top:15px;border-top:1px solid rgba(255,255,255,.28)}
 .discover-sheet__platforms{margin:0 0 13px;color:#e5e8f5;font-size:11px;font-weight:750;line-height:1.5}

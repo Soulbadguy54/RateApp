@@ -1,5 +1,5 @@
-/* Only the Base games / For you slot is experimental. The other three
-   bottom-navigation buttons keep their original tap behaviour. */
+/* A second-level branch of the existing bottom bar, not a separate dialog.
+   The active tint is IGDB violet; geometry and glass surface match the bar. */
 .bottom-nav__slot {
   position: relative;
   min-width: 0;
@@ -17,6 +17,15 @@
   cursor: pointer;
 }
 
+/* The rest of bottom-nav keeps Rate APP green. Only this IGDB slot is violet. */
+.bottom-nav__slot .bottom-nav__item--switchable.bottom-nav__item--active svg {
+  color: var(--igdb-accent);
+}
+.bottom-nav__slot .bottom-nav__active-surface {
+  border-color: rgba(var(--igdb-accent-rgb), .23);
+  background: rgba(var(--igdb-accent-rgb), .095);
+}
+
 .bottom-nav__slot-icon {
   display: flex;
   justify-content: center;
@@ -25,12 +34,14 @@
   height: 22px;
 }
 
+/* Pop out from the button, very slightly overlapping the bar's upper edge
+   so there is no disjoint tooltip gap or speech-bubble arrow. */
 .bottom-nav__bubble-anchor {
   position: absolute;
   z-index: 30;
-  bottom: calc(100% + 21px);
+  bottom: calc(100% + 2px);
   left: 50%;
-  width: min(242px, 86vw);
+  width: min(202px, calc(100vw - 24px));
   transform: translateX(-50%);
   transform-origin: 50% 100%;
   pointer-events: none;
@@ -40,83 +51,87 @@
   position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
-  padding: 8px;
-  border: 1px solid rgba(217, 206, 255, .36);
-  border-radius: 23px;
-  background: linear-gradient(145deg, rgba(40, 33, 61, .96), rgba(17, 20, 32, .97));
-  box-shadow: 0 11px 45px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .1);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-  backdrop-filter: blur(22px) saturate(150%);
+  align-items: stretch;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 21px;
+  background: rgba(11, 13, 18, .92);
+  box-shadow: 0 -10px 35px rgba(0, 0, 0, .28), 0 8px 22px rgba(0, 0, 0, .18);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
   transform-origin: 50% 100%;
   pointer-events: auto;
 }
 
-.bottom-nav__bubble::after {
-  position: absolute;
-  bottom: -6px;
-  left: calc(50% - 6px);
-  width: 11px;
-  height: 11px;
-  border-right: 1px solid rgba(217, 206, 255, .3);
-  border-bottom: 1px solid rgba(217, 206, 255, .3);
-  background: #171725;
-  transform: rotate(45deg);
-  content: '';
-}
-
-.bottom-nav__bubble-choice {
+.bottom-nav__bubble-choice.bottom-nav__item {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 65px;
+  width: 100%;
+  min-height: 57px;
   min-width: 0;
   overflow: hidden;
-  padding: 8px 4px;
-  border: 1px solid transparent;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, .045);
-  color: #cdd2e3;
-  font-size: 11px;
-  font-weight: 800;
+  padding: 5px 1px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: #a3aaba;
+  font-size: 8px;
+  font-weight: 700;
   line-height: 1.2;
   -webkit-tap-highlight-color: transparent;
   touch-action: none;
 }
 
 .bottom-nav__bubble-choice[aria-pressed="true"] {
-  border-color: rgba(178, 150, 241, .45);
-  color: #eee5ff;
+  color: #f6f7f9;
+}
+
+.bottom-nav__bubble-choice[aria-pressed="true"]::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0 8%;
+  border: 1px solid rgba(var(--igdb-accent-rgb), .14);
+  border-radius: 13px;
+  background: rgba(var(--igdb-accent-rgb), .055);
+  pointer-events: none;
+  content: '';
 }
 
 .bottom-nav__bubble-choice[data-highlighted="true"] {
-  border-color: rgba(224, 201, 255, .75);
-  color: #fff;
+  color: #f6f7f9;
+}
+.bottom-nav__bubble-choice[aria-pressed="true"] svg,
+.bottom-nav__bubble-choice[data-highlighted="true"] svg {
+  color: var(--igdb-accent);
 }
 
 .bottom-nav__bubble-choice:focus-visible {
-  outline: 2px solid #cfb5ff;
+  outline: 2px solid var(--igdb-accent);
   outline-offset: -2px;
 }
 
-.bottom-nav__bubble-highlight {
+.bottom-nav__slot .bottom-nav__bubble-highlight {
   position: absolute;
-  z-index: 0;
-  inset: 0;
-  border-radius: 15px;
-  background: linear-gradient(145deg, rgba(147, 100, 234, .6), rgba(109, 74, 171, .46));
-  box-shadow: inset 0 1px 8px rgba(255, 255, 255, .1);
+  z-index: -1;
+  inset: 0 6%;
+  border: 1px solid rgba(var(--igdb-accent-rgb), .38);
+  border-radius: 13px;
+  background: rgba(var(--igdb-accent-rgb), .15);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07);
   pointer-events: none;
 }
 
-.bottom-nav__bubble-choice-content {
+.bottom-nav__bubble-choice-content.bottom-nav__content {
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  gap: 4px;
   white-space: nowrap;
   pointer-events: none;
 }
@@ -124,7 +139,8 @@
 @media (prefers-reduced-motion: reduce) {
   .bottom-nav__slot-icon,
   .bottom-nav__bubble,
-  .bottom-nav__bubble-highlight {
+  .bottom-nav__bubble-highlight,
+  .bottom-nav__bubble-choice-content {
     animation: none !important;
     transition: none !important;
   }
