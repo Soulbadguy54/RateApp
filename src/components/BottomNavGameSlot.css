@@ -41,41 +41,61 @@
   z-index: 30;
   bottom: calc(100% + 15px);
   left: 50%;
-  width: min(202px, calc(100vw - 24px));
+  /* 7px padding on both sides and a 3px gap between two cells. */
+  width: calc(var(--game-nav-item-width, 92px) + var(--game-nav-item-width, 92px) + 17px);
+  /* Keep the SVG's coordinate system stationary while the interactive overlay
+     exits; otherwise absolute SVG top:0 jumps when children are unmounted. */
+  height: calc(var(--game-nav-item-height, 44px) + 14px);
   transform: translateX(-50%);
   transform-origin: 50% 100%;
   pointer-events: none;
 }
 
-.bottom-nav__liquid-bridge {
+.bottom-nav__liquid-surface {
   position: absolute;
   z-index: 0;
-  bottom: -5px;
-  left: calc(50% - 23px);
-  width: 46px;
-  height: 25px;
-  border-radius: 50% 50% 46% 46% / 65% 65% 35% 35%;
-  background: rgba(11, 13, 18, .92);
-  box-shadow: 0 1px 12px rgba(0, 0, 0, .16);
-  transform-origin: 50% 100%;
+  top: 0;
+  left: 0;
+  width: 100%;
+  /* The path begins in the slot underneath this anchored menu; the final
+     69/88 viewBox Y ends at the exact height of the two button cells. */
+  height: calc(var(--game-nav-item-height, 44px) + 29px);
+  overflow: visible;
   pointer-events: none;
+  /* No animated SVG filter: costly repaints on older mobile WebKit. */
+}
+
+.bottom-nav__liquid-path {
+  fill: rgba(11, 13, 18, .92);
+  stroke: var(--line);
+  stroke-width: 1.25px;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Brief specular rim makes the morph legible over the dark page, then
+   disappears so the settled surface stays in the bottom-nav's palette. */
+.bottom-nav__liquid-rim {
+  fill: none;
+  stroke: rgba(var(--igdb-accent-rgb), .34);
+  stroke-width: 2.4px;
+  vector-effect: non-scaling-stroke;
+  /* A plain stroke stays cheap to rasterize as the path changes. */
 }
 
 .bottom-nav__bubble {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
   gap: 3px;
   padding: 7px;
-  border: 1px solid var(--line);
+  /* The SVG is the actual background; an opaque rectangular background
+     here would completely hide the growing liquid shape. */
+  border: 0;
   border-radius: 21px;
-  background: rgba(11, 13, 18, .92);
-  box-shadow: 0 -10px 35px rgba(0, 0, 0, .28), 0 8px 22px rgba(0, 0, 0, .18);
-  -webkit-backdrop-filter: blur(22px);
-  backdrop-filter: blur(22px);
-  transform-origin: 50% 100%;
+  background: transparent;
   pointer-events: auto;
 }
 
@@ -85,7 +105,9 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 48px;
+  height: var(--game-nav-item-height, 44px);
+  min-height: 0;
+  box-sizing: border-box;
   min-width: 0;
   overflow: hidden;
   padding: 4px 2px;
@@ -143,7 +165,7 @@
 @media (prefers-reduced-motion: reduce) {
   .bottom-nav__slot-icon,
   .bottom-nav__bubble,
-  .bottom-nav__liquid-bridge,
+  .bottom-nav__liquid-surface,
   .bottom-nav__bubble-highlight,
   .bottom-nav__bubble-choice-content {
     animation: none !important;

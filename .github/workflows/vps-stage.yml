@@ -19,12 +19,12 @@ jobs:
   publish:
     if: >-
       ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop') ||
-           (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop') }}
+           (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop') }}
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.revision.outputs.sha }}
     steps:
-      - name: Select tested revision
+      - name: Select preview revision (full tests deferred to main release)
         id: revision
         env:
           EVENT_NAME: ${{ github.event_name }}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { PointerEvent as ReactPointerEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, animate, motion, useMotionValue, usePresence, useReducedMotion, useTransform } from 'motion/react'
 import Icon, { type IconName } from './Icon'
 import './BottomNavGameSlot.css'
 
@@ -17,6 +18,74 @@ const SWIPE_PX = 46
 const SWIPE_MAX_VERTICAL_PX = 25
 const SWIPE_MAX_MS = 850
 const STORAGE_PREFIX = 'rateapp-game-nav-slot-v1:'
+/**
+ * A real shape morph, not scaling/fading a rectangular dialog.
+ * The bottom tip initially sits near the selected nav cell. It stretches
+ * upward and spreads sideways before settling into the rounded 2-cell panel.
+ * All three paths use the same eight cubic curves for smooth interpolation.
+ */
+const LIQUID_DROP =
+  'M 95 59 C 91 59 87 62 87 66 C 87 70 87 75 87 78 C 87 83 91 86 95 86 C 98 86 104 86 107 86 C 112 86 116 83 116 78 C 116 75 116 70 116 66 C 116 62 112 59 107 59 C 104 59 98 59 95 59 Z'
+const LIQUID_STRETCH =
+  'M 91 17 C 77 17 67 27 63 40 C 58 51 59 64 61 71 C 64 81 77 84 88 84 C 96 85 106 85 114 84 C 125 84 138 81 141 71 C 143 64 144 51 139 40 C 135 27 125 17 111 17 C 105 17 97 17 91 17 Z'
+const LIQUID_PANEL =
+  'M 24 3 C 12 3 3 12 3 24 C 3 36 3 44 3 56 C 3 65 12 69 24 69 C 70 69 132 69 178 69 C 190 69 199 65 199 56 C 199 44 199 36 199 24 C 199 12 190 3 178 3 C 132 3 70 3 24 3 Z'
+
+
+/**
+ * Owns one reversible animation value for the full morph lifecycle.
+ * Closing animates the CURRENT progress back to zero, rather than restarting
+ * another exit keyframe timeline; this removes the jump/hitch on a fast release.
+ * usePresence keeps the SVG mounted until the reverse actually finishes.
+ */
+function LiquidMorph({ reduceMotion }: { reduceMotion: boolean }) {
+  const [isPresent, safeToRemove] = usePresence()
+  const progress = useMotionValue(reduceMotion ? 1 : 0)
+  const shape = useTransform(progress, [0, .46, 1], [
+    LIQUID_DROP, LIQUID_STRETCH, LIQUID_PANEL,
+  ])
+  const rimOpacity = useTransform(progress, [0, .46, .85, 1], [.85, .5, .12, 0])
+
+  useEffect(() => {
+    if (reduceMotion) {
+      progress.set(isPresent ? 1 : 0)
+      if (!isPresent) safeToRemove()
+      return
+    }
+    let interrupted = false
+    const animation = animate(progress, isPresent ? 1 : 0, {
+      duration: isPresent ? .66 : .48,
+      ease: isPresent ? [.22, .73, .2, 1] : [.44, 0, .4, 1],
+    })
+    if (!isPresent) {
+      void animation.then(() => {
+        if (!interrupted) safeToRemove()
+      })
+    }
+    return () => {
+      interrupted = true
+      animation.stop()
+    }
+  }, [isPresent, progress, reduceMotion, safeToRemove])
+
+  return (
+    <svg
+      className="bottom-nav__liquid-surface"
+      viewBox="0 0 202 88"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <motion.path className="bottom-nav__liquid-path" d={shape} />
+      {!reduceMotion && (
+        <motion.path
+          className="bottom-nav__liquid-rim"
+          d={shape}
+          opacity={rimOpacity}
+        />
+      )}
+    </svg>
+  )
+}
 
 function readPinned(nickname: string): GameNavTab {
   try {
@@ -46,6 +115,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const [pinned, setPinned] = useState<GameNavTab>(() => readPinned(nickname))
   const [menuOpen, setMenuOpen] = useState(false)
   const [hovered, setHovered] = useState<GameNavTab | null>(null)
+  const [navItemSize, setNavItemSize] = useState({ width: 92, height: 44 })
   const pressRef = useRef<Press | null>(null)
   // Ignore only the click belonging to the handled gesture, not a later tap.
   const ignoreGestureClickRef = useRef(false)
@@ -54,6 +124,26 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const pinnedRef = useRef<GameNavTab>(pinned)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const bubbleAnchorRef = useRef<HTMLDivElement>(null)
+
+  // Measure a real sibling nav button. SVG size alone does NOT define the
+  // overall tap target; fonts, line height and platform metrics also matter.
+  useEffect(() => {
+    const bar = buttonRef.current?.closest('.bottom-nav')
+    const reference = bar?.querySelector<HTMLButtonElement>(':scope > button.bottom-nav__item')
+    if (!reference) return
+    const sync = () => {
+      const { width, height } = reference.getBoundingClientRect()
+      if (width > 0 && height > 0) {
+        setNavItemSize(current => current.width === width && current.height === height
+          ? current
+          : { width, height })
+      }
+    }
+    sync()
+    const observer = new ResizeObserver(sync)
+    observer.observe(reference)
+    return () => observer.disconnect()
+  }, [])
   const option = options.find(item => item.id === pinned) ?? options[0]
 
   useEffect(() => {
@@ -248,58 +338,28 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
         </span>
       </motion.button>
 
-      <div ref={bubbleAnchorRef} className="bottom-nav__bubble-anchor">
-        <AnimatePresence>
-          {menuOpen && !reduceMotion && (
-                <motion.span
-                  className="bottom-nav__liquid-bridge"
-                  aria-hidden="true"
-                  initial={{ opacity: .95, scaleX: .25, scaleY: .65, y: 0 }}
-                  animate={{
-                    opacity: [ .95, .95, 0 ],
-                    scaleX: [ .25, 1.25, .72 ],
-                    scaleY: [ .65, 1.35, .12 ],
-                    y: [ 0, -1, -9 ],
-                  }}
-                  exit={{ opacity: 0, scaleX: .25, scaleY: .15, y: 0 }}
-                  transition={{ duration: .39, ease: [ .24, .7, .28, 1 ], times: [ 0, .42, 1 ] }}
-                />
-          )}
+      <div
+        ref={bubbleAnchorRef}
+        className="bottom-nav__bubble-anchor"
+        style={{
+          '--game-nav-item-width': `${navItemSize.width}px`,
+          '--game-nav-item-height': `${navItemSize.height}px`,
+        } as CSSProperties}
+      >
+        <AnimatePresence initial={false}>
+          {menuOpen && <LiquidMorph key="liquid" reduceMotion={Boolean(reduceMotion)} />}
         </AnimatePresence>
         <AnimatePresence>
           {menuOpen && (
-              <motion.div
-                className="bottom-nav__bubble"
-                role="group"
-                aria-label="Выбрать раздел базы игр"
-                initial={reduceMotion ? false : {
-                  opacity: 1,
-                  y: 4,
-                  scaleX: .22,
-                  scaleY: .2,
-                  borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
-                }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                  scaleX: 1,
-                  scaleY: 1,
-                  borderRadius: '11% 11% 11% 11% / 32% 32% 32% 32%',
-                }}
-                exit={reduceMotion ? undefined : {
-                  opacity: 1,
-                  y: 4,
-                  scaleX: .22,
-                  scaleY: .2,
-                  borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
-                }}
-                transition={reduceMotion ? { duration: 0 } : {
-                  scaleX: { type: 'spring', stiffness: 340, damping: 19, mass: .72 },
-                  scaleY: { type: 'spring', stiffness: 370, damping: 17, mass: .72 },
-                  y: { type: 'spring', stiffness: 365, damping: 21, mass: .72 },
-                  borderRadius: { duration: .29, ease: [ .2, .68, .22, 1 ] },
-                }}
-              >
+            <motion.div
+              className="bottom-nav__bubble"
+              role="group"
+              aria-label="Выбрать раздел базы игр"
+              initial={reduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: reduceMotion ? 0 : .1 } }}
+              transition={{ duration: reduceMotion ? 0 : .24, delay: reduceMotion ? 0 : .34 }}
+            >
               {options.map(choice => (
                 <button
                   key={choice.id}
@@ -345,7 +405,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                   </motion.span>
                 </button>
               ))}
-              </motion.div>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
