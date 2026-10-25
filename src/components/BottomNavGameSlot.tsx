@@ -31,30 +31,41 @@ const LIQUID_STRETCH =
 const LIQUID_PANEL =
   'M 24 3 C 12 3 3 12 3 24 C 3 36 3 44 3 56 C 3 65 12 69 24 69 C 70 69 132 69 178 69 C 190 69 199 65 199 56 C 199 44 199 36 199 24 C 199 12 190 3 178 3 C 132 3 70 3 24 3 Z'
 
+// Closing must go BEYOND the visible 29×27px starting droplet, otherwise
+// that rounded square lingers until AnimatePresence removes the SVG.
+// Eight identical cubic commands preserve 1:1 path morphing on WebKit.
+const LIQUID_VANISH =
+  'M 101 82 C 101 82 101 82 101 82 C 101 82 101 82 101 82 C 101 82 101 82 101 82 C 101 82 101 82 101 82 C 101 82 101 82 101 82 C 101 82 101 82 101 82 C 101 82 101 82 101 82 C 101 82 101 82 101 82 Z'
+const LIQUID_VANISH_PROGRESS = -.36
+
 
 /**
  * Owns one reversible animation value for the full morph lifecycle.
  * Closing animates the CURRENT progress back to zero, rather than restarting
  * another exit keyframe timeline; this removes the jump/hitch on a fast release.
- * usePresence keeps the SVG mounted until the reverse actually finishes.
+ * Exit continues past the opening droplet to an invisible point before
+ * usePresence removes the SVG, so no residual square can flash at the end.
  */
 function LiquidMorph({ reduceMotion }: { reduceMotion: boolean }) {
   const [isPresent, safeToRemove] = usePresence()
   const progress = useMotionValue(reduceMotion ? 1 : 0)
-  const shape = useTransform(progress, [0, .46, 1], [
-    LIQUID_DROP, LIQUID_STRETCH, LIQUID_PANEL,
+  const shape = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .46, 1], [
+    LIQUID_VANISH, LIQUID_DROP, LIQUID_STRETCH, LIQUID_PANEL,
   ])
-  const rimOpacity = useTransform(progress, [0, .46, .85, 1], [.85, .5, .12, 0])
+  // The extra exit phase tapers the last droplet to zero opacity as well as
+  // zero area. Opening still starts at progress 0 with the original droplet.
+  const surfaceOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0], [0, 1])
+  const rimOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .46, .85, 1], [0, .85, .5, .12, 0])
 
   useEffect(() => {
     if (reduceMotion) {
-      progress.set(isPresent ? 1 : 0)
+      progress.set(isPresent ? 1 : LIQUID_VANISH_PROGRESS)
       if (!isPresent) safeToRemove()
       return
     }
     let interrupted = false
-    const animation = animate(progress, isPresent ? 1 : 0, {
-      duration: isPresent ? .66 : .48,
+    const animation = animate(progress, isPresent ? 1 : LIQUID_VANISH_PROGRESS, {
+      duration: isPresent ? .66 : .45,
       ease: isPresent ? [.22, .73, .2, 1] : [.44, 0, .4, 1],
     })
     if (!isPresent) {
@@ -69,8 +80,9 @@ function LiquidMorph({ reduceMotion }: { reduceMotion: boolean }) {
   }, [isPresent, progress, reduceMotion, safeToRemove])
 
   return (
-    <svg
+    <motion.svg
       className="bottom-nav__liquid-surface"
+      style={{ opacity: surfaceOpacity }}
       viewBox="0 0 202 88"
       preserveAspectRatio="none"
       aria-hidden="true"
@@ -83,7 +95,7 @@ function LiquidMorph({ reduceMotion }: { reduceMotion: boolean }) {
           opacity={rimOpacity}
         />
       )}
-    </svg>
+    </motion.svg>
   )
 }
 
