@@ -591,9 +591,10 @@ function App() {
     }
     window.history.replaceState(base, '', urlForAppView(initial))
     if (isRootScreen(initial)) {
-      // For root Discovery, Back must never reveal the previously visited tab.
-      // Other root tabs keep their existing in-app Back history.
-      pushRootExitGate(initial, base)
+      // Rehydrating a PWA/tab must reuse its guard, not stack a new copy.
+      // Entering Discovery from another tab is handled in navigateTo.
+      if (base.exitGate) exitGateDepthRef.current = base.appDepth ?? 0
+      else pushRootExitGate(initial, base)
     }
 
     const onPopState = (event: PopStateEvent) => {
@@ -1326,9 +1327,12 @@ function App() {
       setCollectionError('')
     }
 
+    const previousEntry = readAppHistoryEntry(window.history.state)
     const entry: AppHistoryEntry = {
       rateAppView: true, view, scrollY: 0,
-      fromApp: readAppHistoryEntry(window.history.state)?.fromApp ?? false,
+      fromApp: previousEntry?.fromApp ?? false,
+      appDepth: previousEntry?.appDepth ?? 0,
+      exitGate: previousEntry?.exitGate && isRootScreen(view),
       collectionPickerOpen: false,
       ...(tab === 'library' ? { controls: {
         progress: 0, anchor: 4, forcedCollapsed: false,

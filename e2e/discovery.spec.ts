@@ -390,7 +390,18 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCount(1)
   const label = page.locator('.discover-swipe-feedback__label')
   await expect(label).toHaveCSS('font-weight', '900')
-  await expect(label).toHaveCSS('text-shadow', /28px/)
+  await expect(label).toHaveCSS('text-shadow', 'none')
+  await expect(label).toHaveCSS('filter', 'none')
+  await expect(label).toHaveCSS('-webkit-text-stroke-width', '0px')
+  // Result text must sit at the centre of the Discovery viewport, not at the
+  // poster centre: wide and tall posters have different bounds.
+  const resultText = await label.boundingBox()
+  const resultScreen = await page.locator('.discover-screen').boundingBox()
+  if (!resultText || !resultScreen) throw new Error('Swipe label geometry missing')
+  expect(Math.abs(resultText.x + resultText.width / 2 -
+    (resultScreen.x + resultScreen.width / 2))).toBeLessThan(3)
+  expect(Math.abs(resultText.y + resultText.height / 2 -
+    (resultScreen.y + resultScreen.height / 2))).toBeLessThan(3)
   // Check the held fog immediately after the decision, before intentionally
   // delaying the network request beyond the short afterglow duration.
   await expect.poll(() => page.locator('.discover-swipe-feedback__haze')
@@ -438,7 +449,12 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     return !art || !glass ? 999 : Math.abs(glass.y - (art.y + art.height + 12))
   }, { timeout: 6500 }).toBeLessThan(4)
   expect(actions).toEqual(['like'])
-  await page.getByRole('button', { name: 'Шаг назад' }).click()
+  // Discovery is a root tab: neither an in-page back button nor a
+  // recommendation undo arrow should be shown. Start a fresh feed for
+  // the opposite-swipe assertion rather than stepping backward.
+  await expect(page.getByRole('button', { name: 'Шаг назад' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Вернуться в базу игр' })).toHaveCount(0)
+  await page.reload()
   await expect(page.getByText('Discovery One')).toBeVisible()
   // The persistent glass updates before AnimatePresence mounts the returned
   // poster. Wait for the actual swipe target, not just the new sheet title.
