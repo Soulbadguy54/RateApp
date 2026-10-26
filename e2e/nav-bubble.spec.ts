@@ -227,6 +227,9 @@ test('game nav: liquid path retracts without an orphan and rapid reopen works', 
     sample()
   })
   await page.mouse.up()
+  // Shape and controls share one presence tree: both remain mounted during
+  // the exit and are removed on the same completed progress frame.
+  await expect(page.locator('.bottom-nav__bubble')).toHaveCount(1)
   // Exit continues beyond the old 29px droplet: both the contour and its
   // opacity must approach zero BEFORE the SVG is removed from the DOM.
   await expect(liquid).toHaveCount(0, { timeout: 2000 })

@@ -87,6 +87,7 @@
 .discover-hint--up{top:10px;left:50%;transform:translateX(-50%);color:rgb(var(--palette-wishlist-rgb))}
 .discover-hint--left{top:40%;left:7px;color:rgb(var(--palette-dislike-rgb))}
 .discover-hint--right{top:40%;right:7px;color:rgb(var(--palette-like-rgb))}
+.discover-hint--down{top:75%;left:50%;transform:translateX(-50%);color:rgb(var(--palette-playthrough-rgb))}
 .discover-hint--up .emoji-display{display:inline-flex}
 @keyframes discover-hint-breathe{0%,3%{opacity:0}11%{opacity:1}19%{opacity:.86}27%{opacity:1}33%,100%{opacity:0}}
 
@@ -108,6 +109,7 @@
 .discover-guide__direction--up{top:clamp(12px,3.5%,24px);left:50%;transform:translateX(-50%);color:rgb(var(--palette-wishlist-rgb))}
 .discover-guide__direction--left{top:22%;left:7px;color:rgb(var(--palette-dislike-rgb))}
 .discover-guide__direction--right{top:22%;right:7px;color:rgb(var(--palette-like-rgb))}
+.discover-guide__direction--down{bottom:clamp(14px,9%,42px);left:50%;transform:translateX(-50%);color:rgb(var(--palette-playthrough-rgb))}
 .discover-guide__tap-hint{position:absolute;z-index:2;bottom:clamp(18px,5%,38px);left:0;right:0;margin:0;padding:0 12px;font-size:11px;font-weight:600;letter-spacing:.01em;color:rgba(255,255,255,.78);text-shadow:0 2px 10px rgba(0,0,0,.7);pointer-events:none}
 @keyframes discover-guide-breathe{0%,100%{opacity:.88;filter:brightness(.95)}50%{opacity:1;filter:brightness(1.12)}}
 @media(max-height:510px){.discover-guide__intro{top:54%}.discover-guide__intro h2{margin-bottom:9px}.discover-guide__intro .discover-guide__detail-tip{margin-top:8px}.discover-guide__direction--left,.discover-guide__direction--right{top:19%}.discover-guide__tap-hint{bottom:10px}}
@@ -131,13 +133,15 @@
    old filtered radial gradients dispersed nearly all of the perceived color.
    This layer includes the topbar, but not the global bottom navigation. */
 .discover-swipe-feedback{position:absolute;inset:0;z-index:12;display:grid;place-items:center;pointer-events:none;border:0;box-shadow:none;background:none}
-.discover-swipe-feedback::before{content:'';position:absolute;inset:0;pointer-events:none;background:
+.discover-swipe-feedback__haze{position:absolute;inset:0;pointer-events:none}
+.discover-swipe-feedback__haze::before{content:'';position:absolute;inset:0;pointer-events:none;background:
   linear-gradient(90deg,rgba(var(--discover-fog-rgb),.7) 0px,rgba(var(--discover-fog-rgb),.43) 18px,rgba(var(--discover-fog-rgb),.19) 48px,transparent 108px),
   linear-gradient(270deg,rgba(var(--discover-fog-rgb),.7) 0px,rgba(var(--discover-fog-rgb),.43) 18px,rgba(var(--discover-fog-rgb),.19) 48px,transparent 108px),
   linear-gradient(180deg,rgba(var(--discover-fog-rgb),.54) 0px,rgba(var(--discover-fog-rgb),.3) 18px,rgba(var(--discover-fog-rgb),.11) 42px,transparent 86px),
   linear-gradient(0deg,rgba(var(--discover-fog-rgb),.54) 0px,rgba(var(--discover-fog-rgb),.3) 18px,rgba(var(--discover-fog-rgb),.11) 42px,transparent 86px)}
-.discover-swipe-feedback span{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;font-size:clamp(22px,6.2vw,32px);font-weight:850;letter-spacing:-.03em;text-shadow:0 0 14px currentColor,0 2px 9px #050711}
+.discover-swipe-feedback__label{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;gap:7px;max-width:96%;white-space:nowrap;font-size:clamp(22px,6.2vw,32px);font-weight:900;letter-spacing:-.035em;-webkit-text-stroke:.45px currentColor;text-shadow:0 0 3px rgba(255,255,255,.84),0 0 18px currentColor,0 0 28px currentColor,0 2px 12px #050711}
 .discover-swipe-feedback--left{color:rgb(var(--palette-dislike-rgb));--discover-fog-rgb:var(--palette-dislike-rgb)}
 .discover-swipe-feedback--right{color:rgb(var(--palette-like-rgb));--discover-fog-rgb:var(--palette-like-rgb)}
 .discover-swipe-feedback--up{color:rgb(var(--palette-wishlist-rgb));--discover-fog-rgb:var(--palette-wishlist-rgb)}
+.discover-swipe-feedback--down{color:rgb(var(--palette-playthrough-rgb));--discover-fog-rgb:var(--palette-playthrough-rgb)}
 @media(prefers-reduced-motion:reduce){.discover-swipe-feedback{display:none}.discover-cover__image{transition:none;filter:none}.discover-cover__skeleton{animation:none}}

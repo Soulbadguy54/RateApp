@@ -27,6 +27,7 @@ html, body {
   --palette-like-rgb: 146, 233, 174;     /* emerald collection */
   --palette-dislike-rgb: 142, 186, 255;  /* blue collection */
   --palette-wishlist-rgb: 255, 162, 202; /* rose / wishlist collection */
+  --palette-playthrough-rgb: 248, 215, 131; /* amber collection; add playthrough */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
