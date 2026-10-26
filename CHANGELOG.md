@@ -1,5 +1,12 @@
 # Rate APP — история разработки
 
+## 27 октября 2026 — Telegram-статусы release CI и staging (PR #76)
+
+- Исправлено неоднозначное уведомление `Frontend CI` для релизного PR `develop → main`: ранее бот показывал «Полный CI» и «Ветка: develop», что было похоже на проверку staging. Цель теперь определяется по `workflow_run.pull_requests[].base.ref`; сообщение явно маркируется `Production · релизные тесты`, включает номер PR и обе ветки и поясняет, что успешный CI сам по себе не означает production-деплой.
+- Staging deploy продолжает обозначаться отдельно как `Staging обновлён`; ручной полный CI не путается с деплоем. Добавлены unit-тесты уведомлений.
+- Для PR #70 полный production release CI фактически запускался и был красным из-за mobile E2E; перенос в production заблокирован.
+
+
 ## 27 октября 2026 — Telegram-уведомления CI/CD (PR #74)
 
 - Добавлен отдельный защищённый GitHub Actions workflow `Telegram CI/CD notifications`: сообщения о результате ручного полного CI/PR release checks, о неудаче production CI, об окончательном результате staging и production VPS-деплоя, а также о сбое ежедневной production health-проверки.
