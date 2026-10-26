@@ -54,6 +54,38 @@ async function dragHandle(page: Page, delta: number, simulateTouch = false) {
   await movePointer(page, x, y, x, y + delta)
 }
 
+test('root Discovery: Android Back warns first and requests exit on second press', async ({ page }) => {
+  const nickname = 'back_' + Date.now().toString(36).slice(-8)
+  // A direct PWA launch must also have a browser-history sentinel.
+  await page.goto('/?tab=discovery')
+  await page.getByRole('button', { name: 'Регистрация' }).click()
+  await page.locator('input[type=email]').fill(nickname + '@example.com')
+  await page.locator('input[autocomplete=username]').fill(nickname)
+  await page.locator('input[autocomplete=new-password]').first().fill('29843571')
+  await page.locator('input[autocomplete=new-password]').last().fill('29843571')
+  await page.getByRole('button', { name: 'Создать аккаунт' }).click()
+  await expect(page.locator('.discover-screen')).toBeVisible()
+
+  await page.goBack()
+  await expect(page.locator('.discover-screen')).toBeVisible()
+  await expect(page.locator('.app-exit-toast')).toContainText('Нажми «Назад» ещё раз')
+  await expect(page).toHaveURL(/tab=discovery/)
+
+  // Capture the requested native history exit rather than actually closing
+  // the test runner's page, which is host-browser-dependent for installed PWA.
+  await page.evaluate(() => {
+    (window as Window & { __exitDepth?: number }).__exitDepth = 0
+    window.history.go = (delta?: number) => {
+      (window as Window & { __exitDepth?: number }).__exitDepth = delta ?? 0
+    }
+  })
+  await page.goBack()
+  await expect.poll(() => page.evaluate(() =>
+    (window as Window & { __exitDepth?: number }).__exitDepth ?? 0
+  )).toBeLessThan(0)
+  await expect(page.locator('.app-exit-toast')).toHaveCount(0)
+})
+
 test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur', async ({ page }) => {
   const nickname = 'disc_' + Date.now().toString(36).slice(-8)
   const onIPhone = test.info().project.name.includes('WebKit')
