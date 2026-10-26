@@ -315,8 +315,12 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   const posterBeforePull = await image.boundingBox()
   await dragHandle(page, -30, onIPhone)
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
-  const posterAfterPull = await image.boundingBox()
-  expect(posterAfterPull?.y).toBeCloseTo(posterBeforePull?.y ?? 0, 0)
+  // A sheet drag must not move the artwork. Wait for a spring frame to
+  // settle instead of comparing two adjacent animation frames synchronously.
+  await expect.poll(async () => {
+    const after = await image.boundingBox()
+    return after ? Math.abs(after.y - (posterBeforePull?.y ?? 0)) : 999
+  }, { timeout: 3500 }).toBeLessThan(2)
   // Short fast flicks should open and close, even below the old long-drag
   // threshold. The synthetic mouse stream also exercises WebKit fallback.
   await page.evaluate(async () => {

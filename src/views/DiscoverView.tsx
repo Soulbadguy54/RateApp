@@ -577,6 +577,9 @@ export default function DiscoverView({
     if (down && game) {
       // Navigation, not feedback: do not consume this recommendation or
       // add an invented playthrough. The existing add form handles validation.
+      // The form is a new screen, so release any drag state before
+      // App unmounts Discovery; Back must restore a neutral poster.
+      resetTilt()
       onAddPlaythrough(game)
       return
     }
