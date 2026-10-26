@@ -57,13 +57,11 @@ mobile browser jobs on main. It never sends real user credentials.
 
 The VPS migration and cutover are described in [VPS_MIGRATION.md](VPS_MIGRATION.md). Active production is https://r-app.ru on local PostgreSQL 18. GitHub Actions deploy is gated on successful main CI and uses the pinned SSH host key + restricted deploy account. Release runs pre-migration local pg_dump, Alembic, containers update and health check; app-image rollback does not downgrade database schema. Daily server-side pg_dump uploads to owner-managed Google Drive at 03:40 UTC, with separate restore validation. Vercel is paused and Neon retained temporarily as an archive/rollback source; neither is on the request path. Never treat a local dump as the sole disaster-recovery copy, drop the persistent PostgreSQL volume, or automatically downgrade a DB schema during image rollback.
 
-## Правило завершения задачи: PR → CI → main → VPS → smoke
+## Выпуск без ожидания в чате: release PR → полный CI → main → VPS → Telegram (27.10.2026)
 
-Установленный в [AGENTS.md](../AGENTS.md) Definition of Done обязателен и для небольших исправлений, и для документационных изменений. Открытый PR — промежуточный этап, а не итог работы. Исполнитель дожидается всех требуемых проверок PR, исправляет ошибки и после успешного CI сливает PR в `main` без отдельной просьбы, кроме оговорённых исключений.
+Для одобренного production release открыть `develop` → `main` PR и пометить `release-approved` только по явной воле владельца. `pull_request` должен запустить обязательные `build`, `backend-tests`, `mobile-e2e`. Сразу после подтверждения запуска дать в чат ссылку на **конкретный Actions run** и release PR, указать `head SHA` и честно отметить «в процессе, в production ещё не опубликовано». **Не дожидаться** 5–10-минутных тестов в чате и не опрашивать статусы через GPT; итоговый источник — Telegram и GitHub Actions.
 
-Затем исполнитель проверяет **фактическое окончание** CI `main` и workflow `VPS production deployment`, сверяет SHA новой версии с `/srv/rateapp/current-release` и выполняет `RATEAPP_SMOKE_BASE=https://r-app.ru python scripts/smoke_production.py`. В случае неудачного деплоя исправляет причину и повторяет цикл; нельзя завершать ответ на «PR готов» или «деплой запущен». Для docs-only изменений, которые не требуют смены исполняемого образа, проверяются обновление `main`, положенные проверки CI и доступность production; пропуск сборки по установленным правилам указывается явно.
-
-Только завершённую и подтверждённую доставку можно называть опубликованной. Если необходимы внешний ручной шаг, отдельное разрешение на опасную операцию, проверка реального устройства либо недоступен инструмент — это явно отмечается как блокер/ограничение, а не маскируется под готовый релиз.
+В `ci.yml` зависимый `promote-approved-release` исполняется только после зелёных тестов, с повторной проверкой exact SHA, approved-label и пары веток. При проблеме merge/review или красном тесте workflow не может выпустить новую версию, Telegram сообщает о сбое. После успешного merge `main` сам запускает полный CI, Docker GHCR publish и ограниченный VPS deploy со штатными backup/migrate/smoke. Финальный статус production также отправляется в Telegram. **Никакой преждевременной формулировки «готово»**: до подтверждённого сервером SHA и smoke статус только «запущено». Не обходить protective branch checks; ручные/опасные операции остаются исключением.
 
 ## Staging release flow (`dev.r-app.ru`)
 
@@ -72,7 +70,7 @@ The VPS migration and cutover are described in [VPS_MIGRATION.md](VPS_MIGRATION.
 3. Create `develop` based on deployed main and trigger a commit/push. Its full CI runs frontend, backend PostgreSQL and mobile E2E. Successful runs build two new stage-only GHCR images tagged with the exact tested SHA; no stage image is used by production.
 4. The restricted SSH command `deploy-stage <40-hex-sha>` accepts only the *current* `develop` HEAD. It deploys via the reviewed Compose file from `main`, makes a stage-only pre-migration dump, migrates only `rateapp_stage`, and verifies API health.
 5. Smoke `https://dev.r-app.ru`: valid HTTPS; SPA/mobile; test banner; `/api/health` 200 + DB reachable; anonymous `/api/auth/me` 401; POST `/api/auth/register` 404; login with known owner PIN (requires owner device, do not collect PIN); library/collections; no stage push or cron traffic. Reconfirm `https://r-app.ru` and its API, compare production release SHA with `main`.
-6. Further changes: PR into `develop` → CI → staging deploy → acceptance → PR into `main` → full production CI, backup, migration/deploy and smoke. Do not auto-promote a staging feature without acceptance.
+6. Further changes: PR into `develop` → fast staging deploy → acceptance → approved release PR into `main`. After label `release-approved`, full tests gate an automatic squash merge, followed by main CI, backup, migration/deploy and smoke. The agent sends an Actions run link immediately and does not await CI in chat. Never auto-promote a staging feature without explicit acceptance.
 
 ### Cautions
 

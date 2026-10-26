@@ -8,6 +8,7 @@ on:
   # opt-in for full tests before promotion to main.
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 concurrency:
@@ -140,3 +141,41 @@ jobs:
         env:
           RATEAPP_SMOKE_BASE: https://r-app.ru
         run: python scripts/smoke_production.py
+
+  # The production release is explicitly authorized by the owner using the
+  # release-approved label. Full required checks must all pass before merge.
+  # This runs for the SAME-REPOSITORY develop→main PR only. There is no
+  # workflow_run privileged access to untrusted PR artifacts.
+  promote-approved-release:
+    if: >-
+      ${{ github.event_name == 'pull_request' &&
+          github.event.pull_request.base.ref == 'main' &&
+          github.event.pull_request.head.ref == 'develop' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          contains(github.event.pull_request.labels.*.name, 'release-approved') }}
+    needs: [build, backend-tests, mobile-e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Merge ONLY the explicitly approved and tested revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TESTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          test "$(jq -r '.state' <<<"$json")" = open
+          test "$(jq -r '.base.ref' <<<"$json")" = main
+          test "$(jq -r '.head.ref' <<<"$json")" = develop
+          test "$(jq -r '.head.repo.full_name' <<<"$json")" = "$REPOSITORY"
+          test "$(jq -r '.head.sha' <<<"$json")" = "$TESTED_HEAD"
+          jq -e '.labels | any(.name == "release-approved")' <<<"$json" >/dev/null
+          # The GitHub API enforces branch protection and also rejects a stale
+          # head SHA, so a mid-flight develop change can never be merged.
+          gh api --method PUT "repos/$REPOSITORY/pulls/$PR_NUMBER/merge" \
+            -f merge_method=squash -f sha="$TESTED_HEAD" --silent
+          echo "Approved release merged; main CI and VPS deploy are independent."
