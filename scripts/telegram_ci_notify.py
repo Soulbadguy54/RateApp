@@ -78,6 +78,24 @@ def job_lines(jobs: list[dict[str, Any]]) -> list[str]:
     return result
 
 
+
+def pr_target(run: dict[str, Any]) -> tuple[str, str] | None:
+    """Identify the PR target from GitHub metadata, never from the head branch.
+
+    A production release PR is develop -> main, so looking only at
+    head_branch misleadingly makes a release verification look like staging.
+    """
+    for pr in run.get("pull_requests") or []:
+        if not isinstance(pr, dict):
+            continue
+        base = (pr.get("base") or {}).get("ref", "")
+        number = pr.get("number")
+        if base not in ("main", "develop") or not isinstance(number, int):
+            continue
+        return base, str(number)
+    return None
+
+
 def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None) -> str | None:
     if "workflow_run" not in event:
         return (
@@ -103,25 +121,48 @@ def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None
         return None
 
     details = []
+    target = pr_target(run) if source == "pull_request" else None
     if workflow == "Frontend CI":
         if source == "push" and branch == "develop":
             if passed:
                 return None  # A fast preview is NOT a complete test pass.
-            heading = "❌ <b>Staging · подготовка не удалась</b>"
-            description = "Быстрая проверка ветки develop завершилась с ошибкой."
+            heading = "🧪❌ <b>Staging · подготовка не удалась</b>"
+            description = "Быстрая проверка develop завершилась с ошибкой; полный CI не запускался."
         elif source == "push" and branch == "main":
             if passed:
                 return None  # The real release verdict comes from VPS deployment.
-            heading = "❌ <b>Production · релиз заблокирован</b>"
-            description = "Полный CI не прошёл. На production ничего не выпускаем."
+            heading = "🚀❌ <b>Production · релиз заблокирован</b>"
+            description = "Полный CI в main не прошёл; production-деплой не подтверждён."
+        elif source == "pull_request" and target and target[0] == "main":
+            heading = (
+                "🚀✅ <b>Production · релизные тесты пройдены</b>" if passed
+                else "🚀❌ <b>Production · релизные тесты НЕ пройдены</b>"
+            )
+            description = (
+                f"PR #{target[1]}: {clean(branch)} → main. Это полный CI ПЕРЕД выпуском, "
+                + ("но сам production ещё не обновлён." if passed
+                   else "перенос в production заблокирован ошибками тестов.")
+            )
+        elif source == "pull_request" and target and target[0] == "develop":
+            heading = (
+                "🧪✅ <b>Staging · PR-проверки пройдены</b>" if passed
+                else "🧪❌ <b>Staging · PR-проверки не пройдены</b>"
+            )
+            description = f"PR #{target[1]}: {clean(branch)} → develop. Это не проверка production."
+        elif source == "workflow_dispatch":
+            heading = (
+                "🔬✅ <b>Ручной полный CI пройден</b>" if passed
+                else "🔬❌ <b>Ручной полный CI не пройден</b>"
+            )
+            description = "Проверка ветки по запросу; не означает выкладку на staging или production."
         else:
             heading = (
                 "✅ <b>Полный CI пройден</b>" if passed
                 else "❌ <b>Полный CI не пройден</b>"
             )
             description = (
-                "Можно переходить к следующему этапу релиза."
-                if passed else "Обнаружены ошибки, выпуск нужно остановить."
+                "Проверки PR завершены; цель PR уточняется по ссылке."
+                if passed else "Проверки PR не прошли; цель PR уточняется по ссылке."
             )
         details = job_lines(jobs or [])
     elif workflow == "VPS staging deployment":
@@ -155,7 +196,10 @@ def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None
         pieces.extend(["", "🧩 <b>Результаты проверок</b>"])
         pieces.extend(details if details else ["Подробности — в GitHub Actions."])
     if branch and workflow == "Frontend CI":
-        pieces.append(f"🌿 Ветка: <code>{clean(branch)}</code>")
+        pieces.append(f"🌿 Исходная ветка: <code>{clean(branch)}</code>")
+        if target:
+            destination = "main · production" if target[0] == "main" else "develop · staging"
+            pieces.append(f"🎯 Цель PR: <b>{clean(destination)}</b>")
     elapsed = duration(run)
     if elapsed:
         pieces.append(f"⏱ Длительность: {clean(elapsed)}")
