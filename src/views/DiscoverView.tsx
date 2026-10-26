@@ -15,7 +15,6 @@ type DescriptionTranslation = { description: string; language: 'ru' | 'en'; tran
 type PosterState = { width: number; height: number; failed?: boolean }
 type PosterBounds = {
   index: number; left: number; top: number; width: number; height: number
-  screenLeft: number; screenTop: number
 }
 const STORE_ICONS: Record<string, string> = {
   steam: '/brand/steam.svg', epic: '/brand/epicgames.svg',
@@ -53,17 +52,15 @@ function releaseLabel(game: Game) {
 }
 
 export default function DiscoverView({
-  nickname, onExit, onWishlistChange, onAddPlaythrough,
+  nickname, onWishlistChange, onAddPlaythrough,
 }: {
   nickname: string
-  onExit: () => void
   onWishlistChange: () => void
   onAddPlaythrough: (game: Game) => void
 }) {
   const reducedMotion = useReducedMotion()
   const [cards, setCards] = useState<Game[]>([])
   const [index, setIndex] = useState(0)
-  const [history, setHistory] = useState<{ gameId: number; action: DiscoveryAction }[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [remaining, setRemaining] = useState(0)
@@ -105,12 +102,10 @@ export default function DiscoverView({
     const art = poster.getBoundingClientRect()
     if (art.width < 1 || art.height < 1) return
     const stageRect = stage.getBoundingClientRect()
-    const screenRect = stage.closest('.discover-screen')?.getBoundingClientRect() ?? stageRect
     const bottom = art.bottom - stageRect.top
     const nextBounds: PosterBounds = {
       index, left: art.left - stageRect.left, top: art.top - stageRect.top,
       width: art.width, height: art.height,
-      screenLeft: art.left - screenRect.left, screenTop: art.top - screenRect.top,
     }
     setPosterBottom(previous => previous === null || Math.abs(previous - bottom) > .5 ? bottom : previous)
     setPosterBounds(previous => previous && previous.index === nextBounds.index &&
@@ -498,7 +493,6 @@ export default function DiscoverView({
       saved = true
       setDeparture(direction)
       showSwipeFeedback(direction, 1, true)
-      setHistory(previous => [...previous, { gameId: game.id, action }])
       setIndex(value => value + 1)
       if (action === 'wishlist') onWishlistChange()
     } catch (reason) {
@@ -508,24 +502,6 @@ export default function DiscoverView({
     } finally {
       // Never animate the dragged art back to centre while it is also exiting.
       if (!saved) resetTilt()
-      setBusy(false)
-    }
-  }
-
-  const undo = async () => {
-    const last = history[history.length - 1]
-    if (!last || busy || expanded || helpOpen) return
-    setBusy(true)
-    try {
-      const response = await fetch('/api/discover/feedback/' + last.gameId, { method: 'DELETE' })
-      if (!response.ok) throw new Error('Не получилось отменить свайп.')
-      setHistory(current => current.slice(0, -1))
-      setIndex(value => Math.max(0, value - 1))
-      if (last.action === 'wishlist') onWishlistChange()
-      setError('')
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Ошибка соединения.')
-    } finally {
       setBusy(false)
     }
   }
@@ -598,13 +574,6 @@ export default function DiscoverView({
   return (
     <section className="discover-screen" aria-label="Персональные рекомендации игр">
       <header className="discover-topbar">
-        <button type="button" className="discover-icon-button" aria-label="Вернуться в базу игр" onClick={onExit}>
-          <Icon name="back" size={22} />
-        </button>
-        {history.length > 0 && !expanded && (
-          <button type="button" className="discover-icon-button discover-icon-button--undo"
-            aria-label="Шаг назад" onClick={() => void undo()} disabled={busy || helpOpen}>↶</button>
-        )}
         <button type="button" className="discover-icon-button discover-icon-button--info"
           aria-label="Показать обучение" onClick={() => setHelpOpen(true)}>i</button>
       </header>
@@ -809,13 +778,7 @@ export default function DiscoverView({
           aria-hidden="true">
           <motion.div className="discover-swipe-feedback__haze" style={{ opacity: feedbackOpacity }} />
           <motion.span className="discover-swipe-feedback__label"
-            style={{
-              opacity: feedbackLabelOpacity,
-              ...(activePosterBounds ? {
-                left: activePosterBounds.screenLeft + activePosterBounds.width / 2,
-                top: activePosterBounds.screenTop + activePosterBounds.height / 2,
-              } : {}),
-            }}>
+            style={{ opacity: feedbackLabelOpacity }}>
             {feedbackDirection === 'up' ? <><WishlistHeart size={26} /> Хочу поиграть</> :
               feedbackDirection === 'down' ? 'Добавить прохождение' :
                 feedbackDirection === 'left' ? 'Не нравится' : 'Нравится'}

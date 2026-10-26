@@ -26,7 +26,6 @@
 }
 .discover-icon-button{display:grid;place-items:center;flex:0 0 auto;width:42px;height:42px;border:1px solid var(--line-strong);border-radius:13px;background:linear-gradient(145deg,#242936,#11141c);color:#fff}
 .discover-icon-button--info{margin-left:auto;font:italic 700 19px Georgia,serif}
-.discover-icon-button--undo{font-size:26px;line-height:1;color:#d2cbff}
 .discover-icon-button:disabled{opacity:.4}
 .discover-stage{position:relative;flex:1;min-height:0;width:100%;overflow:hidden;border-radius:0;background:var(--bg)}
 .discover-deck{position:absolute;inset:0;overflow:hidden;background:var(--bg)}
@@ -139,7 +138,7 @@
   linear-gradient(270deg,rgba(var(--discover-fog-rgb),.7) 0px,rgba(var(--discover-fog-rgb),.43) 18px,rgba(var(--discover-fog-rgb),.19) 48px,transparent 108px),
   linear-gradient(180deg,rgba(var(--discover-fog-rgb),.54) 0px,rgba(var(--discover-fog-rgb),.3) 18px,rgba(var(--discover-fog-rgb),.11) 42px,transparent 86px),
   linear-gradient(0deg,rgba(var(--discover-fog-rgb),.54) 0px,rgba(var(--discover-fog-rgb),.3) 18px,rgba(var(--discover-fog-rgb),.11) 42px,transparent 86px)}
-.discover-swipe-feedback__label{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;gap:7px;max-width:96%;white-space:nowrap;font-size:clamp(22px,6.2vw,32px);font-weight:900;letter-spacing:-.035em;-webkit-text-stroke:.45px currentColor;text-shadow:0 0 3px rgba(255,255,255,.84),0 0 18px currentColor,0 0 28px currentColor,0 2px 12px #050711}
+.discover-swipe-feedback__label{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;gap:7px;max-width:96%;white-space:nowrap;font-size:clamp(22px,6.2vw,32px);font-weight:900;letter-spacing:-.035em;-webkit-text-stroke:0;text-shadow:none;filter:none;will-change:opacity}
 .discover-swipe-feedback--left{color:rgb(var(--palette-dislike-rgb));--discover-fog-rgb:var(--palette-dislike-rgb)}
 .discover-swipe-feedback--right{color:rgb(var(--palette-like-rgb));--discover-fog-rgb:var(--palette-like-rgb)}
 .discover-swipe-feedback--up{color:rgb(var(--palette-wishlist-rgb));--discover-fog-rgb:var(--palette-wishlist-rgb)}
