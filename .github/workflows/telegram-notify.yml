@@ -1,0 +1,41 @@
+name: Telegram CI/CD notifications
+
+# workflow_run executes from the default branch, without running untrusted PR code.
+on:
+  workflow_run:
+    workflows:
+      - Frontend CI
+      - VPS staging deployment
+      - VPS production deployment
+      - RateApp daily production health
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: telegram-notify-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout trusted main notification code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Validate message rendering
+        run: python3 -m unittest discover -s tests -p 'test_telegram_ci_notify.py' -v
+
+      - name: Send final status to Telegram
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ vars.TG_CHAT_ID }}
+          GH_READ_TOKEN: ${{ github.token }}
+        run: python3 scripts/telegram_ci_notify.py
