@@ -67,6 +67,45 @@ class TelegramCIMessageTests(unittest.TestCase):
         self.assertIn("&lt;evil&gt;", text)
         self.assertNotIn("<evil>", text)
 
+    def test_release_pr_from_develop_is_marked_production_not_staging(self):
+        event = notification("Frontend CI", "failure", "pull_request", "develop")
+        event["workflow_run"]["pull_requests"] = [
+            {"number": 70, "head": {"ref": "develop"}, "base": {"ref": "main"}},
+        ]
+        message = make_message(event, [
+            {"name": "build", "conclusion": "success"},
+            {"name": "backend-tests", "conclusion": "success"},
+            {"name": "mobile-e2e", "conclusion": "failure"},
+        ])
+        self.assertIn("Production · релизные тесты НЕ пройдены", message)
+        self.assertIn("develop → main", message)
+        self.assertIn("Цель PR: <b>main · production</b>", message)
+        self.assertIn("перенос в production заблокирован", message)
+        self.assertIn("❌ Мобильные E2E", message)
+        self.assertNotIn("Staging", message)
+
+    def test_release_pr_success_is_pre_deployment_not_published(self):
+        event = notification("Frontend CI", "success", "pull_request", "develop")
+        event["workflow_run"]["pull_requests"] = [
+            {"number": 70, "base": {"ref": "main"}},
+        ]
+        message = make_message(event, [])
+        self.assertIn("Production · релизные тесты пройдены", message)
+        self.assertIn("production ещё не обновлён", message)
+        self.assertNotIn("Staging", message)
+
+    def test_staging_pr_and_deploy_keep_separate_labels(self):
+        event = notification("Frontend CI", "failure", "pull_request", "feature/test")
+        event["workflow_run"]["pull_requests"] = [
+            {"number": 75, "base": {"ref": "develop"}},
+        ]
+        message = make_message(event)
+        self.assertIn("Staging · PR-проверки не пройдены", message)
+        self.assertIn("Цель PR: <b>develop · staging</b>", message)
+        self.assertNotIn("релизные тесты", message)
+        self.assertIn("Staging обновлён",
+                      make_message(notification("VPS staging deployment", "success")))
+
     def test_manual_test_notification(self):
         self.assertIn("Telegram подключён", make_message({}))
 
