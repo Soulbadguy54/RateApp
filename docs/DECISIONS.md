@@ -189,3 +189,9 @@ PR: https://github.com/Soulbadguy54/RateApp/pull/68
 Android Back confirmation уменьшается с 3000 до 1800 мс; в toast нет отсчёта, только указание нажать/свайпнуть «Назад» повторно. Не обещать гарантированное закрытие PWA средствами JavaScript. По прямому запросу владельца полный CI обязателен перед production release.
 
 PR: https://github.com/Soulbadguy54/RateApp/pull/69
+
+## ADR-039 · Релиз по ссылке: не ждать CI в ChatGPT, автослияние строго после зелёных тестов (27.10.2026; release PR #70)
+
+Владелец меняет определение интерактивного цикла: после **явного разрешения** выпуска агент запускает релиз и возвращает ссылку на конкретный GitHub Actions run, не удерживая сессию до окончания полного тестирования/деплоя. Авторитетный результат проверки — GitHub, уведомление владельцу — Telegram; ошибки разбираются по его следующему сообщению. Объективная Definition of Done у опубликованного приложения не меняется: build + backend + mobile E2E + main CI + успешный VPS deployment/smoke.
+
+Для `develop`→`main` PR с `release-approved` применяем автоматизированный GitHub Actions `promote-approved-release` в `ci.yml`, с `needs: [build, backend-tests, mobile-e2e]`. Перед слиянием повторно проверять live PR base/head, origin repo, точный tested SHA и label. Делать squash-merge только через GitHub API с expected SHA, который соблюдает branch protection/review. По красным проверкам или ошибке merge ничего не продвигать в production; telegram sender отправляет ошибку и ссылку. Новые staging-итерации не получают release label автоматически; привилегированные секреты не доступны незнакомым fork PR. Это заменяет требование ADR-016/034 вручную дожидаться полного прогона при запуске релиза, **не** заменяет обязательность полного CI перед публикацией.
