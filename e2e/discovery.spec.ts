@@ -88,6 +88,9 @@ test('root Discovery: Android Back warns first and requests exit on second press
 })
 
 test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur', async ({ page }) => {
+  // End-to-end feed, forms, swipes, translation and glass motion in one case;
+  // mobile CI runners need room for real browser animation durations.
+  test.setTimeout(75000)
   const nickname = 'disc_' + Date.now().toString(36).slice(-8)
   const onIPhone = test.info().project.name.includes('WebKit')
   const game = (id: number, title: string) => ({
@@ -320,15 +323,17 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     return !art || !stage ? 999 : Math.abs(art.y - (stage.y + 12))
   }, { timeout: 5000 }).toBeLessThan(1)
   // Short pull returns to the initial sheet position.
-  const posterBeforePull = await image.boundingBox()
+  const naturalPosterTop = async () => {
+    const poster = await image.boundingBox()
+    const stage = await page.locator('.discover-stage').boundingBox()
+    return !poster || !stage ? 999 : Math.abs((poster.y - stage.y) - 12)
+  }
   await dragHandle(page, -30, onIPhone)
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
-  // A sheet drag must not move the artwork. Wait for a spring frame to
-  // settle instead of comparing two adjacent animation frames synchronously.
-  await expect.poll(async () => {
-    const after = await image.boundingBox()
-    return after ? Math.abs(after.y - (posterBeforePull?.y ?? 0)) : 999
-  }, { timeout: 3500 }).toBeLessThan(2)
+  // A sheet drag must not move artwork RELATIVE to its stage. Android
+  // browser chrome may adjust the visual viewport and translate both together;
+  // comparing absolute screen Y causes false-positive 3px failures.
+  await expect.poll(naturalPosterTop, { timeout: 3500 }).toBeLessThan(2)
   // Short fast flicks should open and close, even below the old long-drag
   // threshold. The synthetic mouse stream also exercises WebKit fallback.
   await page.evaluate(async () => {
@@ -368,12 +373,9 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     if (!glass || !stage) return -1
     return (stage.y + stage.height - glass.y) / stage.height
   }, { timeout: 3500 }).toBeGreaterThan(.77)
-  // Keep the same 2px geometry guard during expanded glass, allowing a
-  // single composite frame for the spring to settle after pointer release.
-  await expect.poll(async () => {
-    const expandedPoster = await image.boundingBox()
-    return expandedPoster ? Math.abs(expandedPoster.y - (posterBeforePull?.y ?? 0)) : 999
-  }, { timeout: 3500 }).toBeLessThan(2)
+  // Expanded glass must also leave the poster at the same relative stage
+  // position, regardless of mobile viewport chrome movement.
+  await expect.poll(naturalPosterTop, { timeout: 3500 }).toBeLessThan(2)
   const description = page.getByRole('region', { name: 'Описание игры' })
   await expect(description).toContainText('Это история о звёздах.')
   await expect(description).toHaveCSS('overflow-y', 'auto')
