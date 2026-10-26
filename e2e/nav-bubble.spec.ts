@@ -16,6 +16,21 @@ test('game nav: tap priority, hold-and-drag bubble, swipe-only pinning, history 
   if (await installClose.isVisible()) await installClose.click()
 
   const slot = page.locator('.bottom-nav__item--switchable')
+  const backFromDiscoveryToDatabase = async () => {
+    // Discovery is a root tab: Android Back warns instead of returning to
+    // the previous tab. Switch explicitly via the persistent bottom nav.
+    await page.goBack()
+    await expect(page.locator('.discover-screen')).toBeVisible()
+    await expect(page.locator('.app-exit-toast')).toBeVisible()
+    await slot.focus()
+    await page.keyboard.press('ArrowRight') // discovery -> database shortcut
+    await expect(slot).toContainText('База игр')
+    await slot.click()
+    await expect(page.getByRole('heading', { name: 'База игр' })).toBeVisible()
+    await slot.focus()
+    await page.keyboard.press('ArrowRight') // restore pinned discovery shortcut
+    await expect(slot).toContainText('Для тебя')
+  }
   await expect(slot).toContainText('База игр')
   await slot.click()
   await expect(page.getByRole('heading', { name: 'База игр' })).toBeVisible()
@@ -89,10 +104,9 @@ test('game nav: tap priority, hold-and-drag bubble, swipe-only pinning, history 
   await expect(page).toHaveURL(/tab=discovery/)
   await expect(page.locator('.bottom-nav__bubble')).toHaveCount(0)
 
-  // Both destinations retain normal browser history.
-  await page.goBack()
-  await expect(page.getByRole('heading', { name: 'База игр' })).toBeVisible()
-  await expect(slot).toContainText('Для тебя')
+  // System Back from a root tab should warn; tab switching remains
+  // available through the shared navigation rather than in-page arrows.
+  await backFromDiscoveryToDatabase()
 
   // Drag/release right after the droplet appears: hit testing must use the
   // final anchor geometry, even while its visual surface is still expanding.
@@ -106,8 +120,7 @@ test('game nav: tap priority, hold-and-drag bubble, swipe-only pinning, history 
   await page.mouse.move(anchor.x + anchor.width * .75, anchor.y + anchor.height / 2)
   await page.mouse.up()
   await expect(page.locator('.discover-screen')).toBeVisible()
-  await page.goBack()
-  await expect(page.getByRole('heading', { name: 'База игр' })).toBeVisible()
+  await backFromDiscoveryToDatabase()
 
   // A deliberate sideways gesture changes ONLY the pinned shortcut.
   box = await slot.boundingBox()
@@ -201,6 +214,7 @@ test('game nav: liquid path retracts without an orphan and rapid reopen works', 
   if (await close.isVisible()) await close.click()
 
   const slot = page.locator('.bottom-nav__item--switchable')
+  const initialUrl = page.url()
   const coords = await slot.boundingBox()
   if (!coords) throw new Error('Navigation slot missing')
   const x = coords.x + coords.width / 2
@@ -248,5 +262,7 @@ test('game nav: liquid path retracts without an orphan and rapid reopen works', 
   await expect(liquid).toHaveCount(1, { timeout: 3500 })
   await page.mouse.up()
   await expect(liquid).toHaveCount(0, { timeout: 2000 })
-  await expect(page.locator('.page--library')).toBeVisible()
+  // A cancelled bubble must preserve whichever root tab the new user
+  // actually opened; registration doesn't guarantee the library tab.
+  await expect(page).toHaveURL(initialUrl)
 })
