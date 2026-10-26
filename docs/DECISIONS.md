@@ -63,3 +63,11 @@ Sentry DSN, PITR/snapshot, branch protection, production Alembic baseline — о
 CI запускается для `develop` и `main`. `develop` после успешного CI публикует отдельные stage-образы; привилегированный SSH-dispatcher из проверенного `main` допускает только текущий commit `develop` и использует compose/scripts из `main`, не выполняет скрипты из feature-ветки как root. Новые функции тестируются на staging до принятия решения о релизе на `main`.
 
 Предварительные условия: полный CI для PR; успешный `main` deploy/production smoke; безопасный staging bootstrap и подтверждённый `dev.r-app.ru` smoke. Контур не считать готовым до фактической проверки HTTPS и входа владельца.
+
+## ADR-038 · Финальные уведомления о CI/CD в Telegram без постоянного polling (27.10.2026; PR #70)
+
+Решение: результаты проверок и деплоя должны доходить до владельца автономно через GitHub Actions, а не через повторяющиеся запросы статуса в чат. Разделять fast staging preview (только образ и smoke), релизный полный CI (backend/build/mobile-e2e), staging deploy и production deploy. Ожидаемые сообщения — **один итог на значимый этап**: успешный staging-deploy, успешный production-deploy, успешный/неуспешный ручной релизный CI или PR CI, а также неудача без последующего этапа. Исключить дубли промежуточных успехов, отменённые проверки и ежедневный успешный health. Не называть быстрый `develop` прогон полным QA.
+
+Доверенный `workflow_run`-слушатель размещать исключительно в default `main` и выполнять только проверенный код main, а не payload, скрипты/артефакты feature-веток. Отправлять сообщения через Telegram Bot API и `parse_mode=HTML` (яркие эмоджи, статусы, links) с экранированием текста из event. Токен хранить только в GitHub Secret `TG_BOT_TOKEN`, личный идентификатор адресата — только в Actions Variable `TG_CHAT_ID`. Если переменные не заданы, workflow должен явно завершаться ошибкой, а не притворяться успешной доставкой. Отдельный `workflow_dispatch` проверяет доступность Telegram без деплоя. Критерий активации — реально успешный тестовый workflow и полученное уведомление.
+
+При добавлении интеграции запрещается автоматически переносить ещё не принятые staging-функции на production. PR: https://github.com/Soulbadguy54/RateApp/pull/70
