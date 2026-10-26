@@ -109,7 +109,7 @@ GitHub: `feature/*` → `develop` (CI и отдельный VPS staging-deploy) 
 
 **Статус записи:** конфигурация предложена в PR #44. Пока не подтверждены bootstrap, GitHub Actions, TLS, staging API и вход пользователя — развёртывание не считать законченным. После проверки обновить статус и SHA.
 
-## 11. Telegram-сводки CI/CD (27.10.2026, PR #70)
+## 11. Telegram-сводки CI/CD (27.10.2026, PR #74)
 
 Workflow `.github/workflows/telegram-notify.yml` на основной ветке получает только завершённые события `workflow_run` от `Frontend CI`, `VPS staging deployment`, `VPS production deployment`, `RateApp daily production health`. Приложение не делает Telegram-запросов. Доверенный скрипт `scripts/telegram_ci_notify.py` формирует аккуратную HTML-карточку с результатом, ссылкой на Actions, длительностью и (для полного CI) поимённым статусом build/backend/mobile-e2e/smoke. CI staging `develop` по ADR-034 — preview без полных тестов, и **не** маркируется сообщением «полный CI прошёл». Для `main` об успехе сообщает уже завершённый production deploy, а не промежуточный успешный CI; неудача CI сообщается сразу. Про отмену/skip и ежедневный успех health не уведомлять.
 

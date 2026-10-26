@@ -1,6 +1,6 @@
 # Rate APP — история разработки
 
-## 27 октября 2026 — Telegram-уведомления CI/CD (PR #70)
+## 27 октября 2026 — Telegram-уведомления CI/CD (PR #74)
 
 - Добавлен отдельный защищённый GitHub Actions workflow `Telegram CI/CD notifications`: сообщения о результате ручного полного CI/PR release checks, о неудаче production CI, об окончательном результате staging и production VPS-деплоя, а также о сбое ежедневной production health-проверки.
 - Текст структурирован Telegram HTML (эмоджи, жирные заголовки, длительность, раздельные статусы frontend/backend/mobile E2E, ссылки на Actions). Успешные промежуточные stage-preview и main CI сообщения не дублируются; отменённые и пропущенные попытки молчат.
