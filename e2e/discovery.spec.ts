@@ -68,7 +68,8 @@ test('root Discovery: Android Back warns first and requests exit on second press
 
   await page.goBack()
   await expect(page.locator('.discover-screen')).toBeVisible()
-  await expect(page.locator('.app-exit-toast')).toContainText('Нажми «Назад» ещё раз')
+  await expect(page.locator('.app-exit-toast')).toContainText('Нажми или свайпни «Назад» повторно')
+  await expect(page.locator('.app-exit-toast')).not.toContainText('секунд')
   await expect(page).toHaveURL(/tab=discovery/)
 
   // Capture the requested native history exit rather than actually closing
@@ -115,6 +116,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     })
   })
   const actions: string[] = []
+  const undoneGames: number[] = []
   let releaseFeed: () => void = () => {}
   const feedGate = new Promise<void>(resolve => { releaseFeed = resolve })
   await page.route('**/api/discover/feed', async route => {
@@ -136,9 +138,10 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     actions.push(post.action)
     await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' })
   })
-  await page.route('**/api/discover/feedback/*', route => route.fulfill({
-    status: 200, contentType: 'application/json', body: '{"ok":true}',
-  }))
+  await page.route('**/api/discover/feedback/*', route => {
+    undoneGames.push(Number(route.request().url().split('/').pop()))
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' })
+  })
   let detailRequests = 0
   await page.route('**/api/games/*/details', route => {
     detailRequests += 1
@@ -481,13 +484,16 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     return !art || !glass ? 999 : Math.abs(glass.y - (art.y + art.height + 12))
   }, { timeout: 6500 }).toBeLessThan(4)
   expect(actions).toEqual(['like'])
-  // Discovery is a root tab: neither an in-page back button nor a
-  // recommendation undo arrow should be shown. Start a fresh feed for
-  // the opposite-swipe assertion rather than stepping backward.
-  await expect(page.getByRole('button', { name: 'Шаг назад' })).toHaveCount(0)
+  // This is a root tab without navigation Back; ↶ undoes the last
+  // recommendation action, not a tab transition.
   await expect(page.getByRole('button', { name: 'Вернуться в базу игр' })).toHaveCount(0)
-  await page.reload()
+  const undo = page.getByRole('button', { name: 'Отменить последний свайп' })
+  await expect(undo).toBeVisible()
+  await expect(undo).toContainText('↶')
+  await undo.click()
   await expect(page.getByText('Discovery One')).toBeVisible()
+  expect(undoneGames).toEqual([900000001])
+  await expect(undo).toHaveCount(0)
   // The persistent glass updates before AnimatePresence mounts the returned
   // poster. Wait for the actual swipe target, not just the new sheet title.
   await expect(page.locator('.discover-cover__gesture')).toHaveAttribute('aria-label', 'Свайпы для игры Discovery One')
@@ -509,7 +515,11 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   expect(actions).toEqual(['like', 'dislike', 'wishlist'])
   await expect(page.locator('.discover-swipe-feedback--up')).toHaveCount(1)
   await expect(page.locator('.discover-swipe-feedback--up')).toHaveCSS('color', 'rgb(255, 162, 202)')
-  await page.getByRole('button', { name: 'Вернуться в базу игр' }).click()
-  await expect(page.getByRole('heading', { name: 'База игр' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Отменить последний свайп' })).toBeVisible()
+  await page.getByRole('button', { name: 'Отменить последний свайп' }).click()
+  await expect(page.getByText('Discovery Two')).toBeVisible()
+  expect(undoneGames).toEqual([900000001, 900000002])
+  await page.locator('.bottom-nav__item').filter({ hasText: 'Мои игры' }).click()
+  await expect(page.locator('.page--library')).toBeVisible()
   await expect(page.locator('.bottom-nav')).toBeVisible()
 })

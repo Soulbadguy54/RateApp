@@ -61,6 +61,7 @@ export default function DiscoverView({
   const reducedMotion = useReducedMotion()
   const [cards, setCards] = useState<Game[]>([])
   const [index, setIndex] = useState(0)
+  const [history, setHistory] = useState<{ gameId: number; action: DiscoveryAction }[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [remaining, setRemaining] = useState(0)
@@ -493,6 +494,7 @@ export default function DiscoverView({
       saved = true
       setDeparture(direction)
       showSwipeFeedback(direction, 1, true)
+      setHistory(previous => [...previous, { gameId: game.id, action }])
       setIndex(value => value + 1)
       if (action === 'wishlist') onWishlistChange()
     } catch (reason) {
@@ -502,6 +504,30 @@ export default function DiscoverView({
     } finally {
       // Never animate the dragged art back to centre while it is also exiting.
       if (!saved) resetTilt()
+      setBusy(false)
+    }
+  }
+
+  // In-feed undo is distinct from browser/system Back: restore the previous
+  // recommendation and remove only its last recorded reaction.
+  const undo = async () => {
+    const last = history[history.length - 1]
+    if (!last || busy || expanded || helpOpen) return
+    setBusy(true)
+    setError('')
+    try {
+      const response = await fetch('/api/discover/feedback/' + last.gameId, { method: 'DELETE' })
+      if (!response.ok) throw new Error('Не получилось отменить свайп.')
+      feedbackAnimationRef.current?.stop()
+      if (feedbackHoldRef.current !== null) window.clearTimeout(feedbackHoldRef.current)
+      feedbackOpacity.set(0)
+      setFeedbackDirection(null)
+      setHistory(previous => previous.slice(0, -1))
+      setIndex(value => Math.max(0, value - 1))
+      if (last.action === 'wishlist') onWishlistChange()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Ошибка соединения.')
+    } finally {
       setBusy(false)
     }
   }
@@ -574,6 +600,11 @@ export default function DiscoverView({
   return (
     <section className="discover-screen" aria-label="Персональные рекомендации игр">
       <header className="discover-topbar">
+        {history.length > 0 && !expanded && (
+          <button type="button" className="discover-icon-button discover-icon-button--undo"
+            aria-label="Отменить последний свайп" title="Отменить последний свайп"
+            onClick={() => void undo()} disabled={busy || helpOpen}>↶</button>
+        )}
         <button type="button" className="discover-icon-button discover-icon-button--info"
           aria-label="Показать обучение" onClick={() => setHelpOpen(true)}>i</button>
       </header>
