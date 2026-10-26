@@ -3873,3 +3873,6 @@ body:has(.auth-shell) .install-prompt {
 
 /* Never cover login/registration controls with the install suggestion. */
 body:has(.auth-shell) .install-prompt { display: none; }
+
+/* Android back-to-exit safeguard sits above the shared bottom navigation. */
+.app-exit-toast{position:fixed;left:50%;bottom:calc(var(--bottom-nav-height) + var(--safe-bottom) + 18px);transform:translateX(-50%);z-index:1100;width:max-content;max-width:calc(100vw - 30px);padding:12px 16px;border-radius:14px;border:1px solid var(--line-strong);background:rgba(20,24,33,.96);color:#f7f7fa;box-shadow:0 6px 24px rgba(0,0,0,.32);font-size:13px;font-weight:650;line-height:1.4;text-align:center;pointer-events:none}
