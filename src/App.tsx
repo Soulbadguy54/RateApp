@@ -64,7 +64,7 @@ type AppHistoryEntry = {
 }
 
 const validTabs: Tab[] = ['library', 'add', 'collections', 'profile', 'discovery']
-const EXIT_CONFIRM_WINDOW_MS = 3000
+const EXIT_CONFIRM_WINDOW_MS = 1800
 
 function isRootScreen(view: AppView): boolean {
   return view.gameId == null && view.formGameId == null && !view.collectionId
@@ -3365,7 +3365,7 @@ function App() {
 
       {exitPromptVisible && (
         <div className="app-exit-toast" role="status" aria-live="assertive">
-          Нажми «Назад» ещё раз в течение 3 секунд, чтобы выйти из приложения
+          Нажми или свайпни «Назад» повторно, чтобы выйти
         </div>
       )}
       <nav className="bottom-nav" aria-label="Основная навигация">
