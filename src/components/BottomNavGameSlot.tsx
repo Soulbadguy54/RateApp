@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { PointerEvent as ReactPointerEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { AnimatePresence, animate, motion, useMotionValue, usePresence, useReducedMotion, useTransform } from 'motion/react'
 import Icon, { type IconName } from './Icon'
@@ -40,13 +40,12 @@ const LIQUID_VANISH_PROGRESS = -.36
 
 
 /**
- * Owns one reversible animation value for the full morph lifecycle.
- * Closing animates the CURRENT progress back to zero, rather than restarting
- * another exit keyframe timeline; this removes the jump/hitch on a fast release.
- * Exit continues past the opening droplet to an invisible point before
- * usePresence removes the SVG, so no residual square can flash at the end.
+ * Shape, rim AND clickable choices share a single lifecycle/progress value.
+ * The former two AnimatePresence trees raced one another on close: the
+ * choices faded/remounted independently while the SVG was still collapsing.
+ * Keep them mounted together until the final invisible drop frame.
  */
-function LiquidMorph({ reduceMotion }: { reduceMotion: boolean }) {
+function LiquidMorph({ reduceMotion, children }: { reduceMotion: boolean; children: ReactNode }) {
   const [isPresent, safeToRemove] = usePresence()
   const progress = useMotionValue(reduceMotion ? 1 : 0)
   const shape = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .46, 1], [
@@ -56,6 +55,8 @@ function LiquidMorph({ reduceMotion }: { reduceMotion: boolean }) {
   // zero area. Opening still starts at progress 0 with the original droplet.
   const surfaceOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0], [0, 1])
   const rimOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .46, .85, 1], [0, .85, .5, .12, 0])
+  // Content fades with the returning surface, not on an unrelated timeline.
+  const choicesOpacity = useTransform(progress, [0, .34, .6, 1], [0, 0, .8, 1])
 
   useEffect(() => {
     if (reduceMotion) {
@@ -65,8 +66,8 @@ function LiquidMorph({ reduceMotion }: { reduceMotion: boolean }) {
     }
     let interrupted = false
     const animation = animate(progress, isPresent ? 1 : LIQUID_VANISH_PROGRESS, {
-      duration: isPresent ? .66 : .45,
-      ease: isPresent ? [.22, .73, .2, 1] : [.44, 0, .4, 1],
+      duration: isPresent ? .66 : .54,
+      ease: isPresent ? [.22, .73, .2, 1] : [.35, 0, .36, 1],
     })
     if (!isPresent) {
       void animation.then(() => {
@@ -80,22 +81,33 @@ function LiquidMorph({ reduceMotion }: { reduceMotion: boolean }) {
   }, [isPresent, progress, reduceMotion, safeToRemove])
 
   return (
-    <motion.svg
-      className="bottom-nav__liquid-surface"
-      style={{ opacity: surfaceOpacity }}
-      viewBox="0 0 202 88"
-      preserveAspectRatio="none"
-      aria-hidden="true"
-    >
-      <motion.path className="bottom-nav__liquid-path" d={shape} />
-      {!reduceMotion && (
-        <motion.path
-          className="bottom-nav__liquid-rim"
-          d={shape}
-          opacity={rimOpacity}
-        />
-      )}
-    </motion.svg>
+    <>
+      <motion.svg
+        className="bottom-nav__liquid-surface"
+        style={{ opacity: surfaceOpacity }}
+        viewBox="0 0 202 88"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <motion.path className="bottom-nav__liquid-path" d={shape} />
+        {!reduceMotion && (
+          <motion.path
+            className="bottom-nav__liquid-rim"
+            d={shape}
+            opacity={rimOpacity}
+          />
+        )}
+      </motion.svg>
+      <motion.div
+        className="bottom-nav__bubble"
+        role="group"
+        aria-label="Выбрать раздел базы игр"
+        aria-hidden={!isPresent}
+        style={{ opacity: choicesOpacity, pointerEvents: isPresent ? 'auto' : 'none' }}
+      >
+        {children}
+      </motion.div>
+    </>
   )
 }
 
@@ -359,19 +371,8 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
         } as CSSProperties}
       >
         <AnimatePresence initial={false}>
-          {menuOpen && <LiquidMorph key="liquid" reduceMotion={Boolean(reduceMotion)} />}
-        </AnimatePresence>
-        <AnimatePresence>
           {menuOpen && (
-            <motion.div
-              className="bottom-nav__bubble"
-              role="group"
-              aria-label="Выбрать раздел базы игр"
-              initial={reduceMotion ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, transition: { duration: reduceMotion ? 0 : .1 } }}
-              transition={{ duration: reduceMotion ? 0 : .24, delay: reduceMotion ? 0 : .34 }}
-            >
+            <LiquidMorph key="liquid" reduceMotion={Boolean(reduceMotion)}>
               {options.map(choice => (
                 <button
                   key={choice.id}
@@ -383,8 +384,6 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                   onPointerEnter={() => { if (!pressRef.current) setHovered(choice.id) }}
                   onPointerLeave={() => { if (!pressRef.current) setHovered(null) }}
                   onClick={() => {
-                    // Real clicks/keyboard selection also work without the
-                    // continuous press-and-drag gesture.
                     select(choice.id)
                     buttonRef.current?.focus()
                   }}
@@ -397,27 +396,17 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
                   }}
                 >
                   {(hovered ?? pinned) === choice.id && (
-                    <motion.span
-                      className="bottom-nav__active-surface bottom-nav__bubble-highlight"
-                      layoutId="bottom-nav-game-bubble-highlight"
-                      transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                    />
+                    // The highlight doesn't perform a second shared-layout
+                    // animation while the SVG is collapsing.
+                    <span className="bottom-nav__active-surface bottom-nav__bubble-highlight" />
                   )}
-                  <motion.span
-                    className="bottom-nav__content bottom-nav__bubble-choice-content"
-                    initial={reduceMotion ? false : { opacity: 0, y: 9, scale: .85 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={reduceMotion ? { duration: 0 } : {
-                      type: 'spring', stiffness: 380, damping: 22,
-                      delay: choice.id === 'add' ? .035 : .07,
-                    }}
-                  >
+                  <span className="bottom-nav__content bottom-nav__bubble-choice-content">
                     <Icon name={choice.icon} />
                     <span>{choice.label}</span>
-                  </motion.span>
+                  </span>
                 </button>
               ))}
-            </motion.div>
+            </LiquidMorph>
           )}
         </AnimatePresence>
       </div>

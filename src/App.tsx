@@ -3205,6 +3205,13 @@ function App() {
                     <DiscoverView
                       nickname={authUser.nickname}
                       onExit={() => goBackOr({ tab: 'add', gameId: null, collectionId: null, formGameId: null })}
+                      onAddPlaythrough={(game) => {
+                        // Discovery feed may contain a game not in the current
+                        // catalog subset. Register it before opening the form;
+                        // no discovery feedback is saved on a downward swipe.
+                        rememberCatalogResults([game])
+                        startAdding(game)
+                      }}
                       onWishlistChange={() => {
                         void fetch('/api/bootstrap').then(response => response.ok ? response.json() : null)
                           .then((payload: BootstrapPayload | null) => {

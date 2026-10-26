@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from 'react'
-import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
+import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react'
 import type { PanInfo, MotionStyle } from 'motion/react'
 import { Cover } from '../components/GameCard'
 import { WishlistHeart } from '../components/CollectionAppearance'
@@ -9,7 +9,7 @@ import Icon from '../components/Icon'
 import type { Game } from '../data'
 
 type DiscoveryAction = 'like' | 'dislike' | 'wishlist'
-type Direction = 'left' | 'right' | 'up'
+type Direction = 'left' | 'right' | 'up' | 'down'
 type Feed = { items: Game[]; remaining: number }
 type DescriptionTranslation = { description: string; language: 'ru' | 'en'; translated: boolean }
 type PosterState = { width: number; height: number; failed?: boolean }
@@ -53,11 +53,12 @@ function releaseLabel(game: Game) {
 }
 
 export default function DiscoverView({
-  nickname, onExit, onWishlistChange,
+  nickname, onExit, onWishlistChange, onAddPlaythrough,
 }: {
   nickname: string
   onExit: () => void
   onWishlistChange: () => void
+  onAddPlaythrough: (game: Game) => void
 }) {
   const reducedMotion = useReducedMotion()
   const [cards, setCards] = useState<Game[]>([])
@@ -80,6 +81,8 @@ export default function DiscoverView({
   const [translationPendingId, setTranslationPendingId] = useState<number | null>(null)
   const [feedbackDirection, setFeedbackDirection] = useState<Direction | null>(null)
   const feedbackOpacity = useMotionValue(0)
+  // Words are deliberately much brighter than the translucent edge atmosphere.
+  const feedbackLabelOpacity = useTransform(feedbackOpacity, value => clamp(value * 2.7, 0, 1))
   const feedbackAnimationRef = useRef<{ stop: () => void } | null>(null)
   const feedbackHoldRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cardPivot = useMotionValue('center top')
@@ -137,6 +140,13 @@ export default function DiscoverView({
   const cardTilt = useMotionValue(0)
   const cardLift = useMotionValue(0)
   const cardScale = useMotionValue(1)
+  // Smooth over individual pointer events and changes in velocity/axis.
+  // Transform values remain continuous when reversing within one swipe.
+  const smoothShift = useSpring(cardShift, { stiffness: 295, damping: 36, mass: .72 })
+  const smoothTilt = useSpring(cardTilt, { stiffness: 275, damping: 34, mass: .72 })
+  const smoothLift = useSpring(cardLift, { stiffness: 295, damping: 36, mass: .72 })
+  const smoothScale = useSpring(cardScale, { stiffness: 295, damping: 36, mass: .72 })
+  const panAxisRef = useRef<'horizontal' | 'vertical' | null>(null)
 
   useEffect(() => {
     const stage = stageRef.current
@@ -457,16 +467,24 @@ export default function DiscoverView({
   }
   const resetTilt = () => {
     stopCardReset()
-    const transition = reducedMotion ? { duration: 0 } : { duration: .22, ease: 'easeOut' as const }
-    cardResetRef.current = [
-      animate(cardShift, 0, transition),
-      animate(cardTilt, 0, transition),
-      animate(cardLift, 0, transition),
-      animate(cardScale, 1, transition),
-    ]
+    // A spring follows these targets; don't start four competing tweens.
+    cardShift.set(0)
+    cardTilt.set(0)
+    cardLift.set(0)
+    cardScale.set(1)
+  }
+  const resetAfterCardExit = () => {
+    // The old card has left. Snap shared springs only while no art is visible,
+    // so the next card never inherits its tilt or has a mid-exit reset jerk.
+    resetTilt()
+    smoothShift.jump(0)
+    smoothTilt.jump(0)
+    smoothLift.jump(0)
+    smoothScale.jump(1)
   }
   const decide = async (action: DiscoveryAction) => {
     if (!game || busy || helpOpen || expanded || pullRef.current || reveal.get() > .03) return
+    let saved = false
     setBusy(true)
     setError('')
     try {
@@ -477,6 +495,7 @@ export default function DiscoverView({
       })
       if (!response.ok) throw new Error('Не получилось сохранить свайп — попробуй ещё раз.')
       const direction = action === 'like' ? 'right' : action === 'dislike' ? 'left' : 'up'
+      saved = true
       setDeparture(direction)
       showSwipeFeedback(direction, 1, true)
       setHistory(previous => [...previous, { gameId: game.id, action }])
@@ -487,7 +506,8 @@ export default function DiscoverView({
       feedbackAnimationRef.current = animate(feedbackOpacity, 0, { duration: .22 })
       setError(reason instanceof Error ? reason.message : 'Ошибка соединения.')
     } finally {
-      resetTilt()
+      // Never animate the dragged art back to centre while it is also exiting.
+      if (!saved) resetTilt()
       setBusy(false)
     }
   }
@@ -512,46 +532,60 @@ export default function DiscoverView({
 
   const onPosterPan = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (busy || expanded || helpOpen || pullRef.current) return
-    stopCardReset()
     const { x, y } = info.offset
-    // Keep a single pivot when reversing direction. Switching between left
-    // and right transform-origins mid-touch made the poster visibly jump.
-    // No dead zone or 32px movement cap: the card follows the same finger
-    // continuously through centre, even left→right→left in one touch.
-    if (y < -5 && Math.abs(y) > Math.abs(x) * 1.15) {
-      cardLift.set(clamp(y * .26, -45, 0))
-      cardScale.set(1)
+    // Lock only the AXIS (not the sign): a user can reverse direction smoothly
+    // without switching translate/rotate models mid-gesture.
+    if (!panAxisRef.current) {
+      if (Math.hypot(x, y) < 12) return
+      panAxisRef.current = Math.abs(y) > Math.abs(x) * 1.12 ? 'vertical' : 'horizontal'
+    }
+    if (panAxisRef.current === 'vertical') {
+      cardLift.set(clamp(y * .42, -105, 105))
       cardShift.set(0)
       cardTilt.set(0)
-      showSwipeFeedback('up', clamp((Math.abs(y) - 12) / 135, 0, .72))
+      cardScale.set(1 - clamp(Math.abs(y) / 1600, 0, .07))
+      if (Math.abs(y) > 12) {
+        showSwipeFeedback(y < 0 ? 'up' : 'down', clamp((Math.abs(y) - 10) / 115, 0, .82))
+      } else {
+        feedbackOpacity.set(0)
+      }
     } else {
-      cardShift.set(clamp(x * .55, -stageHeight * .27, stageHeight * .27))
-      cardTilt.set(clamp(x * .027, -9, 9))
+      cardShift.set(clamp(x * .48, -stageHeight * .34, stageHeight * .34))
+      cardTilt.set(clamp(x * .019, -6.5, 6.5))
       cardLift.set(0)
-      cardScale.set(1)
-      if (Math.abs(x) > 10 && Math.abs(x) > Math.abs(y) * .95) {
-        showSwipeFeedback(x > 0 ? 'right' : 'left', clamp((Math.abs(x) - 10) / 125, 0, .75))
+      cardScale.set(1 - clamp(Math.abs(x) / 2400, 0, .045))
+      if (Math.abs(x) > 10) {
+        showSwipeFeedback(x > 0 ? 'right' : 'left', clamp((Math.abs(x) - 10) / 115, 0, .82))
       } else {
         feedbackOpacity.set(0)
       }
     }
   }
   const onPosterPanEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const axis = panAxisRef.current
+    panAxisRef.current = null
     if (busy || expanded || helpOpen || pullRef.current || reveal.get() > .03) {
       resetTilt()
       return
     }
     const { x, y } = info.offset
-    const up = y < -120 && Math.abs(y) > Math.abs(x) * 1.16
-    const sideways = Math.abs(x) > 115 && Math.abs(x) > Math.abs(y) * 1.12
+    const up = axis === 'vertical' && y < -120
+    const down = axis === 'vertical' && y > 120
+    const sideways = axis === 'horizontal' && Math.abs(x) > 115
+    if (down && game) {
+      // Navigation, not feedback: do not consume this recommendation or
+      // add an invented playthrough. The existing add form handles validation.
+      onAddPlaythrough(game)
+      return
+    }
     if (up || sideways) {
       const direction = up ? 'up' : x > 0 ? 'right' : 'left'
       showSwipeFeedback(direction, 1)
       void decide(up ? 'wishlist' : x > 0 ? 'like' : 'dislike')
-    } else {
-      feedbackAnimationRef.current?.stop()
-      feedbackAnimationRef.current = animate(feedbackOpacity, 0, { duration: .22 })
+      return
     }
+    feedbackAnimationRef.current?.stop()
+    feedbackAnimationRef.current = animate(feedbackOpacity, 0, { duration: .24 })
     resetTilt()
   }
 
@@ -588,7 +622,8 @@ export default function DiscoverView({
           </div>
         ) : (
           <>
-          <AnimatePresence mode="wait" initial={false} custom={departure}>
+          <AnimatePresence mode="wait" initial={false} custom={departure}
+            onExitComplete={resetAfterCardExit}>
             <motion.div key={game.id} className="discover-deck"
               initial={reducedMotion ? false : { opacity: 0, scale: .993 }}
               animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
@@ -603,7 +638,13 @@ export default function DiscoverView({
               exit="exit"
               transition={{ duration: .36, ease: [0.22, 1, 0.36, 1] }}>
               <motion.div className="discover-artwork"
-                style={{ x: cardShift, y: cardLift, scale: cardScale, rotate: cardTilt, transformOrigin: cardPivot }}>
+                style={{
+                  x: reducedMotion ? cardShift : smoothShift,
+                  y: reducedMotion ? cardLift : smoothLift,
+                  scale: reducedMotion ? cardScale : smoothScale,
+                  rotate: reducedMotion ? cardTilt : smoothTilt,
+                  transformOrigin: cardPivot,
+                }}>
                 <div className="discover-cover" aria-hidden="true">
                   {posterUrl && !posterState?.failed ? (
                     <>
@@ -636,6 +677,7 @@ export default function DiscoverView({
                 </div>
                 <motion.div
                   className="discover-cover__gesture"
+                  onPanStart={() => { panAxisRef.current = null; resetTilt() }}
                   onPan={onPosterPan}
                   onPanEnd={onPosterPanEnd}
                   aria-label={'Свайпы для игры ' + game.title}
@@ -649,6 +691,7 @@ export default function DiscoverView({
                     <span className="discover-hint discover-hint--up">↑ <WishlistHeart size={13} /> Хочу поиграть</span>
                     <span className="discover-hint discover-hint--left">← Не нравится</span>
                     <span className="discover-hint discover-hint--right">Нравится →</span>
+                    <span className="discover-hint discover-hint--down">↓ Добавить прохождение</span>
                   </div>
                 )}
               </motion.div>
@@ -746,6 +789,9 @@ export default function DiscoverView({
                 <div className="discover-guide__direction discover-guide__direction--right">
                   <strong>Нравится →</strong><span>Больше похожих</span>
                 </div>
+                <div className="discover-guide__direction discover-guide__direction--down">
+                  <strong>↓ Добавить прохождение</strong><span>Открыть форму игры</span>
+                </div>
               </div>
               <div className="discover-guide__intro">
                 <h2>Новые игры для тебя</h2>
@@ -759,16 +805,22 @@ export default function DiscoverView({
         </AnimatePresence>
       </div>
       {!helpOpen && feedbackDirection && (
-        <motion.div className={`discover-swipe-feedback discover-swipe-feedback--${feedbackDirection}`}
-          style={{ opacity: feedbackOpacity }} aria-hidden="true">
-          <span style={activePosterBounds ? {
-            left: activePosterBounds.screenLeft + activePosterBounds.width / 2,
-            top: activePosterBounds.screenTop + activePosterBounds.height / 2,
-          } : undefined}>
+        <div className={`discover-swipe-feedback discover-swipe-feedback--${feedbackDirection}`}
+          aria-hidden="true">
+          <motion.div className="discover-swipe-feedback__haze" style={{ opacity: feedbackOpacity }} />
+          <motion.span className="discover-swipe-feedback__label"
+            style={{
+              opacity: feedbackLabelOpacity,
+              ...(activePosterBounds ? {
+                left: activePosterBounds.screenLeft + activePosterBounds.width / 2,
+                top: activePosterBounds.screenTop + activePosterBounds.height / 2,
+              } : {}),
+            }}>
             {feedbackDirection === 'up' ? <><WishlistHeart size={26} /> Хочу поиграть</> :
-              feedbackDirection === 'left' ? 'Не нравится' : 'Нравится'}
-          </span>
-        </motion.div>
+              feedbackDirection === 'down' ? 'Добавить прохождение' :
+                feedbackDirection === 'left' ? 'Не нравится' : 'Нравится'}
+          </motion.span>
+        </div>
       )}
     </section>
   )

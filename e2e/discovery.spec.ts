@@ -11,15 +11,15 @@ async function movePointer(page: Page, fromX: number, fromY: number, toX: number
   await page.mouse.up()
 }
 
-async function dragCover(page: Page, direction: 'left' | 'right' | 'up') {
+async function dragCover(page: Page, direction: 'left' | 'right' | 'up' | 'down') {
   // With a short/wide poster the glass fills the lower stage: always begin
   // on the visible cover itself, never at an arbitrary viewport percentage.
   const art = await page.locator('.discover-cover__image, .discover-cover__fallback').boundingBox()
   if (!art) throw new Error('Discovery cover absent')
   const x = art.x + art.width * .5
-  const y = art.y + Math.min(art.height * (direction === 'up' ? .78 : .28), 220)
+  const y = art.y + Math.min(art.height * (direction === 'up' ? .78 : .25), 220)
   await movePointer(page, x, y, x + (direction === 'left' ? -160 : direction === 'right' ? 160 : 0),
-    y + (direction === 'up' ? -155 : 0))
+    y + (direction === 'up' ? -155 : direction === 'down' ? 165 : 0))
 }
 
 async function dragHandle(page: Page, delta: number, simulateTouch = false) {
@@ -144,7 +144,8 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.locator('.discover-guide__panel')).toHaveCount(0)
   await expect(page.locator('.discover-guide__intro')).toBeVisible()
   await expect(page.locator('.discover-guide__intro')).toContainText('Подбираем игры по твоим оценкам')
-  await expect(page.locator('.discover-guide__direction')).toHaveCount(3)
+  await expect(page.locator('.discover-guide__direction')).toHaveCount(4)
+  await expect(page.locator('.discover-guide__direction--down')).toContainText('Добавить прохождение')
   await expect(page.locator('.discover-guide__direction--left')).toContainText('Меньше похожих')
   await expect(page.locator('.discover-guide__direction--right')).toContainText('Больше похожих')
   await expect(page.locator('.discover-guide__direction--up')).toContainText('В список желаемого')
@@ -190,6 +191,7 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await expect(page.locator('.discover-hint--up')).toHaveCSS('top', '10px')
   await expect(page.locator('.discover-hint--left')).toHaveCSS('color', 'rgb(142, 186, 255)')
   await expect(page.locator('.discover-hint--right')).toHaveCSS('color', 'rgb(146, 233, 174)')
+  await expect(page.locator('.discover-hint--down')).toHaveCSS('color', 'rgb(248, 215, 131)')
   await expect(page.locator('.discover-hint--up')).toHaveCSS('color', 'rgb(255, 162, 202)')
   const stageRect = await page.locator('.discover-stage').boundingBox()
   await expect.poll(() => image.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBe(600)
@@ -260,6 +262,15 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     await expect(hint).toHaveCSS('animation-duration', '7.5s')
     await expect(hint).toHaveCSS('animation-delay', '0s')
   }
+  // Down navigates directly to the existing playthrough form.
+  // It must not save discovery feedback or discard the recommendation.
+  await dragCover(page, 'down')
+  await expect(page.getByRole('heading', { name: 'Прохождение' })).toBeVisible()
+  await expect(page.getByText('Discovery One')).toBeVisible()
+  expect(actions).toHaveLength(0)
+  await page.goBack()
+  await expect(page.locator('.discover-screen')).toBeVisible()
+  await expect(page.getByText('Discovery One')).toBeVisible()
   await expect(page.locator('.discover-sheet__ratings')).toContainText('IGDB')
   await expect(page.locator('.discover-sheet__ratings')).toContainText('Rate APP')
   await expect(page.locator('.discover-actions')).toHaveCount(0)
@@ -377,16 +388,19 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   await dragCover(page, 'right')
   await expect(page.getByText('Discovery Two')).toBeVisible()
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCount(1)
+  const label = page.locator('.discover-swipe-feedback__label')
+  await expect(label).toHaveCSS('font-weight', '900')
+  await expect(label).toHaveCSS('text-shadow', /28px/)
   // Check the held fog immediately after the decision, before intentionally
   // delaying the network request beyond the short afterglow duration.
-  await expect.poll(() => page.locator('.discover-swipe-feedback--right')
+  await expect.poll(() => page.locator('.discover-swipe-feedback__haze')
     .evaluate(node => Number(getComputedStyle(node).opacity)), { timeout: 1800 }).toBeGreaterThan(.1)
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('color', 'rgb(146, 233, 174)')
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('border-top-width', '0px')
   await expect(page.locator('.discover-swipe-feedback--right')).toHaveCSS('box-shadow', 'none')
   // These are broad RGBA ramps; unlike a filtered radial bloom they keep
   // enough color visible on real phone screens. No thin border is drawn.
-  const fogStyle = await page.locator('.discover-swipe-feedback--right').evaluate(node => {
+  const fogStyle = await page.locator('.discover-swipe-feedback__haze').evaluate(node => {
     const pseudo = getComputedStyle(node, '::before')
     return { background: pseudo.backgroundImage, filter: pseudo.filter }
   })
