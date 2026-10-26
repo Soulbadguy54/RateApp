@@ -116,3 +116,8 @@ Workflow `.github/workflows/telegram-notify.yml` на основной ветк�
 Конфигурация: GitHub repository secret `TG_BOT_TOKEN` (не пересылать в чате), repository Actions variable `TG_CHAT_ID` (числовой Telegram chat ID; не коммитить адресата в публичный исходный код). Новый бот должен быть запущен адресатом через `/start`. После задания обеих переменных инициировать `Telegram CI/CD notifications` → `Run workflow` с main: это независимая безопасная проверка реальной доставки. До подтверждения этого запуска и сообщения в Telegram **не считать интеграцию активированной**.
 
 `workflow_run` исполняется только из дефолтной ветки `main`; checkout всегда делает `ref: main`, не исполняет код feature/PR, запросы Telegram скрывают токен от логов. Ошибка Telegram-уведомления не меняет уже завершённый результат тестов или деплоя, но отмечается красным отдельным workflow. После staging-приёмки релиза сохраняются прежние правила тестирования и промоушена.
+
+
+## Telegram: отличие production release CI от staging (27.10.2026, PR #76)
+
+Telegram notifier `scripts/telegram_ci_notify.py` запускается из доверенной `main` и обрабатывает GitHub `workflow_run`. У полного CI релизного PR `develop → main` поле `head_branch` равно `develop`, хотя проверка является блокирующим этапом перед production и **не является staging-тестом**. Для достоверной маркировки берётся `workflow_run.pull_requests[].base.ref == main` и номер PR. Успешный pre-release CI ещё не означает выкладку; само развёртывание production и staging имеет отдельные GitHub workflows и независимые сообщения. При красном mobile E2E релизный PR #70 автоматически не сливается. Регрессия покрыта `tests/test_telegram_ci_notify.py`.
