@@ -259,7 +259,11 @@ test('game nav: liquid path retracts without an orphan and rapid reopen works', 
   await page.mouse.up()
   // Reopen quickly while the previous exit is still in flight.
   await page.mouse.down()
-  await expect(liquid).toHaveCount(1, { timeout: 3500 })
+  // The previous SVG is still fading out and already has count=1.
+  // Wait for the NEW long-press to activate; otherwise pointerup is treated
+  // as a tap on the slot and navigates to ?tab=add.
+  await expect(slot).toHaveAttribute('aria-expanded', 'true', { timeout: 3500 })
+  await expect(liquid).toHaveCount(1)
   await page.mouse.up()
   await expect(liquid).toHaveCount(0, { timeout: 2000 })
   // A cancelled bubble must preserve whichever root tab the new user
