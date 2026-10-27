@@ -247,7 +247,8 @@ def pr_target(run: dict[str, Any]) -> tuple[str, str] | None:
     return None
 
 
-def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None,\n                 revision: str | None = None, changes: list[str] | None = None) -> str | None:
+def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None,
+                 revision: str | None = None, changes: list[str] | None = None) -> str | None:
     if "workflow_run" not in event:
         return (
             "🔔 <b>Rate APP · Telegram подключён!</b>\n\n"
