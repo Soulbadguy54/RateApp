@@ -1,7 +1,29 @@
-/** A single signal for protected API requests that discover an expired login.
- * Bootstrap/login handle anonymous 401 themselves. Never retry a failed mutation.
+/** Track the first protected 401 even if a child request settles before
+ * the App has finished attaching React effects (notably fast WebKit mocks).
+ * Bootstrap/login handle anonymous 401 independently. Mutations are never retried.
  */
-export const SESSION_EXPIRED_EVENT = 'rateapp:session-expired'
+let sessionExpired = false
+const listeners = new Set<() => void>()
+
+export function subscribeSessionExpiry(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+
+export function getSessionExpiredSnapshot(): boolean {
+  return sessionExpired
+}
+
+export function resetSessionExpired(): void {
+  sessionExpired = false
+  listeners.forEach(listener => listener())
+}
+
+function markSessionExpired(): void {
+  if (sessionExpired) return
+  sessionExpired = true
+  listeners.forEach(listener => listener())
+}
 
 export async function sessionFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const response = await fetch(input, init)
@@ -15,7 +37,7 @@ export async function sessionFetch(input: RequestInfo | URL, init?: RequestInit)
     && path !== '/api/bootstrap'
     && !path.startsWith('/api/auth/')
   ) {
-    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
+    markSessionExpired()
   }
   return response
 }
