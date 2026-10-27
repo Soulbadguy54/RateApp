@@ -172,16 +172,15 @@ jobs:
 
   # The production release is explicitly authorized by the owner using the
   # release-approved label. Full required checks must all pass before merge.
-  # Same-repository, owner-approved develop→main releases. The named
-  # infrastructure-recovery branch is a one-time, explicitly approved
-  # exception for fixing the handoff on an already merged release.
+  # Same-repository, owner-approved develop→main releases. The one-time infrastructure-recovery branch is allowed only for fixing
+  # the second CI to VPS handoff of the already approved Discovery release.
   # No workflow_run privileged access to untrusted PR artifacts.
   promote-approved-release:
     if: >-
       ${{ github.event_name == 'pull_request' &&
           github.event.pull_request.base.ref == 'main' &&
           (github.event.pull_request.head.ref == 'develop' ||
-           github.event.pull_request.head.ref == 'fix/release-handoff-ci-20261027') &&
+           github.event.pull_request.head.ref == 'fix/ci-to-vps-explicit-handoff-20261027') &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           contains(github.event.pull_request.labels.*.name, 'release-approved') }}
     needs: [build, backend-tests, mobile-e2e]
@@ -203,7 +202,7 @@ jobs:
           json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
           test "$(jq -r '.state' <<<"$json")" = open
           test "$(jq -r '.base.ref' <<<"$json")" = main
-          test "$APPROVED_BRANCH" = develop || test "$APPROVED_BRANCH" = fix/release-handoff-ci-20261027
+          test "$APPROVED_BRANCH" = develop || test "$APPROVED_BRANCH" = fix/ci-to-vps-explicit-handoff-20261027
           test "$(jq -r '.head.ref' <<<"$json")" = "$APPROVED_BRANCH"
           test "$(jq -r '.head.repo.full_name' <<<"$json")" = "$REPOSITORY"
           test "$(jq -r '.head.sha' <<<"$json")" = "$TESTED_HEAD"
