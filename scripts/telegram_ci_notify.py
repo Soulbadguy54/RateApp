@@ -7,9 +7,12 @@ or logs; never check out code from the triggering PR or execute its artifacts.
 from __future__ import annotations
 
 import html
+import io
 import json
 import os
+import re
 import sys
+import zipfile
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -56,6 +59,156 @@ def get_jobs(run: dict[str, Any], token: str) -> list[dict[str, Any]]:
         return []
 
 
+
+# Upload-artifact holds the SHA selected by the deploy workflow, not the SHA of
+# the trusted main workflow definition. Those SHAs differ for staging.
+REVISION_ARTIFACT = "rateapp-deploy-revision"
+SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+
+
+def github_json(repo: str, path: str, token: str) -> dict[str, Any]:
+    """Read public GitHub metadata. Fail closed on missing/invalid data."""
+    if not token or "/" not in repo:
+        return {}
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/{path}",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "rateapp-telegram-ci",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as response:
+            return json.load(response)
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        return {}
+
+
+def deployed_revision(run: dict[str, Any], token: str) -> str | None:
+    """Resolve the actual container tag, never infer staging from main's SHA."""
+    repo = run.get("repository", {}).get("full_name") or os.getenv("GITHUB_REPOSITORY", "")
+    run_id = run.get("id")
+    if not isinstance(run_id, int) or not token or "/" not in repo:
+        return None
+    data = github_json(repo, f"actions/runs/{run_id}/artifacts?per_page=50", token)
+    for artifact in data.get("artifacts") or []:
+        if artifact.get("name") != REVISION_ARTIFACT or artifact.get("expired"):
+            continue
+        download = artifact.get("archive_download_url", "")
+        if not download.startswith(f"https://api.github.com/repos/{repo}/actions/artifacts/"):
+            continue
+        req = urllib.request.Request(download, headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "rateapp-telegram-ci",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=9) as response:
+                data_bytes = response.read(131073)
+            if len(data_bytes) > 131072:
+                return None
+            with zipfile.ZipFile(io.BytesIO(data_bytes)) as archive:
+                value = archive.read("deployed-sha.txt").decode("ascii").strip()
+            return value if SHA_PATTERN.fullmatch(value) else None
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError,
+                zipfile.BadZipFile, UnicodeError):
+            return None
+    return None
+
+
+def previous_deployed_revision(run: dict[str, Any], token: str) -> str | None:
+    repo = run.get("repository", {}).get("full_name") or os.getenv("GITHUB_REPOSITORY", "")
+    workflow_name = run.get("name")
+    workflow_file = (
+        "vps-deploy.yml" if workflow_name == "VPS production deployment"
+        else "vps-stage.yml" if workflow_name == "VPS staging deployment"
+        else None
+    )
+    if not workflow_file:
+        return None
+    data = github_json(repo, f"actions/workflows/{workflow_file}/runs?status=success&per_page=12", token)
+    for earlier in data.get("workflow_runs") or []:
+        if earlier.get("id") == run.get("id"):
+            continue
+        if str(earlier.get("created_at", "")) >= str(run.get("created_at", "")):
+            continue
+        revision = deployed_revision(earlier, token)
+        if revision:
+            return revision
+        # Older production runs had no revision artifact. Their source SHA is
+        # correct because the production job checks out the tested main head.
+        # NEVER make that assumption for staging: its outer run uses main.
+        if workflow_name == "VPS production deployment":
+            old_sha = earlier.get("head_sha", "")
+            if SHA_PATTERN.fullmatch(old_sha):
+                return old_sha
+    return None
+
+
+def concise_release_details(repo: str, commit_title: str, token: str) -> list[str]:
+    """Use existing PR notes when a release squash summarizes many changes."""
+    match = re.search(r"\(#(\d+)\)", commit_title)
+    if not match or not commit_title.lower().startswith(("release:", "release ", "релиз")):
+        return []
+    pr = github_json(repo, f"pulls/{match.group(1)}", token)
+    if not pr:
+        return []
+    body = (pr.get("body") or "").strip()
+    # Prefer author-maintained Markdown bullets, if present.
+    bullets = [
+        re.sub(r"\s+", " ", entry).strip(" -*")
+        for entry in re.findall(r"^\s*[-*]\s+(.+)$", body, flags=re.MULTILINE)
+    ]
+    if bullets:
+        return [entry[:120] for entry in bullets[:3]]
+    # Free-text release descriptions often enumerate features after a colon.
+    features = re.search(r"(?:Включает|Изменения|Состав)[^:]{0,120}:\s*([^\n.]+)", body, flags=re.IGNORECASE)
+    if features:
+        parts = [part.strip() for part in features.group(1).split(",") if part.strip()]
+        return [", ".join(parts[i:i + 2])[:120] for i in range(0, min(len(parts), 6), 2)]
+    return []
+
+
+def deployment_changes(run: dict[str, Any], token: str) -> tuple[str | None, list[str]]:
+    """Return a brief *deployed* change list; never claim unknown commits shipped.
+
+    Compare two actually successful deploys. GitHub queries are optional:
+    notification delivery must still succeed when metadata is unavailable.
+    """
+    repo = run.get("repository", {}).get("full_name") or os.getenv("GITHUB_REPOSITORY", "")
+    is_prod = run.get("name") == "VPS production deployment"
+    head = deployed_revision(run, token)
+    if not head and is_prod:
+        # Legacy production workflow already pins its tested main SHA.
+        head = run.get("head_sha", "")
+    if not head or not SHA_PATTERN.fullmatch(head):
+        return None, []
+    previous = previous_deployed_revision(run, token)
+    if previous == head:
+        return head, ["Повторная выкладка той же версии: изменений кода нет"]
+    subjects: list[str] = []
+    if previous and previous != head:
+        compared = github_json(repo, f"compare/{previous}...{head}", token)
+        if compared.get("status") in ("ahead", "identical"):
+            for commit in (compared.get("commits") or [])[-4:]:
+                subject = ((commit.get("commit") or {}).get("message") or "").split("\n", 1)[0].strip()
+                if subject:
+                    subjects.append(subject[:135])
+    if not subjects and not previous:
+        # First observable deployment: show only its subject, not an invented diff.
+        commit = github_json(repo, f"commits/{head}", token)
+        subject = ((commit.get("commit") or {}).get("message") or "").split("\n", 1)[0].strip()
+        if subject:
+            subjects = [subject[:135]]
+    subjects.reverse()
+    if len(subjects) == 1:
+        expanded = concise_release_details(repo, subjects[0], token)
+        if expanded:
+            subjects = [subjects[0]] + expanded
+    return head, subjects[:4]
+
+
 def job_lines(jobs: list[dict[str, Any]]) -> list[str]:
     names = {
         "build": "Сборка",
@@ -96,7 +249,8 @@ def pr_target(run: dict[str, Any]) -> tuple[str, str] | None:
     return None
 
 
-def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None) -> str | None:
+def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None,
+                 revision: str | None = None, changes: list[str] | None = None) -> str | None:
     if "workflow_run" not in event:
         return (
             "🔔 <b>Rate APP · Telegram подключён!</b>\n\n"
@@ -192,6 +346,14 @@ def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None
         return None
 
     pieces = [heading, "", clean(description)]
+    if workflow in ("VPS staging deployment", "VPS production deployment") and passed:
+        if revision:
+            pieces.append(f"🔖 Версия: <code>{clean(revision[:12])}</code>")
+        if changes:
+            pieces.extend(["", "📦 <b>Что вошло в обновление</b>"])
+            pieces.extend(f"• {clean(change)}" for change in changes[:4])
+        else:
+            pieces.extend(["", "📦 Список изменений недоступен; см. коммит и журнал GitHub."])
     if workflow == "Frontend CI" and source in ("pull_request", "workflow_dispatch"):
         pieces.extend(["", "🧩 <b>Результаты проверок</b>"])
         pieces.extend(details if details else ["Подробности — в GitHub Actions."])
@@ -249,7 +411,10 @@ def main() -> int:
     workflow = payload.get("workflow", {}).get("name", "")
     run = payload.get("workflow_run", {})
     jobs = get_jobs(run, os.getenv("GH_READ_TOKEN", "")) if workflow == "Frontend CI" else []
-    message = make_message(payload, jobs)
+    revision, changes = (None, [])
+    if workflow in ("VPS staging deployment", "VPS production deployment") and run.get("conclusion") == "success":
+        revision, changes = deployment_changes(run, os.getenv("GH_READ_TOKEN", ""))
+    message = make_message(payload, jobs, revision=revision, changes=changes)
     if message is None:
         print("No notification required for this event.")
         return 0

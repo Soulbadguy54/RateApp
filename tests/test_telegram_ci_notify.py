@@ -53,13 +53,34 @@ class TelegramCIMessageTests(unittest.TestCase):
         self.assertIn("заблокирован", text)
 
     def test_staging_deployment_good(self):
-        text = make_message(notification("VPS staging deployment", "success"))
+        text = make_message(
+            notification("VPS staging deployment", "success"),
+            revision="1234567890abcdef1234567890abcdef12345678",
+            changes=["Discovery: жесты свайпов", "Навигация: закрытие капли"],
+        )
         self.assertIn("Staging обновлён", text)
         self.assertIn("dev.r-app.ru", text)
+        self.assertIn("Что вошло в обновление", text)
+        self.assertIn("1234567890ab", text)
+        self.assertIn("Discovery: жесты свайпов", text)
+        self.assertIn("Навигация: закрытие капли", text)
+        self.assertNotIn("Production обновлён", text)
 
     def test_production_deployment_bad(self):
         text = make_message(notification("VPS production deployment", "failure", branch="main"))
         self.assertIn("Production-деплой не удался", text)
+        # A failed deploy must not claim that a changelog was published.
+        self.assertNotIn("Что вошло в обновление", text)
+        published = make_message(
+            notification("VPS production deployment", "success", branch="main"),
+            revision="fedcba9876543210fedcba9876543210fedcba98",
+            changes=["fix: только оформление Telegram (#76)"],
+        )
+        self.assertIn("Production обновлён", published)
+        self.assertIn("Что вошло в обновление", published)
+        self.assertIn("fedcba987654", published)
+        self.assertIn("только оформление Telegram", published)
+        self.assertNotIn("Discovery: жесты свайпов", published)
 
     def test_health_only_notifies_failure(self):
         self.assertIsNone(make_message(notification("RateApp daily production health", "success")))
