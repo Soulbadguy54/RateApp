@@ -403,11 +403,15 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
 
   // One uninterrupted touch must move smoothly left→right→centre; no
   // pivot jump, dead zone, 32px sticking or accidental vote on release.
-  // Do not allow one missing image after the collapsing sheet to consume
-  // the entire 75s scenario timeout: this is a real visual regression if absent.
-  await expect(page.locator('.discover-cover__image')).toBeVisible({ timeout: 5000 })
-  const activePoster = await page.locator('.discover-cover__image').boundingBox({ timeout: 1500 })
-  if (!activePoster) throw new Error('Missing active cover for continuous touch')
+  // The gesture is attached to the cover surface, not the remote image.
+  // When IGDB artwork fails to decode after Back, the UI intentionally shows
+  // its fallback; gestures MUST still work. Earlier requiring only <img>
+  // blocked a valid release twice, despite the accessible swipe surface.
+  const gesture = page.locator('.discover-cover__gesture')
+  await expect(gesture).toHaveAttribute('aria-label', 'Свайпы для игры Discovery One')
+  await expect(gesture).toBeVisible({ timeout: 5000 })
+  const activePoster = await gesture.boundingBox({ timeout: 1500 })
+  if (!activePoster) throw new Error('Missing swipe target after closing details')
   const touchX = activePoster.x + activePoster.width / 2
   const touchY = activePoster.y + Math.min(activePoster.height * .28, 180)
   const translationX = () => page.locator('.discover-artwork').evaluate(node => {
