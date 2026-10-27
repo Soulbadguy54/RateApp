@@ -143,6 +143,8 @@ export default function DiscoverView({
   const smoothLift = useSpring(cardLift, { stiffness: 295, damping: 36, mass: .72 })
   const smoothScale = useSpring(cardScale, { stiffness: 295, damping: 36, mass: .72 })
   const panAxisRef = useRef<'horizontal' | 'vertical' | null>(null)
+  // Keep a pan blocked for its full lifetime if it began while glass was open.
+  const posterPanBlockedRef = useRef(false)
 
   useEffect(() => {
     const stage = stageRef.current
@@ -533,7 +535,7 @@ export default function DiscoverView({
   }
 
   const onPosterPan = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    if (busy || expanded || helpOpen || pullRef.current) return
+    if (posterPanBlockedRef.current || busy || expanded || helpOpen || pullRef.current) return
     const { x, y } = info.offset
     // Lock only the AXIS (not the sign): a user can reverse direction smoothly
     // without switching translate/rotate models mid-gesture.
@@ -565,8 +567,10 @@ export default function DiscoverView({
   }
   const onPosterPanEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     const axis = panAxisRef.current
+    const blockedAtStart = posterPanBlockedRef.current
+    posterPanBlockedRef.current = false
     panAxisRef.current = null
-    if (busy || expanded || helpOpen || pullRef.current || reveal.get() > .03) {
+    if (blockedAtStart || busy || expanded || helpOpen || pullRef.current || reveal.get() > .03) {
       resetTilt()
       return
     }
@@ -680,7 +684,12 @@ export default function DiscoverView({
                 </div>
                 <motion.div
                   className="discover-cover__gesture"
-                  onPanStart={() => { panAxisRef.current = null; resetTilt() }}
+                  onPanStart={() => {
+                    panAxisRef.current = null
+                    posterPanBlockedRef.current = busy || expanded || helpOpen ||
+                      Boolean(pullRef.current) || reveal.get() > .03
+                    if (!posterPanBlockedRef.current) resetTilt()
+                  }}
                   onPan={onPosterPan}
                   onPanEnd={onPosterPanEnd}
                   aria-label={'Свайпы для игры ' + game.title}
