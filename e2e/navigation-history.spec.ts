@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 // Navigation is scoped to the most recent bottom-nav selection, but links
 // inside a flow (including links crossing sections) retain ordinary Back.
 test('mobile Back follows in-flow links but never reopens a previous bottom tab', async ({ page }) => {
-  const nickname = 'backscope_' + Date.now().toString(36).slice(-8)
+  const nickname = 'bs_' + Date.now().toString(36).slice(-8)
   await page.goto('/')
   await page.getByRole('button', { name: 'Регистрация' }).click()
   await page.locator('input[type=email]').fill(nickname + '@example.com')
