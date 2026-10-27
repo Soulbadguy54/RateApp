@@ -73,3 +73,7 @@
 ## Автоматическая передача после merge (hotfix от 27.10.2026)
 
 GitHub suppresses `push` от `GITHUB_TOKEN`, которым `promote-approved-release` сливает PR. **Нельзя** ожидать, что такой squash merge сам запустит `main` CI. Job после успешного merge с проверкой SHA обязан выполнить явный `workflow_dispatch` полного `ci.yml@main` (`actions:write`); затем existing VPS production `workflow_run` ждёт зелёный main CI. Если передача не сработала — это ошибка выпуска, а не «тесты зелёные, значит готово». Проверять production по реальному SHA и health. Отличать два последовательных Telegram сообщения: одобренный release CI и независимый staging deploy (тестовая версия); только production deploy завершает публикацию.
+
+## Второй release handoff: main CI → VPS (27.10.2026)
+
+Из-за наблюдаемого отсутствия production workflow_run после main CI, запущенного от GITHUB_TOKEN через workflow_dispatch, больше не полагаться на каскад workflow_run для выпуска. Успешный main CI (включая production-smoke) сам делает явный workflow_dispatch vps-deploy.yml с проверенными tested_sha и ci_run_id. Deployment обязан перепроверить main HEAD, успешный исход именно этого main CI и всех четырёх обязательных jobs до GHCR publish или SSH. Если что-то не совпало — ошибочный/пропущенный выпуск, не «опубликовано»; диагностировать CI/Action, не обходить gate. Старые абзацы о workflow_run относятся к первоначальному расследованию и не являются рабочей схемой после этого исправления.

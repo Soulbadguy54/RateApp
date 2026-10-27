@@ -83,3 +83,9 @@ The VPS migration and cutover are described in [VPS_MIGRATION.md](VPS_MIGRATION.
 ## GITHUB_TOKEN merge handoff, 27.10.2026
 
 В `Frontend CI` job `promote-approved-release` после зелёных обязательных PR проверок делает squash merge с exact `head.sha`, проверяет ответ и живой `main` HEAD, затем **обязательно** dispatch `actions/workflows/ci.yml/dispatches` (`ref=main`, `actions:write`). Обычный `push` после CI-`GITHUB_TOKEN` merge GitHub не запускает. Explicit `workflow_dispatch` запускает full main CI, а штатный успешный `workflow_run` main открывает publish/deploy VPS. Пример зафиксирован PR #70: релизный CI success и merge `8b4f326c` при фактическом VPS `dab74554`. Не трактовать успешный staging deployment как production и не докладывать «готово» до сверки VPS SHA и health.
+
+## Исправление второго handoff после PR #83 — main CI → VPS (27.10.2026)
+
+Успешный Frontend CI run #40441005013 (https://github.com/Soulbadguy54/RateApp/actions/runs/40441005013, SHA 2d6c8200) не вызвал очередной VPS production deployment. Запись выше, утверждающая что workflow_run всегда доставляет такой workflow_dispatch CI до VPS, описывает прежнюю ожидаемую схему и не должна применяться после исправления.
+
+Новый процесс: после успешных build, backend-tests, mobile-e2e и production-smoke в main, job dispatch-production-after-green-ci сверяет live main SHA и передаёт tested_sha, ci_run_id через workflow_dispatch в vps-deploy.yml. Publish там снова сверяет SHA main, завершившийся успехом Frontend CI конкретного run и success каждой обязательной job; при несоответствии отказывает до Docker publish и SSH. workflow_run удалён для предотвращения пропущенных/дублированных деплоев. Deployment по-прежнему делает backup/migration/smoke через существующий ограниченный SSH dispatcher. Проверить /srv/rateapp/current-release, production tags, /api/health, GitHub workflow и Telegram после выката. Само изменение файлов и зелёный CI — не подтверждение публикации.

@@ -142,18 +142,45 @@ jobs:
           RATEAPP_SMOKE_BASE: https://r-app.ru
         run: python scripts/smoke_production.py
 
+  # workflow_run does not reliably fire for CI created by GITHUB_TOKEN
+  # workflow_dispatch after the automated merge. Explicit dispatch is the
+  # second, SHA-checked handoff; never dispatch before production smoke.
+  dispatch-production-after-green-ci:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [build, backend-tests, mobile-e2e, production-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Dispatch verified main CI run and exact tested revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TESTED_SHA: ${{ github.sha }}
+          CI_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$TESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CI_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          current_main="$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          test "$current_main" = "$TESTED_SHA"
+          gh api --method POST "repos/$REPOSITORY/actions/workflows/vps-deploy.yml/dispatches" \
+            -f ref=main -f "inputs[tested_sha]=$TESTED_SHA" \
+            -f "inputs[ci_run_id]=$CI_RUN_ID" --silent
+          echo "VPS deployment dispatched for verified CI run $CI_RUN_ID, SHA $TESTED_SHA."
+
   # The production release is explicitly authorized by the owner using the
   # release-approved label. Full required checks must all pass before merge.
-  # Same-repository, owner-approved develop→main releases. The named
-  # infrastructure-recovery branch is a one-time, explicitly approved
-  # exception for fixing the handoff on an already merged release.
+  # Same-repository, owner-approved develop→main releases. The one-time infrastructure-recovery branch is allowed only for fixing
+  # the second CI to VPS handoff of the already approved Discovery release.
   # No workflow_run privileged access to untrusted PR artifacts.
   promote-approved-release:
     if: >-
       ${{ github.event_name == 'pull_request' &&
           github.event.pull_request.base.ref == 'main' &&
           (github.event.pull_request.head.ref == 'develop' ||
-           github.event.pull_request.head.ref == 'fix/release-handoff-ci-20261027') &&
+           github.event.pull_request.head.ref == 'fix/ci-to-vps-explicit-handoff-20261027') &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           contains(github.event.pull_request.labels.*.name, 'release-approved') }}
     needs: [build, backend-tests, mobile-e2e]
@@ -175,7 +202,7 @@ jobs:
           json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
           test "$(jq -r '.state' <<<"$json")" = open
           test "$(jq -r '.base.ref' <<<"$json")" = main
-          test "$APPROVED_BRANCH" = develop || test "$APPROVED_BRANCH" = fix/release-handoff-ci-20261027
+          test "$APPROVED_BRANCH" = develop || test "$APPROVED_BRANCH" = fix/ci-to-vps-explicit-handoff-20261027
           test "$(jq -r '.head.ref' <<<"$json")" = "$APPROVED_BRANCH"
           test "$(jq -r '.head.repo.full_name' <<<"$json")" = "$REPOSITORY"
           test "$(jq -r '.head.sha' <<<"$json")" = "$TESTED_HEAD"
@@ -189,8 +216,7 @@ jobs:
           [[ "$merged_sha" =~ ^[0-9a-f]{40}$ ]]
           # GITHUB_TOKEN merges intentionally do not emit a push workflow.
           # Trigger full main CI explicitly: workflow_dispatch is a documented
-          # exception to token event suppression. The existing production
-          # workflow_run deploy gate then waits for this CI to succeed.
+          # exception to token event suppression. The successful main CI then explicitly dispatches the SHA-checked VPS production workflow.
           actual_main="$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
           test "$actual_main" = "$merged_sha"
           gh api --method POST "repos/$REPOSITORY/actions/workflows/ci.yml/dispatches" \
