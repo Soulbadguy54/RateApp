@@ -377,29 +377,32 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   // While details are expanded, swiping the poster must not submit a like/dislike.
   await dragCover(page, 'right')
   expect(actions).toHaveLength(0)
-  // Pull down from the actual metadata row rather than just the chevron.
-  // This is the native large touch surface the user requested.
-  if (onIPhone) {
-    await page.evaluate(() => {
-      const row = document.querySelector<HTMLElement>('.discover-sheet__summary-row')
-      if (!row) throw new Error('Missing summary row')
-      const rect = row.getBoundingClientRect()
-      const x = rect.left + Math.min(rect.width * .3, 65)
-      const y = rect.top + rect.height / 2
-      row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, buttons: 1 }))
-      for (let i = 1; i <= 16; i++) window.dispatchEvent(new MouseEvent('mousemove', {
-        bubbles: true, clientX: x, clientY: y + 340 * i / 16, buttons: 1,
-      }))
-      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y + 340 }))
-    })
-  } else {
-    const row = await page.locator('.discover-sheet__summary-row').boundingBox()
+  // The real Android pointer path is already covered by dragHandle above.
+  // Here, use the metadata row's own event stream on both mobile browsers:
+  // an absolute cursor position over a moving transform can hit the poster
+  // instead and unexpectedly trigger swipe-to-playthrough.
+  await page.evaluate(() => {
+    const row = document.querySelector<HTMLElement>('.discover-sheet__summary-row')
     if (!row) throw new Error('Missing summary row')
-    await movePointer(page, row.x + 30, row.y + row.height / 2, row.x + 30, row.y + row.height / 2 + 340)
-  }
+    const rect = row.getBoundingClientRect()
+    const x = rect.left + Math.min(rect.width * .3, 65)
+    const y = rect.top + rect.height / 2
+    row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, buttons: 1 }))
+    for (let i = 1; i <= 16; i++) window.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: x, clientY: y + 340 * i / 16, buttons: 1,
+    }))
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y + 340 }))
+  })
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
-  // The sheet finishes its deliberate, non-jelly snap before a new gesture.
-  await page.waitForTimeout(420)
+  // A collapsing sheet must not accidentally leave Discovery or vote.
+  await expect.poll(async () => {
+    const glass = await page.locator('.discover-sheet').boundingBox()
+    const stage = await page.locator('.discover-stage').boundingBox()
+    return !glass || !stage ? -1 : glass.y - stage.y
+  }, { timeout: 5000 }).toBeGreaterThan(90)
+  await expect(page.locator('.discover-screen')).toBeVisible()
+  await expect(page.getByText('Discovery One')).toBeVisible()
+  expect(actions).toHaveLength(0)
 
   // One uninterrupted touch must move smoothly left→right→centre; no
   // pivot jump, dead zone, 32px sticking or accidental vote on release.
