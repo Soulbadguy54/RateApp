@@ -185,6 +185,8 @@ def deployment_changes(run: dict[str, Any], token: str) -> tuple[str | None, lis
     if not head or not SHA_PATTERN.fullmatch(head):
         return None, []
     previous = previous_deployed_revision(run, token)
+    if previous == head:
+        return head, ["Повторная выкладка той же версии: изменений кода нет"]
     subjects: list[str] = []
     if previous and previous != head:
         compared = github_json(repo, f"compare/{previous}...{head}", token)
