@@ -19,12 +19,12 @@ jobs:
   publish:
     if: >-
       ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop') ||
-           (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop') }}
+           (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop') }}
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.revision.outputs.sha }}
     steps:
-      - name: Select preview revision (full tests deferred to main release)
+      - name: Select tested revision
         id: revision
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -56,6 +56,19 @@ jobs:
           build-args: |
             GITHUB_SHA=${{ steps.revision.outputs.sha }}
           tags: ghcr.io/soulbadguy54/rateapp-web-stage:${{ steps.revision.outputs.sha }}
+
+      # This SHA comes from the built image tag, not from the main-based
+      # workflow_run notification event (especially important on staging).
+      - name: Record deployed container revision
+        env:
+          DEPLOY_SHA: ${{ steps.revision.outputs.sha }}
+        run: echo "$DEPLOY_SHA" > deployed-sha.txt
+      - name: Publish revision marker for Telegram changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: rateapp-deploy-revision
+          path: deployed-sha.txt
+          retention-days: 30
 
   deploy:
     needs: publish

@@ -57,6 +57,19 @@ jobs:
             GITHUB_SHA=${{ steps.revision.outputs.sha }}
           tags: ghcr.io/soulbadguy54/rateapp-web:${{ steps.revision.outputs.sha }}
 
+      # This SHA comes from the built image tag, not from the main-based
+      # workflow_run notification event (especially important on staging).
+      - name: Record deployed container revision
+        env:
+          DEPLOY_SHA: ${{ steps.revision.outputs.sha }}
+        run: echo "$DEPLOY_SHA" > deployed-sha.txt
+      - name: Publish revision marker for Telegram changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: rateapp-deploy-revision
+          path: deployed-sha.txt
+          retention-days: 30
+
   deploy:
     needs: publish
     runs-on: ubuntu-latest
