@@ -580,7 +580,9 @@ function App() {
     if (options?.replace) window.history.replaceState(entry, '', urlForAppView(view))
     else window.history.pushState(entry, '', urlForAppView(view))
     showAppView(view, entry)
-    if (view.tab === 'discovery' && isRootScreen(view)) pushRootExitGate(view, entry)
+    // Every root screen is an exit boundary, not just Discovery. On a new
+    // bottom-nav selection this gate prevents Back from reopening another tab.
+    if (isRootScreen(view)) pushRootExitGate(view, entry)
   }
 
   const goBackOr = (fallback: AppView) => {
@@ -1264,13 +1266,18 @@ function App() {
   }
 
   const openTab = (tab: Tab) => {
-    navigateTo({ tab, gameId: null, collectionId: null, formGameId: null })
+    // A bottom-nav selection starts a new navigation chain. Replace the old
+    // location instead of adding it as a step in the destination tab's Back.
+    navigateTo({ tab, gameId: null, collectionId: null, formGameId: null }, { replace: true })
   }
 
   // Re-selecting the active bottom tab, or tapping the My Games title,
   // starts that tab from scratch without logging out or reloading the PWA.
   const resetTab = (tab: Tab) => {
     const view: AppView = { tab, gameId: null, collectionId: null, formGameId: null }
+    // Resetting an active tab from a nested screen must also establish a root
+    // exit boundary. Disarm any earlier exit prompt when reselecting a tab.
+    clearExitPrompt()
     setCollectionPickerOpen(false)
     setDeleteCollectionPrompt(null)
     setDeleteGamePrompt(null)
@@ -1352,9 +1359,10 @@ function App() {
         topLatch: true, entryAnchorActive: false,
       } } : {}),
     }
-    // Replace the nested tab location so Back doesn't reopen the stale view.
+    // Replace the nested location; its old child screen cannot be revisited.
     window.history.replaceState(entry, '', urlForAppView(view))
     showAppView(view, entry)
+    if (!entry.exitGate) pushRootExitGate(view, entry)
     viewportPageRef.current?.scrollTo({ top: 0, behavior: 'instant' })
     window.scrollTo({ top: 0, behavior: 'instant' })
     setScreenRevision((revision) => revision + 1)
