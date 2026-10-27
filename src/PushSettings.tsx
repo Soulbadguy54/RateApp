@@ -1,3 +1,4 @@
+import { sessionFetch } from './sessionFetch'
 import { useEffect, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 
@@ -59,7 +60,7 @@ function requestBody(subscription: PushSubscription): string {
 }
 
 async function readPushState(): Promise<PushState> {
-  const response = await fetch('/api/push/config')
+  const response = await sessionFetch('/api/push/config')
   if (!response.ok) throw new Error('Не удалось проверить настройки уведомлений.')
   const config = await response.json() as PushConfig
   const permission = supportsWebPush() ? Notification.permission : 'default'
@@ -135,7 +136,7 @@ async function enablePush(publicKey: string, onPhase?: (phase: PushPhase) => voi
   const timer = window.setTimeout(() => controller.abort(), 10000)
   let response: Response
   try {
-    response = await fetch('/api/push/subscription', {
+    response = await sessionFetch('/api/push/subscription', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: requestBody(subscription),
@@ -161,7 +162,7 @@ export async function disconnectPushForLogout(): Promise<void> {
   const registration = await navigator.serviceWorker.getRegistration()
   const subscription = await registration?.pushManager.getSubscription()
   if (!subscription) return
-  const response = await fetch('/api/push/subscription', {
+  const response = await sessionFetch('/api/push/subscription', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: requestBody(subscription),
