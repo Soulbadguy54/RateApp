@@ -148,7 +148,7 @@ def previous_deployed_revision(run: dict[str, Any], token: str) -> str | None:
 
 def concise_release_details(repo: str, commit_title: str, token: str) -> list[str]:
     """Use existing PR notes when a release squash summarizes many changes."""
-    match = re.search(r"\\(#(\\d+)\\)", commit_title)
+    match = re.search(r"\(#(\d+)\)", commit_title)
     if not match or not commit_title.lower().startswith(("release:", "release ", "релиз")):
         return []
     pr = github_json(repo, f"pulls/{match.group(1)}", token)
@@ -157,13 +157,13 @@ def concise_release_details(repo: str, commit_title: str, token: str) -> list[st
     body = (pr.get("body") or "").strip()
     # Prefer author-maintained Markdown bullets, if present.
     bullets = [
-        re.sub(r"\\s+", " ", entry).strip(" -*")
-        for entry in re.findall(r"^\\s*[-*]\\s+(.+)$", body, flags=re.MULTILINE)
+        re.sub(r"\s+", " ", entry).strip(" -*")
+        for entry in re.findall(r"^\s*[-*]\s+(.+)$", body, flags=re.MULTILINE)
     ]
     if bullets:
         return [entry[:120] for entry in bullets[:3]]
     # Free-text release descriptions often enumerate features after a colon.
-    features = re.search(r"(?:Включает|Изменения|Состав)[^:]{0,120}:\\s*([^\\n.]+)", body, flags=re.IGNORECASE)
+    features = re.search(r"(?:Включает|Изменения|Состав)[^:]{0,120}:\s*([^\n.]+)", body, flags=re.IGNORECASE)
     if features:
         parts = [part.strip() for part in features.group(1).split(",") if part.strip()]
         return [", ".join(parts[i:i + 2])[:120] for i in range(0, min(len(parts), 6), 2)]
@@ -190,13 +190,13 @@ def deployment_changes(run: dict[str, Any], token: str) -> tuple[str | None, lis
         compared = github_json(repo, f"compare/{previous}...{head}", token)
         if compared.get("status") in ("ahead", "identical"):
             for commit in (compared.get("commits") or [])[-4:]:
-                subject = ((commit.get("commit") or {}).get("message") or "").split("\\n", 1)[0].strip()
+                subject = ((commit.get("commit") or {}).get("message") or "").split("\n", 1)[0].strip()
                 if subject:
                     subjects.append(subject[:135])
     if not subjects and not previous:
         # First observable deployment: show only its subject, not an invented diff.
         commit = github_json(repo, f"commits/{head}", token)
-        subject = ((commit.get("commit") or {}).get("message") or "").split("\\n", 1)[0].strip()
+        subject = ((commit.get("commit") or {}).get("message") or "").split("\n", 1)[0].strip()
         if subject:
             subjects = [subject[:135]]
     subjects.reverse()
