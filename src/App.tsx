@@ -300,6 +300,42 @@ function App() {
   const [platformFilter, setPlatformFilter] = useState('all')
   const [sortMode, setSortMode] = useState<SortMode>('activity')
   const [filtersOpen, setFiltersOpen] = useState(false)
+
+  const resetLibraryFilters = () => {
+    setStatusFilters([])
+    setGenreFilter('all')
+    setPlatformFilter('all')
+    setFiltersOpen(false)
+  }
+
+  useEffect(() => {
+    // Mobile browsers often keep the PWA mounted in the background. A fresh
+    // launch already gets empty useState defaults, but reopening that same
+    // document must not revive its old My Games filters.
+    let wasHidden = document.visibilityState === 'hidden'
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        wasHidden = true
+      } else if (wasHidden && document.visibilityState === 'visible') {
+        wasHidden = false
+        resetLibraryFilters()
+      }
+    }
+    const onPageShow = (event: PageTransitionEvent) => {
+      // Safari may restore the previous document from its back-forward cache
+      // instead of doing a fresh React mount.
+      if (event.persisted) {
+        wasHidden = false
+        resetLibraryFilters()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('pageshow', onPageShow)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('pageshow', onPageShow)
+    }
+  }, [])
   const [librarySearchOpen, setLibrarySearchOpen] = useState(false)
   const librarySearchInputRef = useRef<HTMLInputElement>(null)
   const focusLibrarySearchOnOpen = useRef(false)
@@ -481,6 +517,7 @@ function App() {
   }
 
   const hydrateAfterLogin = async (fallbackUser: AuthUser) => {
+    resetLibraryFilters()
     void preloadPushState(fallbackUser.nickname).catch(() => { /* Push is optional. */ })
     setAuthUser(fallbackUser)
     setAuthReady(true)
@@ -1298,9 +1335,7 @@ function App() {
       libraryLastScrollYRef.current = 0
       libraryCollapseProgress.set(0)
       setLibraryControlsCollapsed(false)
-      setStatusFilters([])
-      setGenreFilter('all')
-      setPlatformFilter('all')
+      resetLibraryFilters()
       setSortMode('activity')
       setQuery('')
       setFiltersOpen(false)
