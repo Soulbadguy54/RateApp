@@ -62,7 +62,7 @@ jobs:
       - name: Record deployed container revision
         env:
           DEPLOY_SHA: ${{ steps.revision.outputs.sha }}
-        run: printf '%s\\n' "$DEPLOY_SHA" > deployed-sha.txt
+        run: echo "$DEPLOY_SHA" > deployed-sha.txt
       - name: Publish revision marker for Telegram changelog
         uses: actions/upload-artifact@v4
         with:
