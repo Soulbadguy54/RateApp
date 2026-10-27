@@ -348,3 +348,7 @@ Production после успешного publish/deploy SHA `f0b2b92273cb` ин�
 ### Backmerge production hotfix в develop (27.10.2026)
 
 Ветвь develop содержит независимые изменения Discovery и E2E, поэтому синхронизация production-fixes #83–#86 выполнена merge main → develop без force push и без попадания незаконченных экспериментов в main. Обработчик sessionFetch/useSyncExternalStore, прямые Telegram VPS уведомления, проверенный CI→VPS handoff и уникальный rateapp-api-1 upstream должны присутствовать в обеих ветках. Для staging проверить коммит develop, независимый API=staging и конфигурацию frontend; настоящие SHA/health сверяются после CI/CD.
+
+### Фильтры «Мои игры» при новом входе / возврате в PWA (27.10.2026)
+
+В `src/App.tsx` фильтры библиотеки (статусы, жанр, платформа) хранятся в React state; при полной загрузке они и так пустые, но мобильный браузер способен сохранить тот же документ в памяти после закрытия PWA. При переходе документа hidden → visible, `pageshow.persisted` (back-forward cache) и успешном повторном входе через UI фильтры теперь очищаются, панель закрывается. Никакого удаления пользовательских данных/игр: не трогаются сортировка, поисковый запрос или серверное состояние. Переключение вкладок внутри приложения не является повторным входом и сохраняет фильтры. В `e2e/library-filter-reentry.spec.ts` проверены обе ветви lifecycle. Изменение staging-first; после приёмки нужен полный Android/WebKit release CI.
