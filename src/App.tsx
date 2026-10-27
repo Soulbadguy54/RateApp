@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import GameCard, { Cover } from './components/GameCard'
 import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
@@ -21,7 +21,7 @@ import {
   useTransform,
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
-import { sessionFetch, SESSION_EXPIRED_EVENT } from './sessionFetch'
+import { sessionFetch, subscribeSessionExpiry, getSessionExpiredSnapshot, resetSessionExpired } from './sessionFetch'
 import './views/DiscoverView.css'
 import LoadingScreen from './LoadingScreen'
 import { PushOnboarding, clearPushStateCache, disconnectPushForLogout, preloadPushState } from './PushSettings'
@@ -260,20 +260,17 @@ function App() {
   }
   const [activeTab, setActiveTab] = useState<Tab>(firstViewRef.current.tab)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
-  const [sessionExpired, setSessionExpired] = useState(false)
+  // useSyncExternalStore also reads a 401 that arrived before subscription:
+  // a bare window Event can be lost during child-first passive effects on WebKit.
+  const sessionExpired = useSyncExternalStore(subscribeSessionExpiry, getSessionExpiredSnapshot)
   useEffect(() => {
-    if (!authUser) return
-    const onSessionExpired = () => {
-      // Keep all stored games untouched; the server simply needs fresh login.
-      clearPushStateCache(authUser.nickname)
-      setSessionExpired(true)
-      setAuthUser(null)
-      setEntries([])
-      setCollections([])
-    }
-    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
-    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
-  }, [authUser])
+    if (!sessionExpired || !authUser) return
+    // Server-side data remain untouched; clear only this browser session state.
+    clearPushStateCache(authUser.nickname)
+    setAuthUser(null)
+    setEntries([])
+    setCollections([])
+  }, [sessionExpired, authUser])
 
   const [authReady, setAuthReady] = useState(false)
   const [bootstrapError, setBootstrapError] = useState(false)
@@ -3266,7 +3263,7 @@ function App() {
   }
 
   if (!authUser) {
-    return <AuthScreen sessionExpired={sessionExpired} onAuthenticated={(user) => { setSessionExpired(false); void hydrateAfterLogin(user) }} />;
+    return <AuthScreen sessionExpired={sessionExpired} onAuthenticated={(user) => { resetSessionExpired(); void hydrateAfterLogin(user) }} />;
   }
 
   return (
