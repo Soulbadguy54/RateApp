@@ -215,6 +215,7 @@ def job_lines(jobs: list[dict[str, Any]]) -> list[str]:
         "backend-tests": "Backend",
         "mobile-e2e": "Мобильные E2E",
         "production-smoke": "Production smoke",
+        "promote-approved-release": "Слияние одобренного PR в main",
     }
     markers = {
         "success": "✅", "failure": "❌", "timed_out": "⏰",
@@ -276,6 +277,13 @@ def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None
 
     details = []
     target = pr_target(run) if source == "pull_request" else None
+    # GitHub sometimes drops workflow_run.pull_requests after the release PR
+    # has already merged. A successful trusted auto-promotion job identifies
+    # the main-bound release unequivocally, unlike head_branch='develop'.
+    promotion_succeeded = source == "pull_request" and any(
+        job.get("name") == "promote-approved-release"
+        and job.get("conclusion") == "success" for job in (jobs or [])
+    )
     if workflow == "Frontend CI":
         if source == "push" and branch == "develop":
             if passed:
@@ -287,15 +295,19 @@ def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None
                 return None  # The real release verdict comes from VPS deployment.
             heading = "🚀❌ <b>Production · релиз заблокирован</b>"
             description = "Полный CI в main не прошёл; production-деплой не подтверждён."
-        elif source == "pull_request" and target and target[0] == "main":
+        elif source == "pull_request" and (target and target[0] == "main" or promotion_succeeded):
             heading = (
                 "🚀✅ <b>Production · релизные тесты пройдены</b>" if passed
                 else "🚀❌ <b>Production · релизные тесты НЕ пройдены</b>"
             )
             description = (
-                f"PR #{target[1]}: {clean(branch)} → main. Это полный CI ПЕРЕД выпуском, "
-                + ("но сам production ещё не обновлён." if passed
-                   else "перенос в production заблокирован ошибками тестов.")
+                (f"PR #{target[1]}: " if target else "Одобренный релизный PR: ")
+                + f"{clean(branch)} → main. "
+                + ("Тесты прошли и PR автоматически слит. Запускается отдельный main CI; "
+                   "production будет обновлён только после его успешного завершения и VPS-деплоя."
+                   if passed and promotion_succeeded
+                   else "Тесты прошли, но сам production ещё не обновлён." if passed
+                   else "Перенос в production заблокирован ошибками проверок.")
             )
         elif source == "pull_request" and target and target[0] == "develop":
             heading = (
@@ -303,6 +315,11 @@ def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None
                 else "🧪❌ <b>Staging · PR-проверки не пройдены</b>"
             )
             description = f"PR #{target[1]}: {clean(branch)} → develop. Это не проверка production."
+        elif source == "workflow_dispatch" and branch == "main":
+            if passed:
+                return None  # Real success is the subsequent VPS deployment.
+            heading = "🚨❌ <b>Production · main CI не прошёл</b>"
+            description = "Повторная проверка main не прошла. VPS production-деплой заблокирован."
         elif source == "workflow_dispatch":
             heading = (
                 "🔬✅ <b>Ручной полный CI пройден</b>" if passed
@@ -325,8 +342,9 @@ def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None
             else "🧪❌ <b>Ошибка staging-деплоя</b>"
         )
         description = (
-            "Тестовая версия опубликована на dev.r-app.ru."
-            if passed else "Тестовую версию не удалось полностью развернуть."
+            "Тестовая версия опубликована на dev.r-app.ru. "
+            "Это независимый staging-деплой, production на r-app.ru не обновлялся."
+            if passed else "Тестовую версию не удалось полностью развернуть. Production не затронут."
         )
     elif workflow == "VPS production deployment":
         heading = (
