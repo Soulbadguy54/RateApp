@@ -394,12 +394,22 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y + 340 }))
   })
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
-  // A collapsing sheet must not accidentally leave Discovery or vote.
+  // A closing glass must reach its actual poster-dependent RESTING position,
+  // not merely pass 90px while reveal is still > .03. Starting the next
+  // cover pan during that transition is correctly blocked by the app.
   await expect.poll(async () => {
-    const glass = await page.locator('.discover-sheet').boundingBox()
-    const stage = await page.locator('.discover-stage').boundingBox()
-    return !glass || !stage ? -1 : glass.y - stage.y
-  }, { timeout: 5000 }).toBeGreaterThan(90)
+    const [glass, stage, art] = await Promise.all([
+      page.locator('.discover-sheet').boundingBox(),
+      page.locator('.discover-stage').boundingBox(),
+      page.locator('.discover-cover__image, .discover-cover__fallback').boundingBox(),
+    ])
+    if (!glass || !stage || !art) return 999
+    const minPeek = await page.locator('.discover-stage').evaluate(node =>
+      parseFloat(getComputedStyle(node).getPropertyValue('--discover-min-peek')))
+    if (!Number.isFinite(minPeek)) return 999
+    const closedY = Math.min(art.y + art.height + 12 - stage.y, stage.height - minPeek)
+    return Math.abs((glass.y - stage.y) - closedY)
+  }, { timeout: 8000 }).toBeLessThan(2)
   await expect(page.locator('.discover-screen')).toBeVisible()
   await expect(page.getByText('Discovery One')).toBeVisible()
   expect(actions).toHaveLength(0)
@@ -413,10 +423,28 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   const gesture = page.locator('.discover-cover__gesture')
   await expect(gesture).toHaveAttribute('aria-label', 'Свайпы для игры Discovery One')
   await expect(gesture).toBeVisible({ timeout: 5000 })
-  const activePoster = await gesture.boundingBox({ timeout: 1500 })
-  if (!activePoster) throw new Error('Missing swipe target after closing details')
-  const touchX = activePoster.x + activePoster.width / 2
-  const touchY = activePoster.y + Math.min(activePoster.height * .28, 180)
+  // The swipe surface spans the entire stage, including the area UNDER the
+  // glass. A coordinate at 28% of that rectangle can hit the sheet instead.
+  // Pick an exposed point ABOVE the glass and assert real browser hit-testing
+  // before beginning the continuous pointer gesture.
+  const target = await page.evaluate(() => {
+    const gesture = document.querySelector<HTMLElement>('.discover-cover__gesture')
+    const sheet = document.querySelector<HTMLElement>('.discover-sheet')
+    if (!gesture || !sheet) return null
+    const art = gesture.getBoundingClientRect()
+    const glass = sheet.getBoundingClientRect()
+    const x = art.left + art.width / 2
+    const y = Math.min(art.top + 65, glass.top - 28)
+    const hit = document.elementFromPoint(x, y)
+    return { x, y, usable: y > art.top + 18 && hit === gesture,
+      hitClass: hit?.getAttribute('class') || hit?.tagName || 'none',
+      sheetTop: glass.top }
+  })
+  if (!target?.usable) {
+    throw new Error('Swipe surface is not hit-testable above closed glass: ' + JSON.stringify(target))
+  }
+  const touchX = target.x
+  const touchY = target.y
   const translationX = () => page.locator('.discover-artwork').evaluate(node => {
     return new DOMMatrixReadOnly(getComputedStyle(node).transform).m41
   })

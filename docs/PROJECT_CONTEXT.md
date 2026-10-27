@@ -315,3 +315,7 @@ Telegram notifier `scripts/telegram_ci_notify.py` запускается из д
 ### Граница жеста Discovery/glass (27.10.2026, release PR #70)
 
 `posterPanBlockedRef` запоминает недопустимое начало swipe при `expanded`, `reveal>0.03` или активном вытягивании glass. Если панель закрылась до `onPanEnd`, он по-прежнему игнорируется: один и тот же жест не может одновременно сворачивать подробности и запускать реакцию карточки/переход в прохождение. Для устойчивого E2E используется прямой событийный поток строки метаданных, в отличие от некорректного screen-point hit testing во время transform. Android drag за handle проверяется реальными pointer-событиями отдельно.
+
+### E2E: дождаться полного завершения glass-collapse перед новым swipe (27.10.2026, release PR #70)
+
+Последний Android E2E в длинном сценарии Discovery получал нулевой `translateX` после возврата из раскрытой панели: тест проверял лишь `sheet.y-stage.y > 90`, что допускает продолжающийся `reveal > 0.03`. Защита `posterPanBlockedRef` по ADR-040 правильно блокировала начатый до закрытия pan. Корректная синхронизация: сравнивать текущий верх glass с `Math.min(posterBottom+12, stageHeight-minPeek)` с допуском 2px в координатах stage. Для нового реального pointer-event выбирать точку на открытой области `.discover-cover__gesture` строго над glass, проверяя `document.elementFromPoint`, а не центр full-stage overlay (который может находиться под стеклом). Функциональная проверка непрерывного left→right→center жеста остаётся.
