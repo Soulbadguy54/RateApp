@@ -1,5 +1,12 @@
 # Rate APP — история разработки
 
+## 27 октября 2026 — второй handoff: успешный main CI → VPS production (инфраструктурное исправление)
+
+- Установленный факт: после одобренного merge #70 и первой починки #83 GitHub main = 2d6c8200, полный Frontend CI run #40441005013 (https://github.com/Soulbadguy54/RateApp/actions/runs/40441005013) прошёл build/backend/mobile E2E/production smoke, но VPS production deployment не появился; VPS продолжал обслуживать dab74554.
+- Отказ от ненадёжного второго события workflow_run: завершившийся успехом main CI напрямую вызывает workflow_dispatch для VPS. Деплой независимо сверяет живой main SHA, указанный CI run (полный success, ветка и SHA), а также успешные build/backend/mobile/smoke jobs. Ошибки запрещают публикацию.
+- Docker, PostgreSQL, API, UI и staging в этом исправлении не меняются. Финальный факт публикации определяется только по контейнерам VPS, current-release, health и итоговому VPS workflow.
+
+
 ## 27 октября 2026 — восстановление цепочки release CI → main CI → VPS production (PR infra)
 
 - PR #70: полный release CI #40438886429 (build/backend/mobile E2E) успешно прошёл и автоматически слил Discovery в `main` (`8b4f326c`), но VPS оставался на предыдущем SHA `dab74554`. GitHub `GITHUB_TOKEN` suppresses workflow `push` после merge, поэтому ни CI `main`, ни production VPS deployment не запускались.
