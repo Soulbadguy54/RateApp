@@ -32,8 +32,10 @@ const apiErrorDetail = (data: unknown): string | null => {
 
 export default function AuthScreen({
   onAuthenticated,
+  sessionExpired = false,
 }: {
   onAuthenticated: (user: AuthUser) => void
+  sessionExpired?: boolean
 }) {
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
@@ -141,6 +143,8 @@ export default function AuthScreen({
               : 'Профиль и игровые коллекции будут публичными. Email останется приватным.'}
           </p>
         </div>
+
+        {sessionExpired && <p className="auth-error" role="alert">Сессия закончилась. Войди снова, чтобы продолжить. Твои игры и оценки сохранены.</p>}
 
         <div className="auth-tabs">
           <button

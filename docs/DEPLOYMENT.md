@@ -79,3 +79,23 @@ The VPS migration and cutover are described in [VPS_MIGRATION.md](VPS_MIGRATION.
 - Staging login sessions are new, scoped to `dev.r-app.ru`; no real cookies/tokens move from production. UI/JS can be fetched without login, but private API requires authorization.
 - If stage migrations fail, rolling back images cannot revert the schema. Restore the staging backup only after diagnosis and explicit approval.
 - DNS A `dev.r-app.ru → 111.88.215.215`, TLS managed by existing Caddy. Staging does not start merely because DNS exists.
+
+## GITHUB_TOKEN merge handoff, 27.10.2026
+
+В `Frontend CI` job `promote-approved-release` после зелёных обязательных PR проверок делает squash merge с exact `head.sha`, проверяет ответ и живой `main` HEAD, затем **обязательно** dispatch `actions/workflows/ci.yml/dispatches` (`ref=main`, `actions:write`). Обычный `push` после CI-`GITHUB_TOKEN` merge GitHub не запускает. Explicit `workflow_dispatch` запускает full main CI, а штатный успешный `workflow_run` main открывает publish/deploy VPS. Пример зафиксирован PR #70: релизный CI success и merge `8b4f326c` при фактическом VPS `dab74554`. Не трактовать успешный staging deployment как production и не докладывать «готово» до сверки VPS SHA и health.
+
+## Исправление второго handoff после PR #83 — main CI → VPS (27.10.2026)
+
+Успешный Frontend CI run #40441005013 (https://github.com/Soulbadguy54/RateApp/actions/runs/40441005013, SHA 2d6c8200) не вызвал очередной VPS production deployment. Запись выше, утверждающая что workflow_run всегда доставляет такой workflow_dispatch CI до VPS, описывает прежнюю ожидаемую схему и не должна применяться после исправления.
+
+Новый процесс: после успешных build, backend-tests, mobile-e2e и production-smoke в main, job dispatch-production-after-green-ci сверяет live main SHA и передаёт tested_sha, ci_run_id через workflow_dispatch в vps-deploy.yml. Publish там снова сверяет SHA main, завершившийся успехом Frontend CI конкретного run и success каждой обязательной job; при несоответствии отказывает до Docker publish и SSH. workflow_run удалён для предотвращения пропущенных/дублированных деплоев. Deployment по-прежнему делает backup/migration/smoke через существующий ограниченный SSH dispatcher. Проверить /srv/rateapp/current-release, production tags, /api/health, GitHub workflow и Telegram после выката. Само изменение файлов и зелёный CI — не подтверждение публикации.
+
+## Финальное Telegram-сообщение из VPS workflow и session expiry (27.10.2026)
+
+Вопреки прежнему ожиданию, успешный VPS production run #40444398986 для d9add1d67dee не породил дополнительный Telegram workflow_run (из-за цепочки GITHUB_TOKEN dispatch). Последняя job notify-production в vps-deploy.yml теперь исполняется после publish/deploy даже при ошибке и самостоятельно отправляет итог в Telegram с Actions URL, SHA, кратким changelog по подтверждённым ревизиям. Прежде чем отправить **успех**, сверяет результат deploy и публичный /api/health (production, DB reachable). Telegram секрет берётся только из TG_BOT_TOKEN и TG_CHAT_ID GitHub Settings, не логируется. Сбой доставки краснит job и подлежит устранению; проверить реально пришедшее сообщение, а не только зелёный deploy.
+
+Общая ошибка поиска «Session expired» означает недействительную AuthSession cookie на сервере, не ошибку OAuth IGDB. Пользователь повторно авторизуется привычным ником/email и PIN; данные PostgreSQL при этом не меняются. На 401 защищённых запросов интерфейс теперь возвращает на логин, на 503 — не разлогинивается. Каталог /api/discover/feed и source=local полностью локальны; source=igdb использует Twitch/IGDB. Для проверки кода: мобильный E2E session-expiry и tests/test_telegram_ci_notify.py, полный release CI перед main.
+
+## Общая Docker-сеть: DNS alias production и staging (27.10.2026)
+
+`deploy/compose.yaml` (`name: rateapp`) и `deploy/compose.stage.yaml` подключены к общей `rateapp_internal`. **Нельзя использовать `api:8000` как upstream production**: обе Compose services с именем `api` публикуют один Docker DNS alias, и production Caddy может направить запросы на staging backend. Используйте строго `rateapp-api-1:8000` в `deploy/Caddyfile` (у stage собственное уникальное `rateapp-stage-api:8000`), проверьте aliases через `docker inspect`. После выката отдельно требовать `r-app.ru/api/health: environment=production` и `dev.r-app.ru/api/health: environment=staging`, DB reachable в обоих; проверка только HTTP 200 недостаточна. Этот дефект проявился как ложная жалоба на деплой в Telegram run #40458962549: SSH deploy прошёл, но независимая проверка увидела staging и правильно не объявила успех. Аварийный Caddy reload восстановил корректный маршрут, репозиторный фикс обеспечивает сохранность после следующего запуска.
