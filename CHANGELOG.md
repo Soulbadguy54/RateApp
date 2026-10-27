@@ -1,5 +1,13 @@
 # Rate APP — история разработки
 
+## 27 октября 2026 — Session expired без ложной ошибки IGDB и финальное Telegram-сообщение VPS
+
+- Публичная сверка production: API/веб работают на d9add1d67dee, успешный VPS deploy run #40444398986, но после него **не появилось** самостоятельного запуска Telegram workflow_run. При цепочке workflow_dispatch, инициированной GITHUB_TOKEN, косвенное уведомление ненадёжно, даже если сам деплой успешен.
+- Отдельный notify-production job в production workflow проверяет реальный результат deploy и публичный /api/health (environment=production, database.reachable=true) и прямо отправляет Telegram «Production обновлён», точный SHA и ссылку на запуск. Ошибки тоже уведомляются, без ложной успешной публикации; production исключён из второго workflow_run-уведомителя во избежание дублей.
+- Ответы 401 /api/games/search и /api/discover/feed не являются IGDB ошибками: server-side cookie-сессия перестала соответствовать AuthSession. 30-дневный срок — для новых токенов, старые cookie после переноса/смены БД могут быть недействительны. Защищённые fetch теперь централизованно переводят авторизованный интерфейс к форме входа с русским объяснением; ни игровые записи, ни оценки не изменяются.
+- Локальная выдача Discovery использует только PostgreSQL и сохранённые атрибуты игр; внешний IGDB вызывается при явно выбранном глубоком поиске/дозагрузке. Новые мобильные E2E и Python-тест финального сообщения покрывают два сценария 401, запрет ложной успешной публикации.
+
+
 ## 27 октября 2026 — второй handoff: успешный main CI → VPS production (инфраструктурное исправление)
 
 - Установленный факт: после одобренного merge #70 и первой починки #83 GitHub main = 2d6c8200, полный Frontend CI run #40441005013 (https://github.com/Soulbadguy54/RateApp/actions/runs/40441005013) прошёл build/backend/mobile E2E/production smoke, но VPS production deployment не появился; VPS продолжал обслуживать dab74554.
