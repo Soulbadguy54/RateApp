@@ -1,15 +1,23 @@
 name: VPS production deployment
 
 on:
-  workflow_run:
-    workflows: ["Frontend CI"]
-    types: [completed]
-    branches: [main]
+  # Only main CI, after all four required jobs succeed, dispatches this workflow.
+  # Inputs are independently checked against live GitHub CI and main SHA.
   workflow_dispatch:
+    inputs:
+      tested_sha:
+        description: Exact main SHA that passed full CI and production smoke
+        required: true
+        type: string
+      ci_run_id:
+        description: Completed Frontend CI run ID to verify
+        required: true
+        type: string
 
 permissions:
   contents: read
   packages: write
+  actions: read
 
 concurrency:
   group: rateapp-vps-production
@@ -17,21 +25,39 @@ concurrency:
 
 jobs:
   publish:
-    if: >-
-      ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' ||
-           github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.revision.outputs.sha }}
     steps:
-      - name: Select tested revision
+      - name: Verify full green main CI before using privileged deploy credentials
         id: revision
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
-          DIRECT_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TESTED_SHA: ${{ inputs.tested_sha }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
         run: |
-          if [[ "$EVENT_NAME" == "workflow_run" ]]; then echo "sha=$WORKFLOW_SHA" >> "$GITHUB_OUTPUT"; else echo "sha=$DIRECT_SHA" >> "$GITHUB_OUTPUT"; fi
+          set -euo pipefail
+          [[ "$TESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CI_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          current_main="$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          test "$current_main" = "$TESTED_SHA"
+          ci="$(gh api "repos/$REPOSITORY/actions/runs/$CI_RUN_ID")"
+          jq -e --arg sha "$TESTED_SHA" '
+            .name == "Frontend CI" and
+            .path == ".github/workflows/ci.yml" and
+            .head_sha == $sha and .head_branch == "main" and
+            .status == "completed" and .conclusion == "success" and
+            (.event == "push" or .event == "workflow_dispatch")
+          ' <<<"$ci" >/dev/null
+          jobs="$(gh api "repos/$REPOSITORY/actions/runs/$CI_RUN_ID/jobs?per_page=100")"
+          for required in build backend-tests mobile-e2e production-smoke; do
+            jq -e --arg name "$required" '
+              any(.jobs[]; .name == $name and .conclusion == "success")
+            ' <<<"$jobs" >/dev/null
+          done
+          echo "sha=$TESTED_SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.revision.outputs.sha }}
@@ -102,3 +128,28 @@ jobs:
         run: |
           [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
           ssh -T -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o BatchMode=yes "rateapp-deploy@111.88.215.215" "bootstrap-stage $DEPLOY_SHA"
+
+  # workflow_run chaining is not reliable after GITHUB_TOKEN dispatch.
+  # Sending within this workflow guarantees a final success/failure verdict,
+  # tied to the actual completed deploy job rather than earlier build success.
+  notify-production:
+    if: ${{ always() }}
+    needs: [publish, deploy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Check publication health and deliver final Telegram status
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ vars.TG_CHAT_ID }}
+          GH_READ_TOKEN: ${{ github.token }}
+          RATEAPP_DIRECT_PRODUCTION: "1"
+          RATEAPP_TESTED_SHA: ${{ inputs.tested_sha }}
+          RATEAPP_DEPLOY_RESULT: ${{ needs.publish.result == 'success' && needs.deploy.result == 'success' && 'success' || 'failure' }}
+        run: python3 scripts/telegram_ci_notify.py

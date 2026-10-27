@@ -319,3 +319,31 @@ Telegram notifier `scripts/telegram_ci_notify.py` запускается из д
 ### E2E: дождаться полного завершения glass-collapse перед новым swipe (27.10.2026, release PR #70)
 
 Последний Android E2E в длинном сценарии Discovery получал нулевой `translateX` после возврата из раскрытой панели: тест проверял лишь `sheet.y-stage.y > 90`, что допускает продолжающийся `reveal > 0.03`. Защита `posterPanBlockedRef` по ADR-040 правильно блокировала начатый до закрытия pan. Корректная синхронизация: сравнивать текущий верх glass с `Math.min(posterBottom+12, stageHeight-minPeek)` с допуском 2px в координатах stage. Для нового реального pointer-event выбирать точку на открытой области `.discover-cover__gesture` строго над glass, проверяя `document.elementFromPoint`, а не центр full-stage overlay (который может находиться под стеклом). Функциональная проверка непрерывного left→right→center жеста остаётся.
+
+### Исправление пропущенного main CI после автоматического merge (27.10.2026)
+
+PR #70 автоматически слит после успешного полного release CI #40438886429 в commit `8b4f326ca0f2aae84117ffc05fa7da95ebba2575`; VPS release marker до исправления остался `dab7455468d071ef4b3100c6407d8ab4f769fe9c`. GitHub подавляет `push`-событие, если merge выполняется CI-`GITHUB_TOKEN`! Поэтому state `main` и физический production разошлись без ошибки зелёного PR workflow. Нельзя объявлять выпуск по одному PR или staging-сообщению.
+
+Новое восстановление: после SHA-checked merge `promote-approved-release` вызывает GitHub REST `actions/workflows/ci.yml/dispatches` (`ref=main`) с `actions:write` — это разрешённое GitHub исключение из токенного suppression. Затем штатный `workflow_run` VPS production deployment срабатывает **только** на успешный main CI. Точечная recovery-ветка `fix/release-handoff-ci-20261027` имеет ограниченный gate через ту же `release-approved` метку/точный SHA для доставки самого исправления; рабочие feature-ветки не получают автоматических прав. Для проверки: main CI, VPS production deployment, текущий `/srv/rateapp/current-release`, `/api/health` и актуальный SHA `main`. Telegram отдельно называет релизный CI, main CI и staging без ложного «production уже обновлён».
+
+## Точный production release handoff (27.10.2026, после #83)
+
+Измерение: main SHA 2d6c8200, зелёный Frontend CI run #40441005013 (build, backend-tests, mobile-e2e, production-smoke), но VPS current-release=dab74554; публикация Discovery ещё не подтверждена. Второй разрыв main CI → VPS устраняется отдельным инфраструктурным PR: main CI после всех зелёных jobs явно dispatch'ит vps-deploy.yml с tested_sha и ci_run_id. VPS workflow защищён независимой проверкой SHA, live main HEAD, успешного CI run и обязательных jobs. Ни UI, ни БД не изменены. После слияния сверять server SHA и public health, не принимать успешный CI за завершённый деплой.
+
+## Защищённые API и Telegram после действительного VPS deployment (27.10.2026)
+
+Прямо измерено: после auto-merge выпуск d9add1d67dee работает на VPS (контейнеры и /api/health production/DB reachable), Actions VPS #40444398986 успешен, но отдельного Telegram workflow_run после него не возникло. В новом варианте финальный notify-production job отправляет сообщение сам из VPS workflow по завершении деплоя и отдельной проверке публичного health. Второй workflow_run listener оставлен только для CI, staging и daily health, чтобы не было двойных production-оповещений.
+
+В текущей схеме /api/discover/feed берёт рекомендации только из PostgreSQL, по сохранённым оценкам, лайкам и играм с обложками/IGDB-рейтингами; в IGDB по сети не ходит. /api/games/search source=local тоже использует PostgreSQL, source=igdb ходит во внешний сервис при глубоком поиске. Ответ 401 Session expired приходит из api/security.py до IGDB при недействительном cookie/token-hash. Ранее UI оставался открытым и показывал эту строку под поиском или «Не удалось загрузить рекомендации». Новая централизованная обработка защищённых 401 возвращает к входу с русским сообщением, без изменения игр/оценок и без разлогинивания по 503.
+
+### Регрессия WebKit при быстром защищённом 401 (PR #85, 27.10.2026)
+
+Первый релизный CI PR #85: build/backend зелёные, из 25 мобильных прогонов 23 зелёные и 2 повторно упали на iPhone WebKit (поиск /api/games/search и /api/discover/feed). В обоих не появился login после смоделированного 401, поэтому PR не публиковался. Коррекция: 401 сохраняется в синхронном состоянии модуля `src/sessionFetch.ts`, React App получает его через `useSyncExternalStore` даже при раннем ответе до подключения эффекта. Новый вход сбрасывает флаг. Полный WebKit/Android CI обязателен перед merge; не ослаблять E2E.
+
+### Production/staging Docker DNS upstream collision — 27.10.2026 (после #85)
+
+Production после успешного publish/deploy SHA `f0b2b92273cb` иногда отвечал публичным `environment=staging` на `https://r-app.ru/api/health`. У shared сети `rateapp_internal` оба Compose API контейнера имеют DNS alias `api` (`rateapp-api-1` и `rateapp-stage-api`); Caddy proxy к неуникальному `api:8000` мог маршрутизировать реальные запросы на staging. Это прежде всего граница изоляции данных, а не ошибка Telegram. Независимая post-deploy проверка правильно отказала в зелёном статусе и отправила предупреждение. Исправление live Caddy via reload: использовать однозначный prod контейнер `rateapp-api-1:8000`; после него prod/stage проверены отдельно, повтор notify job #40458962549 успешен. `deploy/Caddyfile` и regression `tests/test_caddy_environment_isolation.py` закрепляют исправление навсегда. При раскатке проверять оба домена (prod=production, stage=staging), не только HTTP 200.
+
+### Backmerge production hotfix в develop (27.10.2026)
+
+Ветвь develop содержит независимые изменения Discovery и E2E, поэтому синхронизация production-fixes #83–#86 выполнена merge main → develop без force push и без попадания незаконченных экспериментов в main. Обработчик sessionFetch/useSyncExternalStore, прямые Telegram VPS уведомления, проверенный CI→VPS handoff и уникальный rateapp-api-1 upstream должны присутствовать в обеих ветках. Для staging проверить коммит develop, независимый API=staging и конфигурацию frontend; настоящие SHA/health сверяются после CI/CD.

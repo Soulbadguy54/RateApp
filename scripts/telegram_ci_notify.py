@@ -215,6 +215,7 @@ def job_lines(jobs: list[dict[str, Any]]) -> list[str]:
         "backend-tests": "Backend",
         "mobile-e2e": "Мобильные E2E",
         "production-smoke": "Production smoke",
+        "promote-approved-release": "Слияние одобренного PR в main",
     }
     markers = {
         "success": "✅", "failure": "❌", "timed_out": "⏰",
@@ -276,6 +277,13 @@ def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None
 
     details = []
     target = pr_target(run) if source == "pull_request" else None
+    # GitHub sometimes drops workflow_run.pull_requests after the release PR
+    # has already merged. A successful trusted auto-promotion job identifies
+    # the main-bound release unequivocally, unlike head_branch='develop'.
+    promotion_succeeded = source == "pull_request" and any(
+        job.get("name") == "promote-approved-release"
+        and job.get("conclusion") == "success" for job in (jobs or [])
+    )
     if workflow == "Frontend CI":
         if source == "push" and branch == "develop":
             if passed:
@@ -287,15 +295,19 @@ def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None
                 return None  # The real release verdict comes from VPS deployment.
             heading = "🚀❌ <b>Production · релиз заблокирован</b>"
             description = "Полный CI в main не прошёл; production-деплой не подтверждён."
-        elif source == "pull_request" and target and target[0] == "main":
+        elif source == "pull_request" and (target and target[0] == "main" or promotion_succeeded):
             heading = (
                 "🚀✅ <b>Production · релизные тесты пройдены</b>" if passed
                 else "🚀❌ <b>Production · релизные тесты НЕ пройдены</b>"
             )
             description = (
-                f"PR #{target[1]}: {clean(branch)} → main. Это полный CI ПЕРЕД выпуском, "
-                + ("но сам production ещё не обновлён." if passed
-                   else "перенос в production заблокирован ошибками тестов.")
+                (f"PR #{target[1]}: " if target else "Одобренный релизный PR: ")
+                + f"{clean(branch)} → main. "
+                + ("Тесты прошли и PR автоматически слит. Запускается отдельный main CI; "
+                   "production будет обновлён только после его успешного завершения и VPS-деплоя."
+                   if passed and promotion_succeeded
+                   else "Тесты прошли, но сам production ещё не обновлён." if passed
+                   else "Перенос в production заблокирован ошибками проверок.")
             )
         elif source == "pull_request" and target and target[0] == "develop":
             heading = (
@@ -303,6 +315,11 @@ def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None
                 else "🧪❌ <b>Staging · PR-проверки не пройдены</b>"
             )
             description = f"PR #{target[1]}: {clean(branch)} → develop. Это не проверка production."
+        elif source == "workflow_dispatch" and branch == "main":
+            if passed:
+                return None  # Real success is the subsequent VPS deployment.
+            heading = "🚨❌ <b>Production · main CI не прошёл</b>"
+            description = "Повторная проверка main не прошла. VPS production-деплой заблокирован."
         elif source == "workflow_dispatch":
             heading = (
                 "🔬✅ <b>Ручной полный CI пройден</b>" if passed
@@ -325,8 +342,9 @@ def make_message(event: dict[str, Any], jobs: list[dict[str, Any]] | None = None
             else "🧪❌ <b>Ошибка staging-деплоя</b>"
         )
         description = (
-            "Тестовая версия опубликована на dev.r-app.ru."
-            if passed else "Тестовую версию не удалось полностью развернуть."
+            "Тестовая версия опубликована на dev.r-app.ru. "
+            "Это независимый staging-деплой, production на r-app.ru не обновлялся."
+            if passed else "Тестовую версию не удалось полностью развернуть. Production не затронут."
         )
     elif workflow == "VPS production deployment":
         heading = (
@@ -393,6 +411,87 @@ def send_telegram(message: str, token: str, chat_id: str) -> None:
         raise RuntimeError("Telegram network request failed") from None
 
 
+def direct_production_event(
+    *, sha: str, run_id: int, deploy_result: str, run: dict[str, Any]
+) -> dict[str, Any]:
+    """Build a verified deployment message without relying on workflow_run.
+
+    The calling workflow only invokes this after the VPS deployment job has
+    actually finished. It checks public health separately before saying green.
+    """
+    passed = deploy_result == "success" and SHA_PATTERN.fullmatch(sha) is not None
+    if passed:
+        try:
+            req = urllib.request.Request(
+                "https://r-app.ru/api/health",
+                headers={"Cache-Control": "no-store", "User-Agent": "rateapp-deployment-confirm"},
+            )
+            with urllib.request.urlopen(req, timeout=12) as response:
+                health = json.load(response)
+            passed = (
+                health.get("ok") is True
+                and health.get("environment") == "production"
+                and health.get("database", {}).get("reachable") is True
+            )
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError, TypeError):
+            passed = False
+
+    return {
+        "workflow": {"name": "VPS production deployment"},
+        "workflow_run": {
+            "id": run_id,
+            "name": "VPS production deployment",
+            "event": "workflow_dispatch",
+            "conclusion": "success" if passed else "failure",
+            "head_branch": "main",
+            "head_sha": sha,
+            "repository": {"full_name": os.getenv("GITHUB_REPOSITORY", "")},
+            "html_url": f"https://github.com/{os.getenv('GITHUB_REPOSITORY', '')}/actions/runs/{run_id}",
+            "created_at": run.get("created_at", ""),
+            "run_started_at": run.get("run_started_at", ""),
+            "updated_at": run.get("updated_at", ""),
+        },
+    }
+
+
+def send_direct_production(token: str, chat_id: str) -> int:
+    """Final Telegram result is part of the deploy workflow itself.
+
+    A workflow_run subscriber may never fire for a GITHUB_TOKEN-dispatched
+    production run; do not present missing notifications as a deploy success.
+    """
+    sha = os.getenv("RATEAPP_TESTED_SHA", "").strip()
+    run_id_raw = os.getenv("GITHUB_RUN_ID", "")
+    if not run_id_raw.isdecimal():
+        print("Missing production deployment run ID.", file=sys.stderr)
+        return 1
+    run_id = int(run_id_raw)
+    repo = os.getenv("GITHUB_REPOSITORY", "")
+    run = github_json(repo, f"actions/runs/{run_id}", os.getenv("GH_READ_TOKEN", ""))
+    event = direct_production_event(
+        sha=sha,
+        run_id=run_id,
+        deploy_result=os.getenv("RATEAPP_DEPLOY_RESULT", ""),
+        run=run,
+    )
+    revision, changes = (None, [])
+    if event["workflow_run"]["conclusion"] == "success":
+        # The deployed SHA comes from the verified publish job, not from
+        # workflow_run event metadata, which can point to another revision.
+        _, changes = deployment_changes(event["workflow_run"], os.getenv("GH_READ_TOKEN", ""))
+        revision = sha
+    msg = make_message(event, revision=revision, changes=changes)
+    assert msg is not None
+    try:
+        send_telegram(msg, token, chat_id)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    ok = event["workflow_run"]["conclusion"] == "success"
+    print("Final production deployment Telegram notification delivered.")
+    return 0 if ok else 1
+
+
 def main() -> int:
     try:
         with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as handle:
@@ -407,6 +506,9 @@ def main() -> int:
         print("Telegram not configured: set repository secret TG_BOT_TOKEN "
               "and repository variable TG_CHAT_ID.", file=sys.stderr)
         return 1
+
+    if os.getenv("RATEAPP_DIRECT_PRODUCTION") == "1":
+        return send_direct_production(token, chat_id)
 
     workflow = payload.get("workflow", {}).get("name", "")
     run = payload.get("workflow_run", {})

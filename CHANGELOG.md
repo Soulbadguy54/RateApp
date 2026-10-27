@@ -1,4 +1,42 @@
+## 27 октября 2026 — защита production от перепутанного upstream Docker DNS (PR после #85)
+
+- После выпуска #85 run #40458962549: publish и deploy успешно обновили VPS до `f0b2b92273cb`, но прямой Telegram job вернул failure и отправил предупреждение, потому что публичный `r-app.ru/api/health` в тот момент представился как `staging`; сообщение успешно доставлено.
+- Диагностика: production и staging API используют Compose service `api` на одной внешней Docker network, поэтому DNS-алиас `api` принадлежит двум контейнерам; production Caddy `reverse_proxy api:8000` может ошибочно попадать на stage API/DB. Проверено через `docker inspect` сетевых aliases и реальные health-ответы обоих окружений.
+- Аварийное исправление применено прямо в текущем production Caddy (reload): upstream теперь `rateapp-api-1:8000`. После перезапуска маршрута неоднократно подтверждены `r-app.ru → production`, `dev.r-app.ru → staging`; повтор уведомления #40458962549 завершился success и Telegram подтвердил доставку.
+- Постоянное исправление `deploy/Caddyfile` в этом PR и регрессионные Python-тесты фиксируют уникальный production upstream; конфигурация валидируется в полном CI перед следующей заменой контейнеров. Нельзя менять health, чтобы подавить предупреждение: environment=production остаётся обязательным.
+
 # Rate APP — история разработки
+
+## 27 октября 2026 — обратная синхронизация production hotfix в develop (PR #87/#88)
+
+- После выпуска PR #85 и #86 в main на текущей отдельной develop-ветке остаются самостоятельные UI/Discovery наработки. Вместо сброса develop сделан merge main → develop с сохранением его истории и 36 дополнительных коммитов; конфликтующие обработчики 401, Caddy и production handoff берутся из проверенного main, а независимые изменения develop сохраняются. Отдельный sync PR и новый staging workflow подтверждают версию dev.r-app.ru.
+
+
+## 27 октября 2026 — Session expired без ложной ошибки IGDB и финальное Telegram-сообщение VPS
+
+- Публичная сверка production: API/веб работают на d9add1d67dee, успешный VPS deploy run #40444398986, но после него **не появилось** самостоятельного запуска Telegram workflow_run. При цепочке workflow_dispatch, инициированной GITHUB_TOKEN, косвенное уведомление ненадёжно, даже если сам деплой успешен.
+- Отдельный notify-production job в production workflow проверяет реальный результат deploy и публичный /api/health (environment=production, database.reachable=true) и прямо отправляет Telegram «Production обновлён», точный SHA и ссылку на запуск. Ошибки тоже уведомляются, без ложной успешной публикации; production исключён из второго workflow_run-уведомителя во избежание дублей.
+- Ответы 401 /api/games/search и /api/discover/feed не являются IGDB ошибками: server-side cookie-сессия перестала соответствовать AuthSession. 30-дневный срок — для новых токенов, старые cookie после переноса/смены БД могут быть недействительны. Защищённые fetch теперь централизованно переводят авторизованный интерфейс к форме входа с русским объяснением; ни игровые записи, ни оценки не изменяются.
+- Локальная выдача Discovery использует только PostgreSQL и сохранённые атрибуты игр; внешний IGDB вызывается при явно выбранном глубоком поиске/дозагрузке. Новые мобильные E2E и Python-тест финального сообщения покрывают два сценария 401, запрет ложной успешной публикации.
+
+
+- PR #85 CI run #40448390669: 23 mobile E2E прошли, 2 WebKit-сценария обработчика 401 не увидели переход ко входу. Исправлено слабое место клиентского события: одноразовый `window.dispatchEvent` заменён хранимым флагом с подпиской `useSyncExternalStore`; теперь быстрый 401, пришедший до регистрации effect/listener в React, не теряется. Android/инструменты не считаются достаточным доказательством: повторный WebKit QA остаётся обязательным.
+- Для повторного iPhone/Android QA сценарии переключены с перехвата Playwright `page.route` на настоящий 401 API: новый тестовый аккаунт входит, затем через тестовый /api/auth/logout инвалидирует собственную session; внутри открытого SPA выполняется локальный поиск или переход в Discovery. Это воспроизводит недействительную серверную сессию и исключает различия Service Worker/WebKit при сетевом мокировании. Проверка двух режимов и русскоязычного повторного входа сохранена.
+
+## 27 октября 2026 — второй handoff: успешный main CI → VPS production (инфраструктурное исправление)
+
+- Установленный факт: после одобренного merge #70 и первой починки #83 GitHub main = 2d6c8200, полный Frontend CI run #40441005013 (https://github.com/Soulbadguy54/RateApp/actions/runs/40441005013) прошёл build/backend/mobile E2E/production smoke, но VPS production deployment не появился; VPS продолжал обслуживать dab74554.
+- Отказ от ненадёжного второго события workflow_run: завершившийся успехом main CI напрямую вызывает workflow_dispatch для VPS. Деплой независимо сверяет живой main SHA, указанный CI run (полный success, ветка и SHA), а также успешные build/backend/mobile/smoke jobs. Ошибки запрещают публикацию.
+- Docker, PostgreSQL, API, UI и staging в этом исправлении не меняются. Финальный факт публикации определяется только по контейнерам VPS, current-release, health и итоговому VPS workflow.
+
+
+## 27 октября 2026 — восстановление цепочки release CI → main CI → VPS production (PR infra)
+
+- PR #70: полный release CI #40438886429 (build/backend/mobile E2E) успешно прошёл и автоматически слил Discovery в `main` (`8b4f326c`), но VPS оставался на предыдущем SHA `dab74554`. GitHub `GITHUB_TOKEN` suppresses workflow `push` после merge, поэтому ни CI `main`, ни production VPS deployment не запускались.
+- Одобренный `promote-approved-release` теперь после успешного SHA-guarded squash merge **явно отправляет** `workflow_dispatch` на `ci.yml@main` с правами `actions:write`. Для этого события GitHub документирует исключение из suppression; основной CI всё ещё обязан пройти build, backend, mobile E2E и smoke; только после него запускается действующий VPS production workflow.
+- Чтобы впервые активировать исправление без manual polling и отдельной команды владельца, конкретная infrastructure rescue-ветка `fix/release-handoff-ci-20261027` одобрена тем же ограниченным gate (только single-repo, `release-approved`, green CI, exact head SHA). Другие feature-ветки по-прежнему запрещены.
+- Telegram при недоступном поле `workflow_run.pull_requests` распознаёт достоверный релиз по успешному job `promote-approved-release`, говорит о **слиянии, а не публикации**, отличает отказ `workflow_dispatch@main` и подчёркивает, что сообщение staging не означает production. Добавлены regression unit cases.
+- UI/API/БД не менялись; итоговая публикация проверяется по VPS SHA/health и Telegram уведомлению, а не по одному зелёному PR CI.
 
 ## 27 октября 2026 — E2E ожидание полного закрытия glass перед новым свайпом (PR #82)
 
