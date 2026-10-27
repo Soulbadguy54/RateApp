@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import GameCard, { Cover } from './components/GameCard'
 import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
+import BottomNavGameSlot from './components/BottomNavGameSlot'
 import RatingWheel, { closestHalfPoint } from './components/RatingWheel'
 import { CollectionIcon, CollectionAppearanceEditor } from './components/CollectionAppearance'
 import {
@@ -20,6 +21,7 @@ import {
   useTransform,
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
+import './views/DiscoverView.css'
 import LoadingScreen from './LoadingScreen'
 import { PushOnboarding, clearPushStateCache, disconnectPushForLogout, preloadPushState } from './PushSettings'
 import {
@@ -31,8 +33,9 @@ import {
 } from './data'
 
 const ProfileView = lazy(() => import('./views/ProfileView'))
+const DiscoverView = lazy(() => import('./views/DiscoverView'))
 
-type Tab = 'library' | 'add' | 'collections' | 'profile'
+type Tab = 'library' | 'add' | 'collections' | 'profile' | 'discovery'
 
 type AppView = {
   tab: Tab
@@ -46,6 +49,10 @@ type AppHistoryEntry = {
   view: AppView
   scrollY: number
   fromApp: boolean
+  /** Entry depth within this SPA session, used to bypass app routes on exit. */
+  appDepth?: number
+  /** Browser-history safety entry: the first Back stays in the app. */
+  exitGate?: boolean
   collectionPickerOpen?: boolean
   controls?: {
     progress: number
@@ -56,7 +63,12 @@ type AppHistoryEntry = {
   }
 }
 
-const validTabs: Tab[] = ['library', 'add', 'collections', 'profile']
+const validTabs: Tab[] = ['library', 'add', 'collections', 'profile', 'discovery']
+const EXIT_CONFIRM_WINDOW_MS = 1800
+
+function isRootScreen(view: AppView): boolean {
+  return view.gameId == null && view.formGameId == null && !view.collectionId
+}
 
 function readAppHistoryEntry(value: unknown): AppHistoryEntry | null {
   if (!value || typeof value !== 'object') return null
@@ -381,6 +393,19 @@ function App() {
     return () => document.removeEventListener('keydown', onKeyboardEnter)
   }, [])
   const currentViewRef = useRef<AppView>(firstViewRef.current)
+  const [exitPromptVisible, setExitPromptVisible] = useState(false)
+  const exitArmedUntilRef = useRef(0)
+  const exitPromptTimerRef = useRef<number | null>(null)
+  const exitGateDepthRef = useRef<number | null>(null)
+  const clearExitPrompt = () => {
+    exitArmedUntilRef.current = 0
+    setExitPromptVisible(false)
+    if (exitPromptTimerRef.current !== null) window.clearTimeout(exitPromptTimerRef.current)
+    exitPromptTimerRef.current = null
+  }
+  useEffect(() => () => {
+    if (exitPromptTimerRef.current !== null) window.clearTimeout(exitPromptTimerRef.current)
+  }, [])
   const pendingScreenRestoreRef = useRef<AppHistoryEntry | null>(null)
   const libraryLastSnapshotRef = useRef<AppHistoryEntry | null>(null)
   const [collectionTitle, setCollectionTitle] = useState('')
@@ -469,6 +494,8 @@ function App() {
       rateAppView: true,
       view,
       fromApp: existing?.fromApp ?? false,
+      appDepth: existing?.appDepth ?? 0,
+      exitGate: existing?.exitGate,
       collectionPickerOpen: view.gameId != null ? collectionPickerOpen : false,
       scrollY: Math.max(0,
         viewportPageRef.current?.classList.contains('page--viewport')
@@ -492,7 +519,10 @@ function App() {
   }
 
   const showAppView = (view: AppView, restoredEntry: AppHistoryEntry) => {
+    if (keyForAppView(currentViewRef.current) !== keyForAppView(view)) clearExitPrompt()
     currentViewRef.current = view
+    exitGateDepthRef.current = restoredEntry.exitGate && isRootScreen(view)
+      ? (restoredEntry.appDepth ?? 0) : null
     pendingScreenRestoreRef.current = restoredEntry
     if (view.tab === 'library' && view.gameId == null) {
       // Do not let scroll callbacks overwrite the saved collapsed state
@@ -507,6 +537,17 @@ function App() {
     setAddGameId(view.formGameId)
   }
 
+  const pushRootExitGate = (view: AppView, current: AppHistoryEntry) => {
+    // A standalone PWA loaded directly at its root has no prior app state to
+    // pop to. Add ONE same-URL entry so Android Back triggers popstate first.
+    if (!isRootScreen(view)) return
+    const gate: AppHistoryEntry = {
+      ...current, exitGate: true, appDepth: (current.appDepth ?? 0) + 1,
+    }
+    window.history.pushState(gate, '', urlForAppView(view))
+    exitGateDepthRef.current = gate.appDepth!
+  }
+
   const navigateTo = (view: AppView, options?: { replace?: boolean; restoreLibrary?: boolean }) => {
     if (keyForAppView(currentViewRef.current) === keyForAppView(view)) return
 
@@ -519,12 +560,14 @@ function App() {
       fromApp: options?.replace
         ? (readAppHistoryEntry(window.history.state)?.fromApp ?? false)
         : true,
+      appDepth: (readAppHistoryEntry(window.history.state)?.appDepth ?? 0) + (options?.replace ? 0 : 1),
       collectionPickerOpen: false,
       controls: savedLibrary?.controls,
     }
     if (options?.replace) window.history.replaceState(entry, '', urlForAppView(view))
     else window.history.pushState(entry, '', urlForAppView(view))
     showAppView(view, entry)
+    if (view.tab === 'discovery' && isRootScreen(view)) pushRootExitGate(view, entry)
   }
 
   const goBackOr = (fallback: AppView) => {
@@ -543,18 +586,54 @@ function App() {
     window.history.scrollRestoration = 'manual'
     const previous = readAppHistoryEntry(window.history.state)
     const initial = currentViewRef.current
-    window.history.replaceState(
-      previous ?? { rateAppView: true, view: initial, scrollY: 0, fromApp: false },
-      '',
-      urlForAppView(initial),
-    )
+    const base: AppHistoryEntry = previous ?? {
+      rateAppView: true, view: initial, scrollY: 0, fromApp: false, appDepth: 0,
+    }
+    window.history.replaceState(base, '', urlForAppView(initial))
+    if (isRootScreen(initial)) {
+      // Rehydrating a PWA/tab must reuse its guard, not stack a new copy.
+      // Entering Discovery from another tab is handled in navigateTo.
+      if (base.exitGate) exitGateDepthRef.current = base.appDepth ?? 0
+      else pushRootExitGate(initial, base)
+    }
 
     const onPopState = (event: PopStateEvent) => {
-      const entry = readAppHistoryEntry(event.state) ?? {
-        rateAppView: true as const,
-        view: readAppViewFromUrl(),
-        scrollY: 0,
-        fromApp: false,
+      const entry: AppHistoryEntry = readAppHistoryEntry(event.state) ?? {
+        rateAppView: true, view: readAppViewFromUrl(),
+        scrollY: 0, fromApp: false, appDepth: 0,
+      }
+      const active = currentViewRef.current
+      // Only root-level app exits are guarded. Nested screens (including the
+      // playthrough form) still use native history and ordinary Back.
+      if (exitGateDepthRef.current !== null && isRootScreen(active) &&
+          (entry.appDepth ?? 0) < exitGateDepthRef.current) {
+        if (Date.now() <= exitArmedUntilRef.current) {
+          clearExitPrompt()
+          exitGateDepthRef.current = null
+          // Only the host browser/Android can close a standalone PWA reliably.
+          // Request closure if supported and skip all internal SPA entries;
+          // an ordinary browser tab falls back to its prior external page.
+          const standalone = window.matchMedia('(display-mode: standalone)').matches ||
+            ('standalone' in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone))
+          if (standalone) window.close()
+          window.history.go(-((entry.appDepth ?? 0) + 1))
+          return
+        }
+        exitArmedUntilRef.current = Date.now() + EXIT_CONFIRM_WINDOW_MS
+        setExitPromptVisible(true)
+        if (exitPromptTimerRef.current !== null) window.clearTimeout(exitPromptTimerRef.current)
+        exitPromptTimerRef.current = window.setTimeout(() => {
+          clearExitPrompt()
+        }, EXIT_CONFIRM_WINDOW_MS)
+        // Restore an equivalent same-URL guard without remounting the root.
+        // No flash of the old tab while Android navigates back.
+        const gate: AppHistoryEntry = {
+          rateAppView: true, view: active, scrollY: 0, fromApp: true,
+          appDepth: (entry.appDepth ?? 0) + 1, exitGate: true,
+        }
+        window.history.pushState(gate, '', urlForAppView(active))
+        exitGateDepthRef.current = gate.appDepth!
+        return
       }
       showAppView(entry.view, entry)
     }
@@ -1248,9 +1327,12 @@ function App() {
       setCollectionError('')
     }
 
+    const previousEntry = readAppHistoryEntry(window.history.state)
     const entry: AppHistoryEntry = {
       rateAppView: true, view, scrollY: 0,
-      fromApp: readAppHistoryEntry(window.history.state)?.fromApp ?? false,
+      fromApp: previousEntry?.fromApp ?? false,
+      appDepth: previousEntry?.appDepth ?? 0,
+      exitGate: previousEntry?.exitGate && isRootScreen(view),
       collectionPickerOpen: false,
       ...(tab === 'library' ? { controls: {
         progress: 0, anchor: 4, forcedCollapsed: false,
@@ -3179,7 +3261,9 @@ function App() {
         ref={viewportPageRef}
         className={activeTab === 'library' && selectedGameId == null
           ? 'page page--library'
-          : 'page page--viewport'}
+          : activeTab === 'discovery' && selectedGameId == null
+            ? 'page page--viewport page--discovery'
+            : 'page page--viewport'}
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
@@ -3195,6 +3279,29 @@ function App() {
               <>
                 {activeTab === 'library' && renderLibrary()}
                 {activeTab === 'add' && renderAdd()}
+                {activeTab === 'discovery' && (
+                  <Suspense fallback={<div className="game-database-loading">Загружаем рекомендации…</div>}>
+                    <DiscoverView
+                      nickname={authUser.nickname}
+                      onAddPlaythrough={(game) => {
+                        // Discovery feed may contain a game not in the current
+                        // catalog subset. Register it before opening the form;
+                        // no discovery feedback is saved on a downward swipe.
+                        rememberCatalogResults([game])
+                        startAdding(game)
+                      }}
+                      onWishlistChange={() => {
+                        void fetch('/api/bootstrap').then(response => response.ok ? response.json() : null)
+                          .then((payload: BootstrapPayload | null) => {
+                            if (!payload) return
+                            setEntries(payload.library.map(normalizeEntry))
+                            setCollections(payload.collections)
+                            rememberCatalogResults(payload.library.flatMap(entry => entry.game ? [entry.game] : []))
+                          }).catch(() => {})
+                      }}
+                    />
+                  </Suspense>
+                )}
                 {activeTab === 'collections' && renderCollections()}
                 {activeTab === 'profile' && renderProfile()}
               </>
@@ -3256,8 +3363,23 @@ function App() {
         </div>
       )}
 
+      {exitPromptVisible && (
+        <div className="app-exit-toast" role="status" aria-live="assertive">
+          Нажми или свайпни «Назад» повторно, чтобы выйти
+        </div>
+      )}
       <nav className="bottom-nav" aria-label="Основная навигация">
-          {nav.map((item) => (
+          {nav.map((item) => item.id === 'add' ? (
+            <BottomNavGameSlot
+              key="add"
+              nickname={authUser.nickname}
+              active={activeTab === 'add' || activeTab === 'discovery'}
+              onNavigate={(tab) => {
+                if (activeTab === tab) resetTab(tab)
+                else openTab(tab)
+              }}
+            />
+          ) : (
             <motion.button
               layout
               key={item.id}

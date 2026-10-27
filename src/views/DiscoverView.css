@@ -1,0 +1,147 @@
+/* Discovery is a full-bleed replacement of the catalog CONTENT, between its existing top and bottom navigation. */
+.game-database-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.game-database-heading__row{min-width:0}
+.game-database-heading h1{font-size:clamp(25px,7vw,34px)}
+
+/* No inherited .page side padding, bottom gap, max-width or scroll: these
+   caused the previous inset “picture in picture” poster. Navigation remains
+   the ordinary fixed .bottom-nav from App, completely unchanged. */
+.page.page--discovery{
+  width:100%;max-width:none;height:100dvh;min-height:0;margin:0;
+  padding:0 0 calc(var(--bottom-nav-height) + var(--safe-bottom));
+  overflow:hidden;overscroll-behavior:none;
+}
+.page--discovery>.page-motion{
+  display:flex;flex-direction:column;width:100%;height:100%;min-height:0;
+}
+.discover-screen{
+  position:relative;isolation:isolate;display:flex;flex-direction:column;
+  flex:1;min-height:0;width:100%;height:100%;
+  overflow:hidden;color:#f6f7ff;
+}
+.discover-topbar{
+  display:flex;align-items:center;gap:9px;flex:0 0 calc(54px + var(--safe-top));
+  margin:0;padding:var(--safe-top) max(12px,var(--safe-right)) 0 max(12px,var(--safe-left));
+  background:var(--bg);z-index:11;
+}
+.discover-icon-button{display:grid;place-items:center;flex:0 0 auto;width:42px;height:42px;border:1px solid var(--line-strong);border-radius:13px;background:linear-gradient(145deg,#242936,#11141c);color:#fff}
+.discover-icon-button--info{margin-left:auto;font:italic 700 19px Georgia,serif}
+.discover-icon-button--undo{font-size:26px;line-height:1;color:#d2cbff}
+.discover-icon-button:disabled{opacity:.4}
+.discover-stage{position:relative;flex:1;min-height:0;width:100%;overflow:hidden;border-radius:0;background:var(--bg)}
+.discover-deck{position:absolute;inset:0;overflow:hidden;background:var(--bg)}
+.discover-artwork{position:absolute;inset:0;overflow:hidden;will-change:transform;transform-origin:center top}
+/* The poster has its OWN natural bounding rectangle, not a full-height image
+   layer. Fit without stretching or cropping, and anchor it just below the header.
+   On short/wide covers the gap to the bottom glass is the normal app background. */
+.discover-cover{position:absolute;inset:12px 0 calc(var(--discover-min-peek,120px) + 12px);display:flex;justify-content:center;align-items:flex-start;pointer-events:none;background:transparent}
+.discover-cover__image{position:relative;z-index:1;display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center top;border-radius:22px;box-shadow:0 4px 18px rgba(0,0,0,.16);opacity:0;filter:blur(14px);transition:opacity .32s ease-out,filter .42s ease-out}
+.discover-cover__image--ready{opacity:1;filter:blur(0)}
+/* An understated poster-shaped placeholder stays visible on slow networks.
+   Layout never waits for the image request, and the final poster softly clears. */
+.discover-cover__skeleton{position:absolute;top:0;left:50%;transform:translateX(-50%);width:min(78%,390px);height:100%;border-radius:22px;background:linear-gradient(110deg,rgba(164,151,189,.09) 15%,rgba(181,174,205,.2) 45%,rgba(164,151,189,.09) 75%);background-size:200% 100%;animation:discover-cover-shimmer 1.8s ease-in-out infinite}
+@keyframes discover-cover-shimmer{0%{background-position:180% 0}100%{background-position:-180% 0}}
+.discover-cover__fallback{width:min(100%,390px);aspect-ratio:3/4;max-height:100%;overflow:hidden;border-radius:22px}
+.discover-cover__fallback .cover{width:100%;height:100%;min-height:0}
+.discover-cover__gesture{position:absolute;inset:0;z-index:1;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.discover-cover__gesture:active{cursor:grabbing}
+
+/* Bottom-anchored glass is independent of the top poster. It can overlay a
+   tall poster; with a shorter poster, the gap stays the regular app background. */
+.discover-sheet{position:absolute;z-index:3;left:0;right:0;top:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;border-top:1px solid rgba(255,255,255,.29);border-left:1px solid rgba(255,255,255,.13);border-right:1px solid rgba(255,255,255,.13);border-radius:22px 22px 0 0;background:linear-gradient(150deg,rgba(14,19,32,.46),rgba(16,24,41,.43) 52%,rgba(10,17,31,.52));-webkit-backdrop-filter:blur(12px) saturate(120%);backdrop-filter:blur(12px) saturate(120%);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 -4px 20px rgba(3,8,20,.16);will-change:transform}
+.discover-sheet::before{position:absolute;inset:0;pointer-events:none;content:'';background:linear-gradient(125deg,rgba(255,255,255,.055) 0%,transparent 32%,rgba(255,255,255,.016) 65%,transparent 100%)}
+.discover-sheet__handle{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:center;width:100%;height:33px;padding:7px 0 0;border:0;background:transparent;touch-action:none;cursor:grab}
+.discover-sheet__handle:active{cursor:grabbing}
+.discover-sheet:not(.discover-sheet--expanded) .discover-sheet__chevron{
+  animation:discover-chevron-guide 2.6s ease-in-out infinite;
+}
+@keyframes discover-chevron-guide{
+  0%,100%{transform:translateY(5px) rotate(45deg);opacity:.72}
+  50%{transform:translateY(0) rotate(45deg);opacity:1}
+}
+.discover-sheet__chevron{display:block;width:13px;height:13px;border-top:2.5px solid rgba(255,255,255,.94);border-left:2.5px solid rgba(255,255,255,.94);border-radius:2px;transform:translateY(4px) rotate(45deg);filter:drop-shadow(0 1px 3px rgba(5,8,18,.5));transition:transform .3s cubic-bezier(.22,1,.36,1)}
+.discover-sheet__chevron--down{transform:translateY(-3px) rotate(225deg)}
+.discover-sheet__body{position:relative;z-index:1;display:flex;flex-direction:column;height:max(0px,calc(var(--sheet-visible-height,400px) - 33px));min-height:0;overflow:hidden;touch-action:none;padding:0 13px 8px}
+.discover-sheet__summary-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:9px}
+.discover-sheet__identity{min-width:0}
+.discover-sheet__identity h2{margin:0 0 5px;font-size:clamp(18px,5.15vw,25px);line-height:1.12;letter-spacing:-.045em;overflow-wrap:anywhere;text-wrap:balance;text-shadow:0 1px 8px rgba(5,8,19,.5)}
+.discover-sheet__identity p{margin:3px 0 0;font-size:10.5px;line-height:1.4;font-weight:700;color:#f4f5fc;text-shadow:0 1px 5px rgba(5,8,19,.42)}
+.discover-sheet__ratings{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 0 auto}
+.discover-rating{display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:98px;padding:7px 8px;border:1px solid rgba(255,255,255,.36);border-radius:11px;background:rgba(11,17,34,.38);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
+.discover-rating small{font-size:9px;line-height:1;font-weight:900}
+.discover-rating strong{color:#fff;font-size:14px;line-height:1;font-weight:800}
+.discover-rating--igdb{border-color:rgba(var(--igdb-accent-rgb),.58);color:var(--igdb-accent)}
+.discover-rating--rateapp{border-color:rgba(247,205,128,.6);color:#ffe4ac}
+.discover-sheet__extra{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;padding-top:13px;margin-top:15px;border-top:1px solid rgba(255,255,255,.28)}
+.discover-sheet__platforms{margin:0 0 13px;color:#e5e8f5;font-size:11px;font-weight:750;line-height:1.5}
+.discover-sheet__description{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;margin:10px 0 0;padding:0 0 22px;font-size:13px;line-height:1.65;color:#fff;white-space:pre-wrap;text-shadow:0 1px 6px rgba(3,7,17,.2)}
+.discover-sheet__description:focus-visible{outline:1px solid rgba(220,210,255,.6);outline-offset:-1px}
+.discover-sheet__translation-note{display:block;margin-top:10px;color:#d7cadc;font-size:11px}
+.discover-sheet__links{display:flex;flex:0 0 auto;align-items:center;flex-wrap:wrap;gap:9px;margin:2px 0 8px}
+.discover-sheet__links .detail-external-link{width:42px;height:42px;min-width:42px;padding:8px}
+.discover-sheet__links a:focus-visible{outline:2px solid #d7ccff;outline-offset:2px}
+
+/* Three guidance labels fade IN TOGETHER, remain ~2s, then vanish for ~5s. */
+.discover-hints{position:absolute;z-index:2;pointer-events:none}
+.discover-hint{position:absolute;display:flex;align-items:center;justify-content:center;padding:8px 10px;border:1px solid currentColor;border-radius:11px;background:rgba(5,11,22,.47);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);font-size:11px;font-weight:850;line-height:1.1;white-space:nowrap;text-shadow:0 2px 4px #000;opacity:0;animation:discover-hint-breathe 7.5s ease-in-out infinite}
+.discover-hint--up{top:10px;left:50%;transform:translateX(-50%);color:rgb(var(--palette-wishlist-rgb))}
+.discover-hint--left{top:40%;left:7px;color:rgb(var(--palette-dislike-rgb))}
+.discover-hint--right{top:40%;right:7px;color:rgb(var(--palette-like-rgb))}
+.discover-hint--down{top:75%;left:50%;transform:translateX(-50%);color:rgb(var(--palette-playthrough-rgb))}
+.discover-hint--up .emoji-display{display:inline-flex}
+@keyframes discover-hint-breathe{0%,3%{opacity:0}11%{opacity:1}19%{opacity:.86}27%{opacity:1}33%,100%{opacity:0}}
+
+/* The first poster remains behind one blurred, unframed onboarding layer.
+   All labels are plain text — no panels, chips, borders or visible buttons. */
+.discover-guide{position:absolute;z-index:10;inset:0;overflow:hidden;color:#fff;text-align:center}
+.discover-guide__backdrop{position:absolute;inset:0;background:rgba(6,10,23,.32);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);pointer-events:none}
+.discover-guide__dismiss{position:absolute;inset:0;z-index:1;display:block;width:100%;height:100%;padding:0;margin:0;border:0;border-radius:0;background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.discover-guide__dismiss:focus-visible{outline:2px solid rgba(255,255,255,.75);outline-offset:-4px}
+.discover-guide__intro{position:absolute;z-index:2;top:51%;left:50%;transform:translate(-50%,-50%);width:min(83%,350px);pointer-events:none}
+.discover-guide__intro h2{margin:0 0 14px;font-size:clamp(21px,6vw,28px);font-weight:850;line-height:1.13;letter-spacing:-.045em;text-wrap:balance;text-shadow:0 2px 15px rgba(0,0,0,.7)}
+.discover-guide__intro p{margin:0;font-size:clamp(12px,3.5vw,14px);font-weight:550;line-height:1.55;color:#f8f8ff;text-shadow:0 2px 12px rgba(0,0,0,.8)}
+.discover-guide__intro .discover-guide__detail-tip{margin-top:17px;font-size:clamp(11px,3vw,12px);font-weight:600;color:#e3e6f2}
+.discover-guide__content{position:absolute;z-index:2;inset:0;pointer-events:none}
+.discover-guide__directions{position:absolute;z-index:2;pointer-events:none}
+.discover-guide__direction{position:absolute;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0;margin:0;border:0;background:none;box-shadow:none;text-align:center;text-shadow:0 2px 12px rgba(0,0,0,.8);animation:discover-guide-breathe 3.8s ease-in-out infinite}
+.discover-guide__direction strong{font-size:clamp(11px,3.1vw,13px);line-height:1.15;white-space:nowrap}
+.discover-guide__direction span{font-size:clamp(9px,2.6vw,11px);line-height:1.25;color:#fafaff}
+.discover-guide__direction--up{top:clamp(12px,3.5%,24px);left:50%;transform:translateX(-50%);color:rgb(var(--palette-wishlist-rgb))}
+.discover-guide__direction--left{top:22%;left:7px;color:rgb(var(--palette-dislike-rgb))}
+.discover-guide__direction--right{top:22%;right:7px;color:rgb(var(--palette-like-rgb))}
+.discover-guide__direction--down{bottom:clamp(14px,9%,42px);left:50%;transform:translateX(-50%);color:rgb(var(--palette-playthrough-rgb))}
+.discover-guide__tap-hint{position:absolute;z-index:2;bottom:clamp(18px,5%,38px);left:0;right:0;margin:0;padding:0 12px;font-size:11px;font-weight:600;letter-spacing:.01em;color:rgba(255,255,255,.78);text-shadow:0 2px 10px rgba(0,0,0,.7);pointer-events:none}
+@keyframes discover-guide-breathe{0%,100%{opacity:.88;filter:brightness(.95)}50%{opacity:1;filter:brightness(1.12)}}
+@media(max-height:510px){.discover-guide__intro{top:54%}.discover-guide__intro h2{margin-bottom:9px}.discover-guide__intro .discover-guide__detail-tip{margin-top:8px}.discover-guide__direction--left,.discover-guide__direction--right{top:19%}.discover-guide__tap-hint{bottom:10px}}
+
+.discover-state{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:25px;text-align:center;background:var(--bg)}
+.discover-state__icon{font-size:46px;color:#cfadfa}
+.discover-state h2{margin:0;font-size:21px}
+.discover-state p{margin:0;font-size:12px;line-height:1.6;color:#b1bacd}
+.discover-state button{padding:11px 17px;border-radius:11px;background:#8663d8;color:#fff;font-weight:800}
+.discover-loader{width:28px;height:28px;border-radius:50%;border:2px solid rgba(180,160,244,.35);border-top-color:#fff;animation:discover-spin .85s linear infinite}
+@keyframes discover-spin{to{transform:rotate(360deg)}}
+.discover-error{position:absolute;z-index:9;top:8px;left:9px;right:9px;padding:10px;border:1px solid rgba(255,160,180,.42);border-radius:10px;background:rgba(48,18,28,.91);color:#ffc8cc;text-align:center;font-size:11px}
+@media(max-width:365px){.discover-sheet__body{padding-left:9px;padding-right:9px}.discover-sheet__identity h2{font-size:17px}.discover-rating{min-width:87px;padding:6px}.discover-rating small{font-size:9px}.discover-rating strong{font-size:12px}.discover-guide__intro{width:88%}.discover-guide__direction strong{font-size:11px}.discover-guide__direction span{font-size:9px}}
+@media(prefers-reduced-motion:reduce){.discover-sheet__chevron{animation:none!important}.discover-hint{animation:none;opacity:.75}.discover-guide__direction{animation:none}.discover-loader{animation:none}.discover-sheet__chevron{transition:none}}
+
+/* Native touch scrolling belongs to the expanded DESCRIPTION ONLY. */
+.discover-sheet--expanded{touch-action:none}
+.discover-sheet--expanded .discover-sheet__description{touch-action:pan-y}
+/* Wide alpha ramps visibly illuminate the screen edges without drawing a
+   line or shadow. Do not blur the whole overlay: on small mobile displays the
+   old filtered radial gradients dispersed nearly all of the perceived color.
+   This layer includes the topbar, but not the global bottom navigation. */
+.discover-swipe-feedback{position:absolute;inset:0;z-index:12;display:grid;place-items:center;pointer-events:none;border:0;box-shadow:none;background:none}
+.discover-swipe-feedback__haze{position:absolute;inset:0;pointer-events:none}
+.discover-swipe-feedback__haze::before{content:'';position:absolute;inset:0;pointer-events:none;background:
+  linear-gradient(90deg,rgba(var(--discover-fog-rgb),.7) 0px,rgba(var(--discover-fog-rgb),.43) 18px,rgba(var(--discover-fog-rgb),.19) 48px,transparent 108px),
+  linear-gradient(270deg,rgba(var(--discover-fog-rgb),.7) 0px,rgba(var(--discover-fog-rgb),.43) 18px,rgba(var(--discover-fog-rgb),.19) 48px,transparent 108px),
+  linear-gradient(180deg,rgba(var(--discover-fog-rgb),.54) 0px,rgba(var(--discover-fog-rgb),.3) 18px,rgba(var(--discover-fog-rgb),.11) 42px,transparent 86px),
+  linear-gradient(0deg,rgba(var(--discover-fog-rgb),.54) 0px,rgba(var(--discover-fog-rgb),.3) 18px,rgba(var(--discover-fog-rgb),.11) 42px,transparent 86px)}
+.discover-swipe-feedback__label{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;gap:7px;max-width:96%;white-space:nowrap;font-size:clamp(22px,6.2vw,32px);font-weight:900;letter-spacing:-.035em;-webkit-text-stroke:0;text-shadow:none;filter:none;will-change:opacity}
+.discover-swipe-feedback--left{color:rgb(var(--palette-dislike-rgb));--discover-fog-rgb:var(--palette-dislike-rgb)}
+.discover-swipe-feedback--right{color:rgb(var(--palette-like-rgb));--discover-fog-rgb:var(--palette-like-rgb)}
+.discover-swipe-feedback--up{color:rgb(var(--palette-wishlist-rgb));--discover-fog-rgb:var(--palette-wishlist-rgb)}
+.discover-swipe-feedback--down{color:rgb(var(--palette-playthrough-rgb));--discover-fog-rgb:var(--palette-playthrough-rgb)}
+@media(prefers-reduced-motion:reduce){.discover-swipe-feedback{display:none}.discover-cover__image{transition:none;filter:none}.discover-cover__skeleton{animation:none}}

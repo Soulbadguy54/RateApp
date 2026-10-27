@@ -19,6 +19,10 @@ export type Game = {
   coverUrl?: string
   storeLinks?: { provider: string; label: string; url: string }[]
   trailerUrl?: string | null
+  summary?: string
+  storyline?: string
+  storyHours?: number | null
+  completionHours?: number | null
 }
 
 export type LibraryEntry = {

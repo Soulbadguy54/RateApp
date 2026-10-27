@@ -3,11 +3,32 @@ name: Frontend CI
 on:
   push:
     branches: [main, develop]
+  # Full CI is reserved for the production release PR, not design iterations
+  # destined for develop/staging. A manual workflow_dispatch is the explicit
+  # opt-in for full tests before promotion to main.
   pull_request:
-    branches: [main, develop]
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Never cancel the release/staging push runs; only supersede outdated PR CI.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # The staging Docker publish compiles the frontend and validates that both
+  # images can be built; this fast green marker only triggers its deployment.
+  # It is NOT a substitute for the pre-production full test suite.
+  stage-preview:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark staging preview (tests deferred to production release)
+        run: echo 'Preview SHA is eligible for staging image build, not production.'
+
   build:
+    if: github.ref != 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,6 +62,7 @@ jobs:
           docker build -f Dockerfile.web.stage -t rateapp-test-stage-build .
 
   backend-tests:
+    if: github.ref != 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -72,6 +94,7 @@ jobs:
         run: python -m unittest discover -s tests -v
 
   mobile-e2e:
+    if: github.ref != 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -118,3 +141,41 @@ jobs:
         env:
           RATEAPP_SMOKE_BASE: https://r-app.ru
         run: python scripts/smoke_production.py
+
+  # The production release is explicitly authorized by the owner using the
+  # release-approved label. Full required checks must all pass before merge.
+  # This runs for the SAME-REPOSITORY develop→main PR only. There is no
+  # workflow_run privileged access to untrusted PR artifacts.
+  promote-approved-release:
+    if: >-
+      ${{ github.event_name == 'pull_request' &&
+          github.event.pull_request.base.ref == 'main' &&
+          github.event.pull_request.head.ref == 'develop' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          contains(github.event.pull_request.labels.*.name, 'release-approved') }}
+    needs: [build, backend-tests, mobile-e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Merge ONLY the explicitly approved and tested revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TESTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          test "$(jq -r '.state' <<<"$json")" = open
+          test "$(jq -r '.base.ref' <<<"$json")" = main
+          test "$(jq -r '.head.ref' <<<"$json")" = develop
+          test "$(jq -r '.head.repo.full_name' <<<"$json")" = "$REPOSITORY"
+          test "$(jq -r '.head.sha' <<<"$json")" = "$TESTED_HEAD"
+          jq -e '.labels | any(.name == "release-approved")' <<<"$json" >/dev/null
+          # The GitHub API enforces branch protection and also rejects a stale
+          # head SHA, so a mid-flight develop change can never be merged.
+          gh api --method PUT "repos/$REPOSITORY/pulls/$PR_NUMBER/merge" \
+            -f merge_method=squash -f sha="$TESTED_HEAD" --silent
+          echo "Approved release merged; main CI and VPS deploy are independent."

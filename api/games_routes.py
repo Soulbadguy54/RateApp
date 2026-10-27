@@ -7,87 +7,54 @@ import json
 import math
 import os
 import re
-import time
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 from urllib.parse import urlsplit
 
-import httpx
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from api.security import _session, _current_user, _now
 from api.library_service import _community_rating_map, _game_payload
 from api.models import Game, GameAlias, GameGenre, Genre, GenreCatalogSync
+from api.igdb_client import igdb_client, Priority
 
 router = APIRouter()
+_catalog_refresh_lock = threading.Lock()
+_catalog_refresh_inflight: set[int] = set()
 
-_igdb_token: str | None = None
-_igdb_token_expires_at = 0.0
+def _game_details_cache_days(release_date, *, today=None) -> int:
+    """Refresh recently released/unreleased games more often than older titles.
+
+    Details, stores and video links are refreshed lazily on a details request.
+    Ratings/catalog metadata update only when explicitly fetched via IGDB search.
+    """
+    today = today or _now().date()
+    if release_date is None:
+        return 60
+    age_days = (today - release_date).days
+    if age_days < 30:
+        return 7
+    if age_days < 180:
+        return 30
+    if age_days < 730:
+        return 90
+    if age_days < 1825:
+        return 180
+    return 365
 
 
-def _igdb_credentials() -> tuple[str, str]:
-    client_id = os.getenv("IGDB_CLIENT_ID", "").strip()
-    client_secret = os.getenv("IGDB_CLIENT_SECRET", "").strip()
-    if not client_id or not client_secret:
-        raise HTTPException(
-            status_code=503,
-            detail="IGDB ещё не настроен. Добавьте IGDB_CLIENT_ID и IGDB_CLIENT_SECRET в Vercel.",
-        )
-    return client_id, client_secret
-
-
-def _igdb_access_token() -> tuple[str, str]:
-    global _igdb_token, _igdb_token_expires_at
-
-    client_id, client_secret = _igdb_credentials()
-    if _igdb_token and time.time() < _igdb_token_expires_at - 60:
-        return client_id, _igdb_token
-
-    try:
-        response = httpx.post(
-            "https://id.twitch.tv/oauth2/token",
-            data={
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "grant_type": "client_credentials",
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=10.0,
-        )
-        if response.status_code >= 400:
-            message = ""
-            try:
-                message = str(response.json().get("message") or "")
-            except ValueError:
-                pass
-
-            if response.status_code == 400:
-                raise HTTPException(
-                    status_code=502,
-                    detail="Twitch отклонил Client ID/Secret. Создайте новый Client Secret и обновите переменные Vercel.",
-                )
-
-            raise HTTPException(
-                status_code=502,
-                detail=f"Ошибка Twitch OAuth ({response.status_code})"
-                + (f": {message}" if message else "."),
-            )
-
-        payload = response.json()
-    except HTTPException:
-        raise
-    except (httpx.HTTPError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail="Не удалось связаться с Twitch OAuth.") from exc
-
-    token = payload.get("access_token")
-    if not token:
-        raise HTTPException(status_code=502, detail="IGDB не вернул access token.")
-
-    _igdb_token = str(token)
-    _igdb_token_expires_at = time.time() + int(payload.get("expires_in", 3600))
-    return client_id, _igdb_token
+# Wildcard persists the complete returned IGDB Game object; expanded fields give
+# human-readable values for fields our current UI needs. Other references stay
+# in the raw JSONB payload for future batch enrichment, without lossy mapping.
+IGDB_GAME_FIELDS = (
+    "*,cover.image_id,alternative_names.name,genres.id,genres.name,"
+    "platforms.name,involved_companies.developer,involved_companies.company.name,"
+    "websites.url,videos.name,videos.video_id,artworks.image_id,screenshots.image_id,"
+    "themes.name,keywords.name,game_modes.name,player_perspectives.name"
+)
 
 
 def _igdb_cover(image_id: str | None) -> str | None:
@@ -164,29 +131,35 @@ def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
                         genre_ids.append(gid)
                 incoming_game_genres[igdb_id] = list(dict.fromkeys(genre_ids))
             game.platforms_json = json.dumps(platforms, ensure_ascii=False)
+            game.cached_at = _now()
 
-            # IGDB search provides store/trailer metadata in the same query.
-            # Persist it immediately so search and library cards can display
-            # links on first open without waiting for the details endpoint.
-            if "websites" in row and "videos" in row:
-                fresh_details = (
-                    game.details_cached_at is not None
-                    and game.details_cached_at.replace(
-                        tzinfo=game.details_cached_at.tzinfo or timezone.utc
-                    ) > _now() - timedelta(days=GAME_DETAILS_CACHE_DAYS)
-                )
-                if not fresh_details:
-                    previous = json.loads(game.details_json) if game.details_json else None
-                    previous = previous if isinstance(previous, dict) else {}
-                    details = {
-                        "storeLinks": _safe_store_links(row.get("websites")),
-                        "trailerUrl": _safe_trailer_url(row.get("videos")),
-                        "storyHours": previous.get("storyHours"),
-                        "completionHours": previous.get("completionHours"),
-                        "_linksOnly": True,
-                    }
-                    game.details_json = json.dumps(details, ensure_ascii=False)
-                    game.details_cached_at = _now()
+            # Retain every field returned by IGDB verbatim. Incremental/legacy
+            # lookups are merged rather than deleting previously cached fields.
+            game.igdb_payload = {**(game.igdb_payload or {}), **row}
+
+            # Details belong in PostgreSQL at SEARCH/IMPORT time, not at the
+            # moment a user expands a card. Keep existing playtime on refresh.
+            previous = json.loads(game.details_json) if game.details_json else None
+            previous = previous if isinstance(previous, dict) else {}
+            details = dict(previous)
+            if "websites" in row:
+                details["storeLinks"] = _safe_store_links(row.get("websites"))
+            if "videos" in row:
+                details["trailerUrl"] = _safe_trailer_url(row.get("videos"))
+            if "summary" in row or "storyline" in row:
+                source_en = str(row.get("summary") or row.get("storyline") or "")
+                if details.get("summary_ru_source") != source_en:
+                    details.pop("summary_ru", None)
+                    details.pop("summary_ru_source", None)
+                details["summary"] = source_en  # Legacy raw IGDB field.
+                details["summary_en"] = source_en
+                details["storyline"] = str(row.get("storyline") or "")
+                details.pop("_linksOnly", None)
+            if "game_time_to_beats" in row and isinstance(row["game_time_to_beats"], dict):
+                details["storyHours"] = _hours_from_igdb(row["game_time_to_beats"].get("hastily"))
+                details["completionHours"] = _hours_from_igdb(row["game_time_to_beats"].get("completely"))
+            game.details_json = json.dumps(details, ensure_ascii=False)
+            game.details_cached_at = _now()
 
             cached_games.append(game)
 
@@ -314,10 +287,7 @@ def _igdb_search_body(query: str, offset: int) -> str:
     # It is not advertised as typo-tolerant, unlike our PostgreSQL search.
     safe_query = json.dumps(query.replace(";", " "), ensure_ascii=False)[1:-1]
     return (
-        "fields id,name,first_release_date,rating,rating_count,"
-        "total_rating_count,hypes,cover.image_id,alternative_names.name,"
-        "genres.id,genres.name,platforms.name,involved_companies.developer,"
-        "involved_companies.company.name,websites.url,videos.name,videos.video_id; "
+        f"fields {IGDB_GAME_FIELDS}; "
         f'search "{safe_query}"; '
         "where version_parent = null; "
         f"limit {GAME_SEARCH_PAGE_SIZE + 1}; offset {offset};"
@@ -325,9 +295,8 @@ def _igdb_search_body(query: str, offset: int) -> str:
 
 
 def _sync_genre_catalog() -> int:
-    client_id, token = _igdb_access_token()
     rows = _igdb_details_request(
-        "genres", "fields id,name; sort id asc; limit 500;", client_id, token,
+        "genres", "fields id,name; sort id asc; limit 500;", priority=Priority.BACKGROUND,
     )
     valid = [
         {"id": item["id"], "name": item["name"].strip()}
@@ -400,7 +369,6 @@ GAME_SEARCH_PAGE_SIZE = 20
 
 
 
-GAME_DETAILS_CACHE_DAYS = 30
 STORE_DOMAINS = (
     ("steampowered.com", "steam", "Steam"),
     ("epicgames.com", "epic", "Epic Games"),
@@ -414,28 +382,45 @@ STORE_DOMAINS = (
 
 
 def _igdb_details_request(
-    endpoint: str, body: str, client_id: str, token: str,
+    endpoint: str, body: str, *, priority: Priority = Priority.DETAILS,
 ) -> list[dict[str, object]]:
+    return igdb_client.request(endpoint, body, priority=priority)
+
+
+def _refresh_game_catalog_entry(game_id: int) -> None:
+    """Best-effort, low-priority, on-demand refresh of stale game metadata.
+
+    Never blocks the rendered details response and never changes user ratings.
+    Dedupe concurrent detail views; the recheck prevents redundant fetches.
+    """
+    with _catalog_refresh_lock:
+        if game_id in _catalog_refresh_inflight:
+            return
+        _catalog_refresh_inflight.add(game_id)
     try:
-        response = httpx.post(
-            f"https://api.igdb.com/v4/{endpoint}",
-            headers={
-                "Client-ID": client_id,
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/json",
-            },
-            content=body,
-            timeout=10.0,
+        with _session() as session:
+            game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+            if game is None:
+                return
+            stamp = game.cached_at
+            if stamp and stamp.replace(tzinfo=stamp.tzinfo or timezone.utc) > (
+                _now() - timedelta(days=_game_details_cache_days(game.release_date))
+            ):
+                return
+        rows = _igdb_details_request(
+            "games",
+            f"fields {IGDB_GAME_FIELDS}; "
+            f"where id = {game_id} & version_parent = null; limit 1;",
+            priority=Priority.BACKGROUND,
         )
-        response.raise_for_status()
-        payload = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        raise HTTPException(
-            status_code=502, detail="Не удалось получить дополнительные данные из IGDB.",
-        ) from exc
-    if not isinstance(payload, list):
-        raise HTTPException(status_code=502, detail="IGDB вернул некорректные данные.")
-    return [item for item in payload if isinstance(item, dict)]
+        if rows:
+            _cache_igdb_games(rows)
+    except (HTTPException, SQLAlchemyError):
+        # Cached catalog metadata remains usable even when IGDB is unavailable.
+        pass
+    finally:
+        with _catalog_refresh_lock:
+            _catalog_refresh_inflight.discard(game_id)
 
 
 def _safe_store_links(websites: object) -> list[dict[str, str]]:
@@ -492,105 +477,29 @@ def _hours_from_igdb(value: object) -> int | None:
 
 
 def _detail_response(session, game: Game, details: dict[str, object]) -> dict[str, object]:
-    # Metadata is cached for 30 days; community scores must always be live.
     ratings = _community_rating_map(session, [game.id])
-    return {**details, "game": _game_payload(game, ratings.get(game.id))}
+    payload = _game_payload(game, ratings.get(game.id))
+    return {
+        **details, "summary": payload["summary"],
+        "summaryEn": payload["summaryEn"], "summaryRu": payload["summaryRu"],
+        "game": payload,
+    }
 
 
 @router.get("/api/games/{game_id}/details")
 def game_details(game_id: int, request: Request) -> dict[str, object]:
+    """Read only local PostgreSQL. Never wait for IGDB when a sheet is opened.
+
+    Older catalog rows without complete metadata return the saved subset until
+    explicitly enriched by the catalog backfill/import workflow.
+    """
     with _session() as session:
         _current_user(request, session)
         game = session.scalar(select(Game).where(Game.igdb_id == game_id))
         if game is None:
             raise HTTPException(status_code=404, detail="Игра не найдена в нашей базе.")
-
-        cached_details = (
-            json.loads(game.details_json) if game.details_json else None
-        )
-        if (
-            isinstance(cached_details, dict)
-            and game.details_cached_at is not None
-            and game.details_cached_at.replace(tzinfo=game.details_cached_at.tzinfo or timezone.utc)
-                > _now() - timedelta(days=GAME_DETAILS_CACHE_DAYS)
-        ):
-            if not cached_details.get("_linksOnly"):
-                return _detail_response(session, game, cached_details)
-            cached_links_fresh = True
-        else:
-            cached_links_fresh = False
-
-    # Search results already populate the PostgreSQL links cache. For those
-    # games, fetch only the missing playtime; for uncached games, query both
-    # IGDB endpoints concurrently instead of making the first screen wait for
-    # two sequential network round trips.
-    try:
-        client_id, token = _igdb_access_token()
-    except HTTPException:
-        if isinstance(cached_details, dict):
-            with _session() as session:
-                cached_game = session.scalar(select(Game).where(Game.igdb_id == game_id))
-                if cached_game is not None:
-                    return _detail_response(session, cached_game, cached_details)
-        raise
-
-    def fetch_playtime():
-        return _igdb_details_request(
-            "game_time_to_beats",
-            f"fields game_id,hastily,completely; where game_id = {game_id}; limit 1;",
-            client_id, token,
-        )
-
-    if cached_links_fresh and isinstance(cached_details, dict):
-        details: dict[str, object] = dict(cached_details)
-        try:
-            times = fetch_playtime()
-        except HTTPException:
-            times = None
-    else:
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            times_future = executor.submit(fetch_playtime)
-            try:
-                game_rows = _igdb_details_request(
-                    "games",
-                    f"fields websites.url,videos.name,videos.video_id; where id = {game_id}; limit 1;",
-                    client_id, token,
-                )
-            except HTTPException:
-                if isinstance(cached_details, dict):
-                    with _session() as session:
-                        cached_game = session.scalar(select(Game).where(Game.igdb_id == game_id))
-                        if cached_game is not None:
-                            return _detail_response(session, cached_game, cached_details)
-                raise
-            game_row = game_rows[0] if game_rows else {}
-            details = {
-                "storeLinks": _safe_store_links(game_row.get("websites")),
-                "trailerUrl": _safe_trailer_url(game_row.get("videos")),
-                "storyHours": None,
-                "completionHours": None,
-            }
-            try:
-                times = times_future.result()
-            except HTTPException:
-                times = None
-
-    if times:
-        details["storyHours"] = _hours_from_igdb(times[0].get("hastily"))
-        details["completionHours"] = _hours_from_igdb(times[0].get("completely"))
-    elif isinstance(cached_details, dict):
-        details["storyHours"] = cached_details.get("storyHours")
-        details["completionHours"] = cached_details.get("completionHours")
-    details["_linksOnly"] = bool(cached_links_fresh and times is None)
-
-    with _session() as session:
-        game = session.scalar(select(Game).where(Game.igdb_id == game_id))
-        if game is None:
-            raise HTTPException(status_code=404, detail="Игра не найдена в нашей базе.")
-        game.details_json = json.dumps(details, ensure_ascii=False)
-        game.details_cached_at = _now()
-        session.commit()
+        cached = json.loads(game.details_json) if game.details_json else None
+        details = cached if isinstance(cached, dict) else {}
         return _detail_response(session, game, details)
 
 
@@ -615,77 +524,31 @@ def search_games(
 
     # External search runs after an empty local search or a manual deep search.
     # Cache the results in PostgreSQL for future local queries.
-    client_id, token = _igdb_access_token()
-
     body = _igdb_search_body(query, offset)
-
-    try:
-        response = httpx.post(
-            "https://api.igdb.com/v4/games",
-            headers={
-                "Client-ID": client_id,
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/json",
-            },
-            content=body,
-            timeout=12.0,
-        )
-        if response.status_code == 429:
-            raise HTTPException(status_code=429, detail="IGDB занят. Повторите поиск через секунду.")
-        response.raise_for_status()
-        rows = response.json()
-    except HTTPException:
-        raise
-    except (httpx.HTTPError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail="Не удалось получить игры из IGDB.") from exc
-
-    if not isinstance(rows, list):
-        return {"items": [], "hasMore": False, "nextOffset": None}
+    rows = igdb_client.request("games", body, priority=Priority.SEARCH)
 
     # If IGDB's title search misses, its /search index also includes
     # alternative-name records pointing back to the parent game.
     if not rows and offset == 0:
         escaped = json.dumps(query.replace(";", " "), ensure_ascii=False)[1:-1]
         try:
-            alias_response = httpx.post(
-                "https://api.igdb.com/v4/search",
-                headers={
-                    "Client-ID": client_id,
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/json",
-                },
-                content=f'fields game,alternative_name,name; search "{escaped}"; where game != null; limit 20;',
-                timeout=12.0,
+            matches = igdb_client.request(
+                "search",
+                f'fields game,alternative_name,name; search "{escaped}"; where game != null; limit 20;',
+                priority=Priority.SEARCH,
             )
-            alias_response.raise_for_status()
-            matches = alias_response.json()
-            matches = matches if isinstance(matches, list) else []
             ids = list(dict.fromkeys(
                 int(item["game"]) for item in matches
                 if isinstance(item, dict) and isinstance(item.get("game"), int)
             ))[:20]
             if ids:
-                detail_response = httpx.post(
-                    "https://api.igdb.com/v4/games",
-                    headers={
-                        "Client-ID": client_id,
-                        "Authorization": f"Bearer {token}",
-                        "Accept": "application/json",
-                    },
-                    content=(
-                        "fields id,name,first_release_date,rating,rating_count,"
-                        "total_rating_count,hypes,cover.image_id,alternative_names.name,"
-                        "genres.id,genres.name,platforms.name,involved_companies.developer,"
-                        "involved_companies.company.name,websites.url,videos.name,videos.video_id; "
-                        f"where id = ({','.join(map(str, ids))}) & version_parent = null; limit 20;"
-                    ),
-                    timeout=12.0,
+                rows = igdb_client.request(
+                    "games",
+                    f"fields {IGDB_GAME_FIELDS}; "
+                    f"where id = ({','.join(map(str, ids))}) & version_parent = null; limit 20;",
+                    priority=Priority.SEARCH,
                 )
-                detail_response.raise_for_status()
-                candidate_rows = detail_response.json()
-                if isinstance(candidate_rows, list):
-                    rows = candidate_rows
-        except (httpx.HTTPError, ValueError):
+        except HTTPException:
             # IGDB fallback is best-effort; a failed alias lookup must not
             # make the original (valid) empty search into an API error.
             pass

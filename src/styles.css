@@ -18,6 +18,16 @@ html, body {
   --muted: #8d94a3;
   --accent: #8cf27d;
   --accent-soft: rgba(140, 242, 125, 0.12);
+  /* IGDB's established lilac rating accent, reused by the game navigation. */
+  --igdb-accent: #dfb6ff;
+  --igdb-accent-rgb: 218, 168, 255;
+  /* Semantic action palette: shared with collection colors & Discovery.
+     Keep one RGB source per family (rgb(...) for text, rgba(...) for fog).
+     Never introduce a one-off reaction hue in a component stylesheet. */
+  --palette-like-rgb: 146, 233, 174;     /* emerald collection */
+  --palette-dislike-rgb: 142, 186, 255;  /* blue collection */
+  --palette-wishlist-rgb: 255, 162, 202; /* rose / wishlist collection */
+  --palette-playthrough-rgb: 248, 215, 131; /* amber collection; add playthrough */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -3863,3 +3873,6 @@ body:has(.auth-shell) .install-prompt {
 
 /* Never cover login/registration controls with the install suggestion. */
 body:has(.auth-shell) .install-prompt { display: none; }
+
+/* Android back-to-exit safeguard sits above the shared bottom navigation. */
+.app-exit-toast{position:fixed;left:50%;bottom:calc(var(--bottom-nav-height) + var(--safe-bottom) + 18px);transform:translateX(-50%);z-index:1100;width:max-content;max-width:calc(100vw - 30px);padding:12px 16px;border-radius:14px;border:1px solid var(--line-strong);background:rgba(20,24,33,.96);color:#f7f7fa;box-shadow:0 6px 24px rgba(0,0,0,.32);font-size:13px;font-weight:650;line-height:1.4;text-align:center;pointer-events:none}

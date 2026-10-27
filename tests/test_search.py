@@ -93,7 +93,7 @@ class SearchApiTests(unittest.TestCase):
                     }]
             return Response()
 
-        with patch("api.games_routes._igdb_access_token", return_value=("client", "token")):
+        with patch("api.igdb_client.igdb_client._access_token", return_value=("client", "token")):
             with patch.object(index.httpx, "post", side_effect=fake_igdb):
                 results = self.search("GTA 6", "igdb")
         self.assertEqual(results[0]["title"], "Grand Theft Auto VI")
@@ -133,7 +133,7 @@ class SearchApiTests(unittest.TestCase):
                 }])
             return Response([])
 
-        with patch("api.games_routes._igdb_access_token", return_value=("client", "token")):
+        with patch("api.igdb_client.igdb_client._access_token", return_value=("client", "token")):
             with patch.object(index.httpx, "post", side_effect=fake_igdb):
                 results = self.search("LocalAlias", "igdb")
 
@@ -158,7 +158,7 @@ class SearchApiTests(unittest.TestCase):
                     "id": game_id, "name": name,
                     "genres": [{"id": genre_id, "name": "QA unique genre"}],
                 }]
-        with patch("api.games_routes._igdb_access_token", return_value=("client", "token")):
+        with patch("api.igdb_client.igdb_client._access_token", return_value=("client", "token")):
             with patch.object(index.httpx, "post", return_value=Response()):
                 result = self.search(name, "igdb")
         self.assertEqual(result[0]["genres"], ["QA unique genre"])

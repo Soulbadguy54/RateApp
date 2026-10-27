@@ -2,6 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.database import Base
@@ -56,6 +57,9 @@ class Game(Base):
     developer: Mapped[str | None] = mapped_column(String(255))
     genres_json: Mapped[str | None] = mapped_column(Text)
     platforms_json: Mapped[str | None] = mapped_column(Text)
+    # Lossless IGDB games payload (all top-level fields plus expanded references).
+    # Keep for future recommender signals; details_json remains UI-ready metadata.
+    igdb_payload: Mapped[dict | None] = mapped_column(JSONB)
     details_json: Mapped[str | None] = mapped_column(Text)
     details_cached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -176,3 +180,16 @@ class ReleasePushDelivery(Base):
     game_id: Mapped[int] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"))
     release_date: Mapped[date] = mapped_column(Date, nullable=False)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DiscoveryFeedback(Base):
+    """Latest intentional discovery decision; can be undone without touching ratings."""
+    __tablename__ = "discovery_feedback"
+    __table_args__ = (UniqueConstraint("user_id", "game_id", name="uq_discovery_feedback_user_game"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    wishlist_added: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
