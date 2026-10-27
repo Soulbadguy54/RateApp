@@ -79,3 +79,7 @@ The VPS migration and cutover are described in [VPS_MIGRATION.md](VPS_MIGRATION.
 - Staging login sessions are new, scoped to `dev.r-app.ru`; no real cookies/tokens move from production. UI/JS can be fetched without login, but private API requires authorization.
 - If stage migrations fail, rolling back images cannot revert the schema. Restore the staging backup only after diagnosis and explicit approval.
 - DNS A `dev.r-app.ru → 111.88.215.215`, TLS managed by existing Caddy. Staging does not start merely because DNS exists.
+
+## GITHUB_TOKEN merge handoff, 27.10.2026
+
+В `Frontend CI` job `promote-approved-release` после зелёных обязательных PR проверок делает squash merge с exact `head.sha`, проверяет ответ и живой `main` HEAD, затем **обязательно** dispatch `actions/workflows/ci.yml/dispatches` (`ref=main`, `actions:write`). Обычный `push` после CI-`GITHUB_TOKEN` merge GitHub не запускает. Explicit `workflow_dispatch` запускает full main CI, а штатный успешный `workflow_run` main открывает publish/deploy VPS. Пример зафиксирован PR #70: релизный CI success и merge `8b4f326c` при фактическом VPS `dab74554`. Не трактовать успешный staging deployment как production и не докладывать «готово» до сверки VPS SHA и health.

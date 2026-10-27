@@ -1,5 +1,13 @@
 # Rate APP — история разработки
 
+## 27 октября 2026 — восстановление цепочки release CI → main CI → VPS production (PR infra)
+
+- PR #70: полный release CI #40438886429 (build/backend/mobile E2E) успешно прошёл и автоматически слил Discovery в `main` (`8b4f326c`), но VPS оставался на предыдущем SHA `dab74554`. GitHub `GITHUB_TOKEN` suppresses workflow `push` после merge, поэтому ни CI `main`, ни production VPS deployment не запускались.
+- Одобренный `promote-approved-release` теперь после успешного SHA-guarded squash merge **явно отправляет** `workflow_dispatch` на `ci.yml@main` с правами `actions:write`. Для этого события GitHub документирует исключение из suppression; основной CI всё ещё обязан пройти build, backend, mobile E2E и smoke; только после него запускается действующий VPS production workflow.
+- Чтобы впервые активировать исправление без manual polling и отдельной команды владельца, конкретная infrastructure rescue-ветка `fix/release-handoff-ci-20261027` одобрена тем же ограниченным gate (только single-repo, `release-approved`, green CI, exact head SHA). Другие feature-ветки по-прежнему запрещены.
+- Telegram при недоступном поле `workflow_run.pull_requests` распознаёт достоверный релиз по успешному job `promote-approved-release`, говорит о **слиянии, а не публикации**, отличает отказ `workflow_dispatch@main` и подчёркивает, что сообщение staging не означает production. Добавлены regression unit cases.
+- UI/API/БД не менялись; итоговая публикация проверяется по VPS SHA/health и Telegram уведомлению, а не по одному зелёному PR CI.
+
 ## 27 октября 2026 — E2E ожидание полного закрытия glass перед новым свайпом (PR #82)
 
 - Повторный release CI #40437999430: build и backend зелёные, Android Chromium 20/21 mobile E2E; в сценарии Discovery после сворачивания glass тест начинал новый swipe при анимационном `reveal > 0.03`. Защита свайпов приложения корректно отклоняла такой pan (transform X оставался 0).

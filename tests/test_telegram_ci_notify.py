@@ -33,6 +33,26 @@ class TelegramCIMessageTests(unittest.TestCase):
         self.assertIn("5 мин 10 сек", message)
         self.assertIn("<a href=", message)
 
+    def test_release_pr_metadata_can_disappear_after_merge(self):
+        event = notification("Frontend CI", "success", "pull_request", "develop")
+        msg = make_message(event, [
+            {"name": "build", "conclusion": "success"},
+            {"name": "backend-tests", "conclusion": "success"},
+            {"name": "mobile-e2e", "conclusion": "success"},
+            {"name": "promote-approved-release", "conclusion": "success"},
+        ])
+        self.assertIn("Production · релизные тесты пройдены", msg)
+        self.assertIn("автоматически слит", msg)
+        self.assertIn("main CI", msg)
+        self.assertIn("Слияние одобренного PR в main", msg)
+        self.assertNotIn("цель PR уточняется", msg)
+
+    def test_main_dispatch_success_only_deploy_reports_published(self):
+        self.assertIsNone(make_message(notification("Frontend CI", "success", "workflow_dispatch", "main")))
+        msg = make_message(notification("Frontend CI", "failure", "workflow_dispatch", "main"))
+        self.assertIn("main CI не прошёл", msg)
+        self.assertIn("заблокирован", msg)
+
     def test_fast_preview_is_not_claimed_as_full_green(self):
         self.assertIsNone(make_message(notification("Frontend CI", "success")))
 
@@ -60,6 +80,7 @@ class TelegramCIMessageTests(unittest.TestCase):
         )
         self.assertIn("Staging обновлён", text)
         self.assertIn("dev.r-app.ru", text)
+        self.assertIn("production на r-app.ru не обновлялся", text)
         self.assertIn("Что вошло в обновление", text)
         self.assertIn("1234567890ab", text)
         self.assertIn("Discovery: жесты свайпов", text)
