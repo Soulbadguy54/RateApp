@@ -1,3 +1,4 @@
+import { sessionFetch } from '../sessionFetch'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from 'react'
@@ -308,7 +309,7 @@ export default function DiscoverView({
     if (initial) setLoading(true)
     else setLoadingMore(true)
     try {
-      const response = await fetch('/api/discover/feed', { credentials: 'same-origin' })
+      const response = await sessionFetch('/api/discover/feed', { credentials: 'same-origin' })
       if (!response.ok) throw new Error('Не удалось загрузить рекомендации.')
       const data = await response.json() as Feed
       if (!mountedRef.current) return
@@ -393,7 +394,7 @@ export default function DiscoverView({
     const fallbackDescription = game.summary || game.storyline || ''
     const controller = new AbortController()
     setTranslationPendingId(id)
-    fetch('/api/discover/description/' + id + '?lang=ru', {
+    sessionFetch('/api/discover/description/' + id + '?lang=ru', {
       credentials: 'same-origin', signal: controller.signal,
     })
       .then(response => {
@@ -486,7 +487,7 @@ export default function DiscoverView({
     setBusy(true)
     setError('')
     try {
-      const response = await fetch('/api/discover/feedback', {
+      const response = await sessionFetch('/api/discover/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gameId: game.id, action }),
@@ -518,7 +519,7 @@ export default function DiscoverView({
     setBusy(true)
     setError('')
     try {
-      const response = await fetch('/api/discover/feedback/' + last.gameId, { method: 'DELETE' })
+      const response = await sessionFetch('/api/discover/feedback/' + last.gameId, { method: 'DELETE' })
       if (!response.ok) throw new Error('Не получилось отменить свайп.')
       feedbackAnimationRef.current?.stop()
       if (feedbackHoldRef.current !== null) window.clearTimeout(feedbackHoldRef.current)

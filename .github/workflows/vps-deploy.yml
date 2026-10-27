@@ -128,3 +128,28 @@ jobs:
         run: |
           [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
           ssh -T -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o BatchMode=yes "rateapp-deploy@111.88.215.215" "bootstrap-stage $DEPLOY_SHA"
+
+  # workflow_run chaining is not reliable after GITHUB_TOKEN dispatch.
+  # Sending within this workflow guarantees a final success/failure verdict,
+  # tied to the actual completed deploy job rather than earlier build success.
+  notify-production:
+    if: ${{ always() }}
+    needs: [publish, deploy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Check publication health and deliver final Telegram status
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ vars.TG_CHAT_ID }}
+          GH_READ_TOKEN: ${{ github.token }}
+          RATEAPP_DIRECT_PRODUCTION: "1"
+          RATEAPP_TESTED_SHA: ${{ inputs.tested_sha }}
+          RATEAPP_DEPLOY_RESULT: ${{ needs.publish.result == 'success' && needs.deploy.result == 'success' && 'success' || 'failure' }}
+        run: python3 scripts/telegram_ci_notify.py

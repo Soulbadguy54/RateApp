@@ -77,3 +77,9 @@ GitHub suppresses `push` от `GITHUB_TOKEN`, которым `promote-approved-r
 ## Второй release handoff: main CI → VPS (27.10.2026)
 
 Из-за наблюдаемого отсутствия production workflow_run после main CI, запущенного от GITHUB_TOKEN через workflow_dispatch, больше не полагаться на каскад workflow_run для выпуска. Успешный main CI (включая production-smoke) сам делает явный workflow_dispatch vps-deploy.yml с проверенными tested_sha и ci_run_id. Deployment обязан перепроверить main HEAD, успешный исход именно этого main CI и всех четырёх обязательных jobs до GHCR publish или SSH. Если что-то не совпало — ошибочный/пропущенный выпуск, не «опубликовано»; диагностировать CI/Action, не обходить gate. Старые абзацы о workflow_run относятся к первоначальному расследованию и не являются рабочей схемой после этого исправления.
+
+## Session expiry и фактическое Telegram-подтверждение VPS (27.10.2026)
+
+Защищённые запросы 401 после первоначального входа должны централизованно показывать логин, а не обманчивые ошибки IGDB/Discovery. Не разлогинивать пользователя при 503, offline или внешней ошибке IGDB. Сессии хранятся в локальной PostgreSQL; устаревшие cookie после миграции несовместимы с новой базой. Никогда не стирать исторические оценки из БД в попытке вылечить 401.
+
+Production success/failed уведомляется последним notify-production job внутри самого VPS workflow, а не отдельным workflow_run-каскадом, который уже пропускал событие. Успех требует зелёного deploy и подтверждённого публичного health (environment=production и reachable=true). Если Telegram не отправлен, notification job красный; успех CI не является успехом публикации или отправки. Перед «опубликовано» сверять живую версию контейнеров.

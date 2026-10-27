@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import GameCard, { Cover } from './components/GameCard'
 import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
@@ -21,6 +21,7 @@ import {
   useTransform,
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
+import { sessionFetch, subscribeSessionExpiry, getSessionExpiredSnapshot, resetSessionExpired } from './sessionFetch'
 import './views/DiscoverView.css'
 import LoadingScreen from './LoadingScreen'
 import { PushOnboarding, clearPushStateCache, disconnectPushForLogout, preloadPushState } from './PushSettings'
@@ -259,6 +260,18 @@ function App() {
   }
   const [activeTab, setActiveTab] = useState<Tab>(firstViewRef.current.tab)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  // useSyncExternalStore also reads a 401 that arrived before subscription:
+  // a bare window Event can be lost during child-first passive effects on WebKit.
+  const sessionExpired = useSyncExternalStore(subscribeSessionExpiry, getSessionExpiredSnapshot)
+  useEffect(() => {
+    if (!sessionExpired || !authUser) return
+    // Server-side data remain untouched; clear only this browser session state.
+    clearPushStateCache(authUser.nickname)
+    setAuthUser(null)
+    setEntries([])
+    setCollections([])
+  }, [sessionExpired, authUser])
+
   const [authReady, setAuthReady] = useState(false)
   const [bootstrapError, setBootstrapError] = useState(false)
   const [bootstrapRetry, setBootstrapRetry] = useState(0)
@@ -473,7 +486,7 @@ function App() {
     setAuthReady(true)
 
     try {
-      const response = await fetch('/api/bootstrap')
+      const response = await sessionFetch('/api/bootstrap')
       if (response.status === 401) {
         setAuthUser(null)
         return
@@ -718,7 +731,7 @@ function App() {
 
     const restoreSession = async () => {
       try {
-        const response = await fetch('/api/bootstrap')
+        const response = await sessionFetch('/api/bootstrap')
         if (cancelled) return
         if (response.status === 401) {
           setAuthUser(null)
@@ -948,7 +961,7 @@ function App() {
   useEffect(() => {
     if (!authUser) return
     const controller = new AbortController()
-    void fetch('/api/genres', { signal: controller.signal })
+    void sessionFetch('/api/genres', { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error('Genres unavailable')
         return response.json() as Promise<{ id: number; name: string }[]>
@@ -1072,7 +1085,7 @@ function App() {
         source,
         offset: String(offset),
       })
-      const response = await fetch(`/api/games/search?${params}`, {
+      const response = await sessionFetch(`/api/games/search?${params}`, {
         signal: controller.signal,
       })
       const payload = await response.json().catch(() => null) as GameSearchPage | { detail?: string } | null
@@ -1347,7 +1360,7 @@ function App() {
     setScreenRevision((revision) => revision + 1)
 
     // Refresh server-backed membership/status data on a tab reset as well.
-    void fetch('/api/bootstrap').then(async (response) => {
+    void sessionFetch('/api/bootstrap').then(async (response) => {
       if (!response.ok) return
       const payload = await response.json() as BootstrapPayload
       if (payload.user.nickname === authUser?.nickname) applyBootstrap(payload)
@@ -1423,7 +1436,7 @@ function App() {
     }
 
     try {
-      const response = await fetch(`/api/library/${game.id}`, {
+      const response = await sessionFetch(`/api/library/${game.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nextEntry),
@@ -1468,7 +1481,7 @@ function App() {
         const url = collectionId === WISHLIST_COLLECTION_ID
           ? `/api/library/${gameId}/wishlist`
           : `/api/library/${gameId}/collections/${encodeURIComponent(collectionId)}`
-        const response = await fetch(url, { method: enabled ? 'PUT' : 'DELETE' })
+        const response = await sessionFetch(url, { method: enabled ? 'PUT' : 'DELETE' })
         if (!response.ok) throw new Error('Collection membership update failed')
         update.persisted.set(collectionId, enabled)
       }
@@ -1508,7 +1521,7 @@ function App() {
     setDeleteCollectionBusy(true)
     setDeleteCollectionError('')
     try {
-      const response = await fetch('/api/library/' + game.id, { method: 'DELETE' })
+      const response = await sessionFetch('/api/library/' + game.id, { method: 'DELETE' })
       if (!response.ok) throw new Error('Не удалось удалить прохождение. Попробуйте ещё раз.')
       setEntries((current) => current.flatMap((entry) => {
         if (entry.gameId !== game.id) return [entry]
@@ -1537,7 +1550,7 @@ function App() {
     setCollectionError('')
 
     try {
-      const response = await fetch('/api/collections', {
+      const response = await sessionFetch('/api/collections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1593,7 +1606,7 @@ function App() {
     setCollectionEditBusy(true)
     setCollectionEditError('')
     try {
-      const response = await fetch(`/api/collections/${encodeURIComponent(collection.id)}`, {
+      const response = await sessionFetch(`/api/collections/${encodeURIComponent(collection.id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(collection.isSystem
@@ -1633,7 +1646,7 @@ function App() {
     setDeleteCollectionBusy(true)
     setDeleteCollectionError('')
     try {
-      const response = await fetch(`/api/collections/${encodeURIComponent(collection.id)}`, { method: 'DELETE' })
+      const response = await sessionFetch(`/api/collections/${encodeURIComponent(collection.id)}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('Не удалось удалить коллекцию. Попробуйте ещё раз.')
       setCollections((current) => current.filter((item) => item.id !== collection.id))
       setEntries((current) => current.flatMap((entry) => {
@@ -1655,7 +1668,7 @@ function App() {
     setDeleteCollectionBusy(true)
     setDeleteCollectionError('')
     try {
-      const response = await fetch('/api/collections/bulk-delete', {
+      const response = await sessionFetch('/api/collections/bulk-delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids }),
@@ -1683,7 +1696,7 @@ function App() {
     setDeleteCollectionBusy(true)
     setDeleteCollectionError('')
     try {
-      const response = await fetch(`/api/collections/${encodeURIComponent(prompt.collectionId)}`, {
+      const response = await sessionFetch(`/api/collections/${encodeURIComponent(prompt.collectionId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ removedGameIds: prompt.gameIds }),
@@ -1775,7 +1788,7 @@ function App() {
     const controller = new AbortController()
     const refreshRating = async () => {
       try {
-        const response = await fetch(`/api/games/${gameId}/community-rating`, {
+        const response = await sessionFetch(`/api/games/${gameId}/community-rating`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -1817,7 +1830,7 @@ function App() {
 
     const fetchDetails = async () => {
       try {
-        const response = await fetch(`/api/games/${gameId}/details`, {
+        const response = await sessionFetch(`/api/games/${gameId}/details`, {
           signal: controller.signal,
         })
         if (!response.ok) throw new Error('Game metadata is not available')
@@ -3208,7 +3221,7 @@ function App() {
       })}
       onLogout={async () => {
         try { await disconnectPushForLogout() } catch { /* Log out regardless of push API availability. */ }
-        await fetch('/api/auth/logout', { method: 'POST' })
+        await sessionFetch('/api/auth/logout', { method: 'POST' })
         clearPushStateCache(authUser?.nickname ?? '')
         setAuthUser(null)
         setEntries([])
@@ -3250,7 +3263,7 @@ function App() {
   }
 
   if (!authUser) {
-    return <AuthScreen onAuthenticated={(user) => { void hydrateAfterLogin(user) }} />
+    return <AuthScreen sessionExpired={sessionExpired} onAuthenticated={(user) => { resetSessionExpired(); void hydrateAfterLogin(user) }} />;
   }
 
   return (
@@ -3291,7 +3304,7 @@ function App() {
                         startAdding(game)
                       }}
                       onWishlistChange={() => {
-                        void fetch('/api/bootstrap').then(response => response.ok ? response.json() : null)
+                        void sessionFetch('/api/bootstrap').then(response => response.ok ? response.json() : null)
                           .then((payload: BootstrapPayload | null) => {
                             if (!payload) return
                             setEntries(payload.library.map(normalizeEntry))

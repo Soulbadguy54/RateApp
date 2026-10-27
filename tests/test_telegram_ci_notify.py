@@ -1,10 +1,13 @@
 """Pure rendering tests: run on CI without Telegram secrets/network."""
 import sys
 import unittest
+from unittest.mock import patch
+import io
+import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from telegram_ci_notify import make_message, job_lines  # noqa: E402
+from telegram_ci_notify import make_message, job_lines, direct_production_event  # noqa: E402
 
 
 def notification(workflow: str, result: str, source="push", branch="develop"):
@@ -102,6 +105,33 @@ class TelegramCIMessageTests(unittest.TestCase):
         self.assertIn("fedcba987654", published)
         self.assertIn("только оформление Telegram", published)
         self.assertNotIn("Discovery: жесты свайпов", published)
+
+    def test_direct_vps_completion_requires_real_public_health(self):
+        sha = "a" * 40
+        run = {"created_at": "2026-10-27T03:30:00Z"}
+        health = {"ok": True, "environment": "production", "database": {"reachable": True}}
+        with patch("telegram_ci_notify.urllib.request.urlopen",
+                   return_value=io.BytesIO(json.dumps(health).encode("utf-8"))):
+            event = direct_production_event(
+                sha=sha, run_id=123, deploy_result="success", run=run
+            )
+        self.assertEqual(event["workflow_run"]["conclusion"], "success")
+        self.assertIn("Production обновлён", make_message(event, revision=sha))
+
+        with patch("telegram_ci_notify.urllib.request.urlopen",
+                   return_value=io.BytesIO(b'{"ok":true,"environment":"staging"}')):
+            event = direct_production_event(
+                sha=sha, run_id=123, deploy_result="success", run=run
+            )
+        self.assertEqual(event["workflow_run"]["conclusion"], "failure")
+        self.assertNotIn("Production обновлён", make_message(event, revision=sha))
+
+        with patch("telegram_ci_notify.urllib.request.urlopen") as request:
+            event = direct_production_event(
+                sha=sha, run_id=123, deploy_result="failure", run=run
+            )
+            request.assert_not_called()
+        self.assertIn("Production-деплой не удался", make_message(event))
 
     def test_health_only_notifies_failure(self):
         self.assertIsNone(make_message(notification("RateApp daily production health", "success")))

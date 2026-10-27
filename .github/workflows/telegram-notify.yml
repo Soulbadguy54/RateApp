@@ -6,7 +6,8 @@ on:
     workflows:
       - Frontend CI
       - VPS staging deployment
-      - VPS production deployment
+      # Production notifies directly as the final VPS job, avoiding
+      # suppressed workflow_run events and duplicate success messages.
       - RateApp daily production health
     types: [completed]
   workflow_dispatch:

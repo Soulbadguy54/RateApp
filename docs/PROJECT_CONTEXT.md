@@ -329,3 +329,13 @@ PR #70 автоматически слит после успешного пол�
 ## Точный production release handoff (27.10.2026, после #83)
 
 Измерение: main SHA 2d6c8200, зелёный Frontend CI run #40441005013 (build, backend-tests, mobile-e2e, production-smoke), но VPS current-release=dab74554; публикация Discovery ещё не подтверждена. Второй разрыв main CI → VPS устраняется отдельным инфраструктурным PR: main CI после всех зелёных jobs явно dispatch'ит vps-deploy.yml с tested_sha и ci_run_id. VPS workflow защищён независимой проверкой SHA, live main HEAD, успешного CI run и обязательных jobs. Ни UI, ни БД не изменены. После слияния сверять server SHA и public health, не принимать успешный CI за завершённый деплой.
+
+## Защищённые API и Telegram после действительного VPS deployment (27.10.2026)
+
+Прямо измерено: после auto-merge выпуск d9add1d67dee работает на VPS (контейнеры и /api/health production/DB reachable), Actions VPS #40444398986 успешен, но отдельного Telegram workflow_run после него не возникло. В новом варианте финальный notify-production job отправляет сообщение сам из VPS workflow по завершении деплоя и отдельной проверке публичного health. Второй workflow_run listener оставлен только для CI, staging и daily health, чтобы не было двойных production-оповещений.
+
+В текущей схеме /api/discover/feed берёт рекомендации только из PostgreSQL, по сохранённым оценкам, лайкам и играм с обложками/IGDB-рейтингами; в IGDB по сети не ходит. /api/games/search source=local тоже использует PostgreSQL, source=igdb ходит во внешний сервис при глубоком поиске. Ответ 401 Session expired приходит из api/security.py до IGDB при недействительном cookie/token-hash. Ранее UI оставался открытым и показывал эту строку под поиском или «Не удалось загрузить рекомендации». Новая централизованная обработка защищённых 401 возвращает к входу с русским сообщением, без изменения игр/оценок и без разлогинивания по 503.
+
+### Регрессия WebKit при быстром защищённом 401 (PR #85, 27.10.2026)
+
+Первый релизный CI PR #85: build/backend зелёные, из 25 мобильных прогонов 23 зелёные и 2 повторно упали на iPhone WebKit (поиск /api/games/search и /api/discover/feed). В обоих не появился login после смоделированного 401, поэтому PR не публиковался. Коррекция: 401 сохраняется в синхронном состоянии модуля `src/sessionFetch.ts`, React App получает его через `useSyncExternalStore` даже при раннем ответе до подключения эффекта. Новый вход сбрасывает флаг. Полный WebKit/Android CI обязателен перед merge; не ослаблять E2E.
