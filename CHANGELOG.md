@@ -1,3 +1,10 @@
+## 27 октября 2026 — защита production от перепутанного upstream Docker DNS (PR после #85)
+
+- После выпуска #85 run #40458962549: publish и deploy успешно обновили VPS до `f0b2b92273cb`, но прямой Telegram job вернул failure и отправил предупреждение, потому что публичный `r-app.ru/api/health` в тот момент представился как `staging`; сообщение успешно доставлено.
+- Диагностика: production и staging API используют Compose service `api` на одной внешней Docker network, поэтому DNS-алиас `api` принадлежит двум контейнерам; production Caddy `reverse_proxy api:8000` может ошибочно попадать на stage API/DB. Проверено через `docker inspect` сетевых aliases и реальные health-ответы обоих окружений.
+- Аварийное исправление применено прямо в текущем production Caddy (reload): upstream теперь `rateapp-api-1:8000`. После перезапуска маршрута неоднократно подтверждены `r-app.ru → production`, `dev.r-app.ru → staging`; повтор уведомления #40458962549 завершился success и Telegram подтвердил доставку.
+- Постоянное исправление `deploy/Caddyfile` в этом PR и регрессионные Python-тесты фиксируют уникальный production upstream; конфигурация валидируется в полном CI перед следующей заменой контейнеров. Нельзя менять health, чтобы подавить предупреждение: environment=production остаётся обязательным.
+
 # Rate APP — история разработки
 
 ## 27 октября 2026 — Session expired без ложной ошибки IGDB и финальное Telegram-сообщение VPS

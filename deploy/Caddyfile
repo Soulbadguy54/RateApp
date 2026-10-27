@@ -2,7 +2,10 @@
     encode gzip zstd
     @api path /api/*
     handle @api {
-        reverse_proxy api:8000
+        # Production and staging share a Docker network; both services are named
+        # "api" and Docker DNS would otherwise randomly pick the stage API.
+        # Compose project "rateapp" names the production container rateapp-api-1.
+        reverse_proxy rateapp-api-1:8000
     }
     handle {
         root * /srv
