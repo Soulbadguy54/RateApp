@@ -1355,17 +1355,36 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-color: rgba(155, 170, 206, .22);
   background: linear-gradient(145deg, #242936, #11141c);
 }
-.detail-catalog-icon--collections > svg {
-  transform: translate(-3px, -3px);
-}
-.detail-catalog-icon__heart {
+/* Both symbols share the exact center of ONE button: a 3s cycle gives
+   each icon about 1.5s, including a soft ~0.5s crossfade. */
+.detail-catalog-icon__symbol {
   position: absolute;
-  right: 2px;
-  bottom: 2px;
-  font-size: 14px;
-  line-height: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
   pointer-events: none;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .75));
+}
+.detail-catalog-icon__symbol--layers {
+  animation: detail-collections-layers 3s ease-in-out infinite;
+}
+.detail-catalog-icon__symbol--heart {
+  opacity: 0;
+  animation: detail-collections-heart 3s ease-in-out infinite;
+}
+@keyframes detail-collections-layers {
+  0%, 33% { opacity: 1; }
+  50%, 83% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes detail-collections-heart {
+  0%, 33% { opacity: 0; }
+  50%, 83% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .detail-catalog-icon__symbol { animation: none; }
+  .detail-catalog-icon__symbol--layers { opacity: 1; }
+  .detail-catalog-icon__symbol--heart { opacity: 0; }
 }
 .detail-catalog-icon--collections:disabled {
   opacity: 1;
@@ -1593,6 +1612,19 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   color: #8c98ac;
   font-size: 10px;
   font-weight: 700;
+}
+.detail-rating-panel__score--empty {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  color: #8c98ac;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
 }
 @media (max-width: 360px) {
   .detail-rating-panel {
