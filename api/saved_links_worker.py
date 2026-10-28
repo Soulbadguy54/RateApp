@@ -1,7 +1,7 @@
 """One-shot per-LINK queue worker, launched inside the chosen API container.
 
-Saved links and extracted names are durable; all claims, cursors and tokens
-are temporary rows in saved_link_jobs, removed on completion/deletion.
+Only links and resolved catalog game IDs are durable. Extracted titles,
+claims, cursors and tokens live in saved_link_jobs until completion/deletion.
 No resident service, video downloads, browser, or HTTP user endpoint.
 """
 import argparse
@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from api.models import Game, SavedLink, SavedLinkGame, SavedLinkJob
+from api.models import Game, SavedLink, SavedLinkJob
 from api.security import _now, _session
 
 MAX_CLAIM_ATTEMPTS = 3
@@ -100,7 +100,7 @@ def _validated_names(payload: dict) -> list[tuple[str, str]]:
 
 
 def submit_result(payload: dict) -> dict:
-    """Persist GPT names in durable result rows; enqueue same link for matching."""
+    """Keep GPT names only in disposable per-link job until matching finishes."""
     if not isinstance(payload, dict):
         raise ValueError("Expected JSON object")
     link_id, token = payload.get("id"), payload.get("leaseToken")
@@ -137,24 +137,18 @@ def submit_result(payload: dict) -> dict:
                 job.lease_until = None
             link.error = error
         else:
-            # A reattempt replaces only THIS link's prior results, never other
-            # links, shared games, ratings or collection membership.
-            for entry in list(session.scalars(select(SavedLinkGame).where(
-                    SavedLinkGame.saved_link_id == link_id)).all()):
-                session.delete(entry)
-            session.flush()
-            for name, normalized in names:
-                session.add(SavedLinkGame(saved_link_id=link_id, name=name,
-                                          normalized_name=normalized))
+            job.names = [name for name, _ in names]
+            job.resolved_ids = []
+            job.cursor = 0
+            job.match_failures = 0
             if not names:
+                link.game_ids = []
                 link.status = "ready"
                 link.finished_at = now
                 session.delete(job)
             else:
                 link.status = "processing"
                 job.phase = "resolving"
-                job.cursor = 0
-                job.match_failures = 0
                 job.lease_until = None
         link.updated_at = now
         session.commit()
@@ -184,10 +178,11 @@ def _find_top_game_id(name: str) -> int | None:
 
 
 def resolve_games(limit: int = 1, *, only_id: int | None = None) -> dict:
-    """Process ONE article's games in order, resuming its temporary cursor.
+    """Resolve ONE source link with all its titles, resumable on long articles.
 
-    Bounded IGDB/CPU time per pass. A long article may need later passes but
-    never loses already committed results or starts another article mid-pass.
+    Work done outside the DB transaction; status/cursor/temp results are
+    persisted after every name. Final commit moves resolved IDs to saved_links
+    and deletes the entire job (including temporary GPT names).
     """
     if limit != 1:
         raise ValueError("Resolution processes exactly one link per invocation")
@@ -195,88 +190,77 @@ def resolve_games(limit: int = 1, *, only_id: int | None = None) -> dict:
     with _session() as session:
         query = (select(SavedLinkJob)
                  .join(SavedLink, SavedLink.id == SavedLinkJob.saved_link_id)
-                 .where(
-                     or_(SavedLinkJob.phase == "resolving",
-                         and_(SavedLinkJob.phase == "matching",
-                              SavedLinkJob.lease_until <= now))
-                 )
-                 .order_by(SavedLinkJob.id)
-                 .limit(1).with_for_update(of=SavedLinkJob, skip_locked=True))
+                 .where(or_(
+                     SavedLinkJob.phase == "resolving",
+                     and_(SavedLinkJob.phase == "matching",
+                          SavedLinkJob.lease_until <= now),
+                 ))
+                 .order_by(SavedLinkJob.id).limit(1)
+                 .with_for_update(of=SavedLinkJob, skip_locked=True))
         if only_id is not None:
             query = query.where(SavedLink.id == only_id)
         job = session.scalar(query)
         if job is None:
-            return {"links": 0, "processed": 0, "matched": 0, "remaining": 0, "complete": True}
+            return {"links": 0, "processed": 0, "matched": 0,
+                    "remaining": 0, "complete": True}
         link_id, job_id = job.saved_link_id, job.id
         token = secrets.token_urlsafe(24)
         job.phase = "matching"
         job.lease_token = token
         job.lease_until = now + timedelta(minutes=MATCH_LEASE_MINUTES)
-        entries = session.scalars(
-            select(SavedLinkGame).where(SavedLinkGame.saved_link_id == link_id)
-            .order_by(SavedLinkGame.id)
-        ).all()
-        ids = [x.id for x in entries]
         session.commit()
 
-    processed, matched, errors = 0, 0, 0
+    processed = matched = 0
     start = time.monotonic()
     while processed < MAX_TITLES_PER_PASS and time.monotonic() - start < MAX_PASS_SECONDS:
         with _session() as session:
             job = session.get(SavedLinkJob, job_id)
             if job is None or job.phase != "matching" or job.lease_token != token:
-                # Link deleted, task replaced, or lease reclaimed.
                 return {"links": 0, "processed": processed, "matched": matched,
                         "remaining": 0, "complete": False, "cancelled": True}
             cursor = job.cursor
-            if cursor >= len(ids):
+            names = job.names or []
+            if cursor >= len(names):
                 break
-            entry = session.get(SavedLinkGame, ids[cursor])
-            if entry is None:
-                # User removed source; FK cascade prevents resurrecting it.
-                return {"links": 0, "processed": processed, "matched": matched,
-                        "remaining": 0, "complete": False, "cancelled": True}
-            name = entry.name
-            already_matched = entry.game_id is not None
+            name = names[cursor]
 
         candidate_id, temporary_error = None, False
-        if not already_matched:
-            try:
-                candidate_id = _find_top_game_id(name)
-            except (HTTPException, SQLAlchemyError, OSError, ValueError):
-                temporary_error = True
+        try:
+            candidate_id = _find_top_game_id(name)
+        except (HTTPException, SQLAlchemyError, OSError, ValueError):
+            temporary_error = True
 
         with _session() as session:
             job = session.scalar(select(SavedLinkJob).where(
                 SavedLinkJob.id == job_id,
             ).with_for_update())
-            if job is None or job.phase != "matching" or job.lease_token != token:
+            if (job is None or job.phase != "matching"
+                    or job.lease_token != token):
                 return {"links": 0, "processed": processed, "matched": matched,
                         "remaining": 0, "complete": False, "cancelled": True}
-            entry = session.get(SavedLinkGame, ids[job.cursor]) if job.cursor < len(ids) else None
             link = session.get(SavedLink, link_id)
-            if entry is None or link is None:
+            if link is None:
                 return {"links": 0, "processed": processed, "matched": matched,
                         "remaining": 0, "complete": False, "cancelled": True}
             if temporary_error or job.lease_until <= _now():
                 job.match_failures += 1
                 if job.match_failures < MAX_MATCH_ATTEMPTS:
                     job.phase = "resolving"
+                    job.lease_token = None
                     job.lease_until = None
                     session.commit()
-                    return {"links": 1, "processed": processed, "matched": matched,
-                            "remaining": len(ids) - job.cursor, "complete": False,
-                            "retry": True}
-                # Terminal failure for just this title: preserve original name.
-                link.error = "Не все названия удалось сопоставить с каталогом."
-                errors += 1
-                job.match_failures = 0
-            elif entry.game_id is None and candidate_id is not None:
+                    return {"links": 1, "linkId": link_id, "processed": processed,
+                            "matched": matched, "remaining": len(job.names) - job.cursor,
+                            "complete": False, "retry": True}
+                link.error = "Некоторые названия не удалось найти в каталоге."
+            elif candidate_id is not None:
+                # Public game search returns IGDB IDs; store only local game PKs.
                 game = session.scalar(select(Game).where(Game.igdb_id == candidate_id))
-                if game is not None:
-                    entry.game_id = game.id
+                if game is not None and game.id not in (job.resolved_ids or []):
+                    job.resolved_ids = list(job.resolved_ids or []) + [game.id]
                     matched += 1
             job.cursor += 1
+            job.match_failures = 0
             processed += 1
             session.commit()
 
@@ -284,16 +268,23 @@ def resolve_games(limit: int = 1, *, only_id: int | None = None) -> dict:
         job = session.scalar(select(SavedLinkJob).where(
             SavedLinkJob.id == job_id,
         ).with_for_update())
-        if job is None or job.phase != "matching" or job.lease_token != token:
+        if (job is None or job.phase != "matching"
+                or job.lease_token != token):
             return {"links": 0, "processed": processed, "matched": matched,
                     "remaining": 0, "complete": False, "cancelled": True}
-        remaining = len(ids) - job.cursor
+        remaining = len(job.names or []) - job.cursor
         if remaining == 0:
             link = session.get(SavedLink, link_id)
-            if link is not None:
-                link.status = "ready"
-                link.finished_at = _now()
-                link.updated_at = _now()
+            if link is None:
+                return {"links": 0, "processed": processed, "matched": matched,
+                        "remaining": 0, "complete": False, "cancelled": True}
+            # Exclude games that may have been deleted during this slow batch.
+            ids = list(dict.fromkeys(job.resolved_ids or []))
+            live_ids = set(session.scalars(select(Game.id).where(Game.id.in_(ids))).all()) if ids else set()
+            link.game_ids = [game_id for game_id in ids if game_id in live_ids]
+            link.status = "ready"
+            link.finished_at = _now()
+            link.updated_at = _now()
             session.delete(job)
         else:
             job.phase = "resolving"
@@ -301,8 +292,9 @@ def resolve_games(limit: int = 1, *, only_id: int | None = None) -> dict:
             job.lease_until = None
         session.commit()
         return {"links": 1, "linkId": link_id, "processed": processed,
-                "matched": matched, "errors": errors,
-                "remaining": remaining, "complete": remaining == 0}
+                "matched": matched, "remaining": remaining,
+                "complete": remaining == 0}
+
 
 
 def main():
