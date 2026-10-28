@@ -1,6 +1,6 @@
 """One-shot Gateway-compatible queue CLI, executed inside API container.
 
-No network fetching or long-running background process. Connect to a particular
+No long-running background process. Matching makes only bounded IGDB calls. Connect to a particular
 database by choosing that environment's container; --expect-environment prevents
 accidental cross-environment queue consumption.
 """
@@ -13,14 +13,19 @@ import unicodedata
 from datetime import timedelta
 
 from sqlalchemy import and_, or_, select, update
+from fastapi import HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 
-from api.models import SavedLink, SavedLinkGame
+from api.models import Game, SavedLink, SavedLinkGame
 from api.security import _now, _session
 
 MAX_ATTEMPTS = 3
 MAX_BATCH = 3
 MAX_GAMES = 80
 LEASE_HOURS = 2
+MAX_RESOLVE_BATCH = 4
+MAX_MATCH_ATTEMPTS = 3
+MATCH_LEASE_MINUTES = 15
 
 
 def claim_jobs(limit: int = MAX_BATCH, *, only_id: int | None = None) -> dict:
@@ -122,9 +127,122 @@ def submit_result(payload: dict) -> dict:
                 "status": link.status, "gamesCount": len(games) if error is None else 0}
 
 
+def _find_top_game_id(name: str) -> int | None:
+    """The search box's local-first strategy and identical ranking.
+
+    Use local trigram/title/alias/popularity order. On a miss, use the same
+    IGDB first-page ranking/fallback; cache ONLY the winner to save resources.
+    """
+    from api.games_routes import (
+        _local_game_search, _ranked_igdb_search_rows, _cache_igdb_games,
+    )
+    from api.igdb_client import Priority
+
+    query = name.strip()[:100]
+    if len(query) < 3:
+        return None
+    with _session() as session:
+        local = _local_game_search(session, query, 0)["items"]
+        if local:
+            return int(local[0]["id"])
+    rows, _ = _ranked_igdb_search_rows(query, priority=Priority.BACKGROUND)
+    if not rows:
+        return None
+    cached = _cache_igdb_games([rows[0]])
+    return int(cached[0]["id"]) if cached else None
+
+
+def resolve_games(limit: int = MAX_RESOLVE_BATCH, *, only_id: int | None = None) -> dict:
+    """Bounded matching pass: short leases, no DB locks held during IGDB I/O."""
+    if not 1 <= limit <= MAX_RESOLVE_BATCH:
+        raise ValueError("Resolution batch must contain 1–4 titles")
+    now = _now()
+    with _session() as session:
+        session.execute(update(SavedLinkGame).where(
+            SavedLinkGame.game_id.is_(None),
+            SavedLinkGame.match_status == "resolving",
+            SavedLinkGame.match_lease_until <= now,
+            SavedLinkGame.match_attempts >= MAX_MATCH_ATTEMPTS,
+        ).values(match_status="failed", match_lease_token=None,
+                 match_lease_until=None, match_error="Превышен лимит попыток поиска."))
+        stmt = (select(SavedLinkGame)
+                .join(SavedLink, SavedLink.id == SavedLinkGame.saved_link_id)
+                .where(
+                    SavedLink.status == "ready",
+                    SavedLinkGame.game_id.is_(None),
+                    SavedLinkGame.match_attempts < MAX_MATCH_ATTEMPTS,
+                    or_(
+                        SavedLinkGame.match_status == "pending",
+                        and_(SavedLinkGame.match_status == "resolving",
+                             SavedLinkGame.match_lease_until <= now),
+                    ),
+                )
+                .order_by(SavedLinkGame.id)
+                .limit(limit)
+                .with_for_update(of=SavedLinkGame, skip_locked=True))
+        if only_id is not None:
+            stmt = stmt.where(SavedLinkGame.id == only_id)
+        entries = session.scalars(stmt).all()
+        jobs = []
+        for entry in entries:
+            entry.match_status = "resolving"
+            entry.match_attempts += 1
+            entry.match_lease_token = secrets.token_urlsafe(24)
+            entry.match_lease_until = now + timedelta(minutes=MATCH_LEASE_MINUTES)
+            entry.match_error = None
+            jobs.append((entry.id, entry.name, entry.match_lease_token))
+        session.commit()
+
+    output = {"claimed": len(jobs), "matched": 0, "noMatch": 0, "retry": 0, "failed": 0}
+    for entry_id, name, token in jobs:
+        matched_id = None
+        temporary_error = False
+        try:
+            matched_id = _find_top_game_id(name)
+        except (HTTPException, SQLAlchemyError, OSError, ValueError):
+            temporary_error = True
+        with _session() as session:
+            entry = session.scalar(
+                select(SavedLinkGame).where(SavedLinkGame.id == entry_id).with_for_update()
+            )
+            if (entry is None or entry.match_status != "resolving"
+                    or entry.match_lease_token != token):
+                continue
+            if entry.game_id is not None:
+                entry.match_status = "matched"
+                state = "matched"
+            elif temporary_error or entry.match_lease_until <= _now():
+                if entry.match_attempts >= MAX_MATCH_ATTEMPTS:
+                    entry.match_status = "failed"
+                    state = "failed"
+                else:
+                    entry.match_status = "pending"
+                    state = "retry"
+                entry.match_error = "Временная ошибка поиска в каталоге."
+            elif matched_id is None:
+                entry.match_status = "no_match"
+                state = "noMatch"
+            else:
+                game = session.scalar(select(Game).where(Game.igdb_id == matched_id))
+                if game is None:
+                    entry.match_status = ("failed" if entry.match_attempts >= MAX_MATCH_ATTEMPTS
+                                          else "pending")
+                    entry.match_error = "Игра отсутствует в локальном каталоге."
+                    state = "failed" if entry.match_status == "failed" else "retry"
+                else:
+                    entry.game_id = game.id
+                    entry.match_status = "matched"
+                    state = "matched"
+            entry.match_lease_token = None
+            entry.match_lease_until = None
+            session.commit()
+            output[state] += 1
+    return output
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("claim", "submit"))
+    parser.add_argument("action", choices=("claim", "submit", "resolve"))
     parser.add_argument("--limit", type=int, default=MAX_BATCH)
     parser.add_argument("--expect-environment", required=True,
                         choices=("staging", "production", "development"))
@@ -135,6 +253,8 @@ def main() -> None:
     try:
         if args.action == "claim":
             output = claim_jobs(args.limit)
+        elif args.action == "resolve":
+            output = resolve_games(args.limit)
         else:
             # Limit the size of Gateway-submitted JSON; no arbitrary commands.
             body = sys.stdin.read(64 * 1024 + 1)
