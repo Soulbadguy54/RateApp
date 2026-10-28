@@ -97,6 +97,28 @@ def upgrade():
         if column in link_columns:
             op.drop_column("saved_links", column)
 
+    # PostgreSQL arrays have no per-element FK. Prevent dangling IDs even if
+    # future catalog maintenance introduces game deletion.
+    op.execute("""
+        CREATE OR REPLACE FUNCTION rateapp_saved_links_prune_deleted_game()
+        RETURNS TRIGGER LANGUAGE plpgsql AS $
+        BEGIN
+            UPDATE saved_links
+               SET game_ids = array_remove(game_ids, OLD.id)
+             WHERE game_ids @> ARRAY[OLD.id]::integer[];
+            RETURN OLD;
+        END;
+        $
+    """)
+    op.execute("""
+        DROP TRIGGER IF EXISTS trg_saved_links_game_deleted ON games
+    """)
+    op.execute("""
+        CREATE TRIGGER trg_saved_links_game_deleted
+        AFTER DELETE ON games
+        FOR EACH ROW EXECUTE FUNCTION rateapp_saved_links_prune_deleted_game()
+    """)
+
 
 def downgrade():
     raise RuntimeError("Old name/game association cannot be restored without backup")
