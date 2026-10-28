@@ -1368,6 +1368,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   animation: detail-collections-layers 7.2s ease-in-out infinite;
 }
 .detail-catalog-icon__symbol--heart {
+  /* Use the existing rose/wishlist collection palette; no one-off pink. */
+  color: rgb(var(--palette-wishlist-rgb));
   opacity: 0;
   animation: detail-collections-heart 7.2s ease-in-out infinite;
 }
