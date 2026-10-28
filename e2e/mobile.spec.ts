@@ -86,6 +86,46 @@ test('search -> game -> new playthrough -> back returns to search with fresh rat
   const result = page.getByRole('button', { name: 'Открыть игру «Neon Divide»' })
   await expect(result).toBeVisible()
   await result.click()
+
+  // Compact ratings keep their big scores but put the label and value on
+  // the same line. Both boxes should shrink without clipping the score.
+  const ratingLayout = await page.locator('.detail-rating-section').evaluate(section =>
+    [...section.querySelectorAll<HTMLElement>('.detail-rating-panel')].map(panel => {
+      const label = panel.querySelector<HTMLElement>('.detail-rating-panel__label')!
+      const score = panel.querySelector<HTMLElement>('.detail-rating-panel__score')!
+      const panelBox = panel.getBoundingClientRect()
+      const labelBox = label.getBoundingClientRect()
+      const scoreBox = score.getBoundingClientRect()
+      return {
+        height: panelBox.height,
+        labelRight: labelBox.right,
+        scoreLeft: scoreBox.left,
+        scoreRight: scoreBox.right,
+        panelRight: panelBox.right,
+        centerDifference: Math.abs(
+          (labelBox.top + labelBox.bottom) / 2 - (scoreBox.top + scoreBox.bottom) / 2,
+        ),
+      }
+    }),
+  )
+  expect(ratingLayout).toHaveLength(2)
+  for (const rating of ratingLayout) {
+    expect(rating.height).toBeLessThan(70)
+    expect(rating.labelRight).toBeLessThanOrEqual(rating.scoreLeft + 1)
+    expect(rating.scoreRight).toBeLessThanOrEqual(rating.panelRight + 1)
+    expect(rating.centerDifference).toBeLessThan(12)
+  }
+
+  // The ❤️ is only a visual cue on the existing collections button:
+  // clicking anywhere on that button still opens the collection picker.
+  const collectionsButton = page.locator('.detail-catalog-icon--collections')
+  await expect(collectionsButton.locator('.detail-catalog-icon__heart')).toHaveText('❤️')
+  await expect(collectionsButton.locator('.detail-catalog-icon__heart')).toHaveAttribute('aria-hidden', 'true')
+  await collectionsButton.click()
+  await expect(page.getByRole('region', { name: 'Управление коллекциями' })).toBeVisible()
+  await collectionsButton.click()
+  await expect(page.getByRole('region', { name: 'Управление коллекциями' })).toHaveCount(0)
+
   await page.getByRole('button', { name: 'Добавить прохождение' }).click()
   await expect(page.getByRole('heading', { name: 'Прохождение' })).toBeVisible()
 
