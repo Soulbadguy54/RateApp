@@ -25,6 +25,8 @@ def upgrade():
             "game_ids", ARRAY(sa.Integer()), nullable=False,
             server_default=sa.text("'{}'::integer[]"),
         ))
+    if "ix_saved_links_game_ids_gin" not in {ix["name"] for ix in inspect(bind).get_indexes("saved_links")}:
+        op.create_index("ix_saved_links_game_ids_gin", "saved_links", ["game_ids"], postgresql_using="gin")
     if not inspector.has_table("saved_link_jobs"):
         op.create_table(
             "saved_link_jobs",
