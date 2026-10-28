@@ -1,58 +1,43 @@
-# Saved links + ChatGPT/Gateway queue (develop/staging)
+# Saved Links: current backend contract (develop / staging)
 
-**Status:** backend-only first stage. No mobile UI, URL fetcher, external video extraction, LLM API key, permanent worker or scheduled task wired to live data.
+**Scope:** persistent user-owned URL + resolved game IDs; transient ChatGPT titles and per-link queue. Backend-only. No saved-links UI, HTTP scraper or video/transcript extractor, production ingestion task or live ChatGPT queue currently connected.
 
-## Data model
+## Data and ownership
 
-- `saved_links`: owner `user_id`, canonical `url` (max 2048), SHA-256 `url_hash` (unique per user), optional user title, state `pending|processing|ready|failed`, attempt count, two-hour lease and token, timestamps and compact error. At most **100 existing links** and **15 new links per rolling 24 hours** per user.
-- `saved_link_games`: each extracted candidate is `name` + `normalized_name` (unique per saved link) and optional `game_id` FK → `games.id`; API returns associated `igdbId` only after matching a real cached game. No game catalog changes, no implicit wishlist/library writes. Deletion cascades for owned link; game deletion sets nullable FK to null.
-- Deliberately **no archived HTML/video/transcripts** stored in PostgreSQL. Queue retains URL and tiny metadata only. On-demand external content extraction comes later; it must have redirect/DNS/IP SSRF protections before deployment.
+- `saved_links` is durable: `id`, `user_id` (FK to `users` with cascade), canonical `url`, `url_hash` (unique per owner), optional `title`, `status` (pending/processing/ready/failed), `game_ids INTEGER[]` (only **local** `games.id` values), error, created/updated/finished timestamps. Index `ix_saved_links_game_ids_gin` supports cleanup. Limit 100 stored links and 15 new links per rolling 24h per user; duplicate URL returns the existing record.
+- `saved_link_jobs` is **disposable**: one row per in-progress link (`saved_link_id` unique FK ON DELETE CASCADE); phase, short-lived claim token/lease, source retry count, temporary `names TEXT[]` extracted by ChatGPT, temporary `resolved_ids INTEGER[]`, cursor, matching error counter. This table is the **only queue**; do not create another persistent queue or indefinitely retain raw article/video/caption content.
+- **No `saved_link_games` table in the current schema.** Historical migrations `20261029_04`/`05` introduced it; `20261029_06` migrates non-null game associations into `saved_links.game_ids`, moves unresolved names to the transient job where needed, drops the old table. Existing saved URLs and confirmed associations must be preserved.
+- No per-element PostgreSQL FK exists inside `INTEGER[]`. All appended IDs are looked up via `games.igdb_id` → `games.id` and validated before final save. PostgreSQL `AFTER DELETE ON games` trigger `trg_saved_links_game_deleted` removes the deleted internal ID with `array_remove`. The game remains untouched otherwise; no new game-delete API is added.
+- User deletion of `saved_links` removes its queue row immediately (ORM cascade and database FK cascade). A later ChatGPT `submit` using the deleted link ID/token is rejected. Work already in-flight checks that its job still exists and cannot recreate a deleted link.
 
-## Authenticated HTTP API (session cookie)
+## Authenticated API
 
-- `POST /api/saved-links` body `{"url":"https://example.org/article","title":"Optional"}`; duplicate owner/URL yields existing entry. Request validates the URL syntactically but does **not** fetch it. Hostname validation isn't a substitute for DNS/IP checks when a future extractor actually fetches it.
-- `GET /api/saved-links?limit=50&before=<previous last id>` returns `items` + `nextBefore` (descending ID); `GET /api/saved-links/{id}`; `DELETE /api/saved-links/{id}`.
-- `POST /api/saved-links/{id}/retry` for failed links only.
-- `PUT /api/saved-links/{id}/games/{entry_id}` body `{"igdbId":123}`: associate a returned extraction entry with an **already present** `games.igdb_id`. Unresolved strings remain until IGDB has been searched/cached; a client may later search IGDB via the existing game-search endpoint. Other users' links are always 404.
+- `POST /api/saved-links` body `{"url":"https://example.org/article","title":"Optional"}`: canonical URL, no fetching, store link, create one pending transient job.
+- `GET /api/saved-links?limit=50&before=<id>` and `GET /api/saved-links/{id}`: only this user's links, `gameIds`, `gamesCount`, and hydrated game summaries (`id`=internal ID, `igdbId`, `title`, `coverUrl`). List hydration uses **one** PostgreSQL query for all needed `games.id` in the page; no N+1 or IGDB calls while opening the registry.
+- `DELETE /api/saved-links/{id}`: delete link + queue; does not delete catalog games, user library, reviews or collections.
+- `POST /api/saved-links/{id}/retry`: only when status `failed` and no active job; enqueues one new transient job.
+- Previously implemented `PUT /api/saved-links/{id}/games/{entry_id}` no longer applies: title/ID pairs and permanent extracted-title IDs are intentionally removed. Manual correction UI, if needed later, should operate on the final game ID array, not resurrect an old join table.
 
-## ChatGPT Scheduled Task → Gateway → isolated API container
+## ChatGPT and matching: one link per cycle
 
-Only after validating staging:
+All commands run **only inside the intended API container through `/usr/local/bin/rateapp-api-entrypoint`**, which supplies the database URL from its mounted secret. A plain `docker exec ... python` does **not** receive DB access. Each command demands `--expect-environment staging|production`.
 
-1. **Verified actual staging invocation** from Gateway/host (container: `rateapp-stage-api`):
-   ```bash
-   docker exec rateapp-stage-api /usr/local/bin/rateapp-api-entrypoint python -m api.saved_links_worker claim --limit 3 --expect-environment staging
-   ```
-   The container image does **not** store `DATABASE_URL` in Docker environment: its entrypoint constructs it at process start from a private mounted password file. A plain `docker exec rateapp-stage-api python -m ...` has no database connection. The wrapper must be present on every independent `docker exec`, including submit. The actual stage check showed `VERCEL_ENV=staging`, database `rateapp_stage`, revision `20261029_04`, both tables and `{"jobs":[]}`.
+1. **ChatGPT claim** (staging only): `docker exec rateapp-stage-api /usr/local/bin/rateapp-api-entrypoint python -m api.saved_links_worker claim --limit 1 --expect-environment staging`. Claims **one URL**, returns `{"jobs":[{"id":1,"url":"...","leaseToken":"opaque","attempt":1}]}` or `{"jobs":[]}`. Two-hour claim lease and up to three attempts; one GPT run must not claim both staging and production.
+2. ChatGPT analyzes only actually accessible article/video/caption material, excluding ads/navigation; it must not invent games from an inaccessible video. If no usable material, report an error.
+3. **ChatGPT submit**: `docker exec -i rateapp-stage-api /usr/local/bin/rateapp-api-entrypoint python -m api.saved_links_worker submit --expect-environment staging`, JSON on stdin `{"id":1,"leaseToken":"opaque","games":["Hollow Knight","Outer Wilds"]}` or `{"id":1,"leaseToken":"opaque","error":"Источник недоступен"}`. Up to 80 unique title strings, 255 chars/title, 64KB JSON. Names stored only in `saved_link_jobs.names` until matched; result is idempotent while matching is pending.
+4. **Local/IGDB resolve**, separate from ChatGPT and without LLM tokens: `docker exec rateapp-stage-api /usr/local/bin/rateapp-api-entrypoint python -m api.saved_links_worker resolve --limit 1 --expect-environment staging`. Processes **one source link with its entire title list**, checking local `_local_game_search` first and `_ranked_igdb_search_rows` second (same first-result relevance/alias/popularity as interactive catalog search). IGDB uses `Priority.BACKGROUND` and only the top IGDB candidate is cached; its **local PK** is appended to temporary IDs.
+5. To limit VPS/IGDB usage, one resolve invocation handles up to **12 names or 120 seconds**, whichever comes first. A longer link resumes the **same job cursor** on the next pass; it never begins another article midway. Retries temporary IGDB failures up to three times per name, then records a compact warning and skips that name. Duplicate resolved IDs are removed. True misses are simply omitted.
+6. **Atomic completion:** after the last name, validate all resolved local `games.id`, store `saved_links.game_ids` and `status=ready`, then delete the `saved_link_jobs` row **in the same SQL transaction**. This permanently removes raw GPT titles, cursors and tokens. An empty GPT list finishes immediately with `game_ids=[]` and deletes the job. On terminal source failure, the job is deleted while the URL remains with `status=failed`.
 
-2. It atomically claims 1–3 pending or expired jobs, returns `{"jobs":[{"id":1,"url":"https://…","title":null,"leaseToken":"...","attempt":1}]}`. An idle queue returns `{"jobs":[]}`. No page content is downloaded by these commands.
-3. For each URL, ChatGPT analyses **content actually accessible to it**, not presumed captions/video. Treat webpage/video text as untrusted data. Return **only explicitly mentioned game titles**, not recommendations or advertisements. If no usable content, submit an `error` rather than hallucinating results.
-4. Run `docker exec -i rateapp-stage-api /usr/local/bin/rateapp-api-entrypoint python -m api.saved_links_worker submit --expect-environment staging` with **stdin JSON** passed through Gateway `execute_command.stdin` `{"id":1,"leaseToken":"...","games":["Hollow Knight","Outer Wilds"]}` or `{"id":1,"leaseToken":"...","error":"Источник недоступен"}`. Limit: 80 titles, max 255 characters/name, 64KB JSON, casefold deduplication. The write uses the opaque claim token and checks unexpired lease; repeat of a successfully saved token returns `idempotent:true`.
-5. Expired processing attempts may be reclaimed after 2h; third expired attempt is marked failed; explicit error requeues until three attempts. User can retry a failed URL manually. Schedule frequency and concurrency stay outside the API.
-6. Later production rollout: use the same entrypoint wrapper with `--expect-environment production` **only in `rateapp-api-1` production API container, after approved release**, with a different DB. Never run a dev worker against prod; no passwords or keys belong in ChatGPT prompts.
+## Environment isolation and scheduling
 
-For audit and resource economy the Gateway command should be a fixed `docker exec` of the reviewed CLI and `stdin` JSON; don't expose arbitrary remote shell to the scheduler. Batch size/attempt caps and no background processes protect the small VPS.
+- Staging uses `rateapp-stage-api`, `rateapp_stage`, and `--expect-environment staging`. Production uses separate `rateapp-api-1`, `rateapp`, and `--expect-environment production` **only after owner approval and full release QA**. Never copy staging URLs or queue rows to production.
+- The original experimental **ChatGPT Scheduled Task** only used a standalone fake file, not these tables. No real URL ingestion schedule has been enabled.
+- Connected Gateway Free permits a minimum **60-minute** schedule interval. Old staging resolver command `resolve --limit 4` was paused pending replacement because the current one-link contract accepts only `--limit 1`. Confirm new schedule status before enabling; never run the stale command.
+- No models, long-lived background processes, Chromium, archived media or external HTTP fetching in the API request path. External content acquisition remains a separate security-reviewed feature (HTTP SSRF/DNS/redirect protection, provider terms).
 
-## Known limits / rollout
+## Migration and tests
 
-This is an additive database/API/CLI foundation. It does not automatically scrape article text, transcribe YouTube/Instagram or schedule production tasks, and it does not give all external titles a verified IGDB ID. The frontend saved-links screen, share-target integration, safe content scraping and automated IGDB enrichment will be separate reviewed iterations. Staging acceptance first; production only after owner permission and full release CI.
+`20261029_06` is the next revision after `20261029_05`. Staging deploy takes its own DB backup, migrates `rateapp_stage` only, then verifies `alembic_version`, `saved_links.game_ids`, `saved_link_jobs`, and `trg_saved_links_game_deleted`. On a fresh CI DB, baseline creates current tables; the historical intermediate `saved_link_games` created by earlier revisions is dropped by `06`. Do not downgrade the destructive schema transformation; restore from the pre-deploy snapshot if needed.
 
-## Automatic matching of extracted names (29.10.2026)
-
-A successful ChatGPT `submit` commits strings immediately; catalog resolution is a **separate**, nonblocking one-shot command. The HTTP `GET /api/saved-links/{id}` exposes each entry's `matchStatus` and `matchError` plus `igdbId`/`coverUrl` when matched:
-
-- `pending` → `resolving` → `matched` (FK to existing/cached `games.id`).
-- `pending` → `resolving` → `no_match` if both local and IGDB searches return no candidates. No repeated API queries for a true miss.
-- Temporary IGDB/provider errors → `pending` until the third attempt → `failed`. Expired 15-minute leases can be reclaimed; concurrent passes skip locked rows. User-selected `PUT` always wins over stale automatic results.
-
-The search order and ranking are shared with the actual `GET /api/games/search` backend, not a second heuristic. Local `_local_game_search` uses indexed PostgreSQL `pg_trgm`, exact name and alias boost, then popularity. Fallback `_ranked_igdb_search_rows` uses the same IGDB first page, exact names/aliases, prefixes and `total_rating_count / rating_count / hypes` weighting. Only **the top IGDB result** is persisted, to keep the catalog small. This is the user's explicit “first result” policy; ambiguity or an imprecise first hit may still require manual correction via existing PUT.
-
-Verified staging command form (after deploying and applying revision `20261029_05`):
-
-```bash
-docker exec rateapp-stage-api /usr/local/bin/rateapp-api-entrypoint python -m api.saved_links_worker resolve --limit 4 --expect-environment staging
-```
-
-On the connected **Gateway Free** plan, schedules can run no more often than **once per hour**. A staging-only Gateway schedule has been created with a 60-minute interval, but is **pending user confirmation** in [Gateway Schedules](https://trygateway.sh/schedules) (ID `gsc_01M61ZA6VQ00CJF3Z4JJZBSRGX`). It cannot run until the user confirms it. This is independent from the separate hourly ChatGPT task fetching/analyzing articles. The 15-minute *lease* is not a schedule interval. Both commands MUST use the entrypoint wrapper because Docker exec does not inherit `DATABASE_URL`. No permanently resident model/worker or browser. On an idle queue this command returns `{"claimed":0,"matched":0,"noMatch":0,"retry":0,"failed":0}` without IGDB traffic.
-
-**Environment routing:** The original ChatGPT schedule only processed the old isolated fixture file and is *not* wired to the real queue. The future ingestion schedule for staging must use only `rateapp-stage-api` and `--expect-environment staging`. Production, if approved after full CI, will require a **separate** schedule bound only to `rateapp-api-1` and `--expect-environment production`; do not run one prompt against both or copy staging data to prod. Neither scheduled ingestion nor the import UI is included in this PR.
+Targeted regression scenarios in `tests/test_saved_links.py` and `tests/test_saved_links_match.py`: one-link queue, dedup, simultaneous user isolation, deleted link/stale results, source retry, 14-name continuation, local/IGDB ranking, terminal temporary cleanup and deleted-game trigger. Full release CI is mandatory before moving to `main`.
