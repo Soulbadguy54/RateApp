@@ -36,3 +36,23 @@ For audit and resource economy the Gateway command should be a fixed `docker exe
 ## Known limits / rollout
 
 This is an additive database/API/CLI foundation. It does not automatically scrape article text, transcribe YouTube/Instagram or schedule production tasks, and it does not give all external titles a verified IGDB ID. The frontend saved-links screen, share-target integration, safe content scraping and automated IGDB enrichment will be separate reviewed iterations. Staging acceptance first; production only after owner permission and full release CI.
+
+## Automatic matching of extracted names (29.10.2026)
+
+A successful ChatGPT `submit` commits strings immediately; catalog resolution is a **separate**, nonblocking one-shot command. The HTTP `GET /api/saved-links/{id}` exposes each entry's `matchStatus` and `matchError` plus `igdbId`/`coverUrl` when matched:
+
+- `pending` → `resolving` → `matched` (FK to existing/cached `games.id`).
+- `pending` → `resolving` → `no_match` if both local and IGDB searches return no candidates. No repeated API queries for a true miss.
+- Temporary IGDB/provider errors → `pending` until the third attempt → `failed`. Expired 15-minute leases can be reclaimed; concurrent passes skip locked rows. User-selected `PUT` always wins over stale automatic results.
+
+The search order and ranking are shared with the actual `GET /api/games/search` backend, not a second heuristic. Local `_local_game_search` uses indexed PostgreSQL `pg_trgm`, exact name and alias boost, then popularity. Fallback `_ranked_igdb_search_rows` uses the same IGDB first page, exact names/aliases, prefixes and `total_rating_count / rating_count / hypes` weighting. Only **the top IGDB result** is persisted, to keep the catalog small. This is the user's explicit “first result” policy; ambiguity or an imprecise first hit may still require manual correction via existing PUT.
+
+Verified staging command form (after deploying and applying revision `20261029_05`):
+
+```bash
+docker exec rateapp-stage-api /usr/local/bin/rateapp-api-entrypoint python -m api.saved_links_worker resolve --limit 4 --expect-environment staging
+```
+
+A Gateway schedule could run this command every **15 minutes**, independently from the **hourly** ChatGPT task fetching/analyzing articles. Both commands MUST use the entrypoint wrapper because Docker exec does not inherit `DATABASE_URL`. No permanently resident model/worker or browser. On an idle queue this command returns `{"claimed":0,"matched":0,"noMatch":0,"retry":0,"failed":0}` without IGDB traffic.
+
+**Environment routing:** The original ChatGPT schedule only processed the old isolated fixture file and is *not* wired to the real queue. The future ingestion schedule for staging must use only `rateapp-stage-api` and `--expect-environment staging`. Production, if approved after full CI, will require a **separate** schedule bound only to `rateapp-api-1` and `--expect-environment production`; do not run one prompt against both or copy staging data to prod. Neither scheduled ingestion nor the import UI is included in this PR.
