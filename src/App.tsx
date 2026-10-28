@@ -5,7 +5,7 @@ import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
 import BottomNavGameSlot from './components/BottomNavGameSlot'
 import RatingWheel, { closestHalfPoint } from './components/RatingWheel'
-import { CollectionIcon, CollectionAppearanceEditor, WishlistHeart } from './components/CollectionAppearance'
+import { CollectionIcon, CollectionAppearanceEditor } from './components/CollectionAppearance'
 import {
   WISHLIST_COLLECTION_ID, collectionThemeStyle,
   sortCollections, sortCollectionsForGame, isPlaythrough, withCollectionMembership,
@@ -1969,7 +1969,7 @@ function App() {
                 <Icon name="layers" size={19} />
               </span>
               <span className="detail-catalog-icon__symbol detail-catalog-icon__symbol--heart" aria-hidden="true">
-                <WishlistHeart size={21} />
+                <Icon name="heart" size={19} />
               </span>
             </button>
             {isPlaythrough(selectedEntry) ? (
