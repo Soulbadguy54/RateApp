@@ -511,8 +511,7 @@ def _ranked_igdb_search_rows(
     Return raw rows so background matching only caches the winning game,
     instead of writing 20 candidates into the shared catalog per title.
     """
-    # Share the existing search behavior with the lightweight matcher.
-    # Cache the results in PostgreSQL for future local queries.
+    # Shared search behavior; caller chooses which returned games to cache.
     body = _igdb_search_body(query, offset)
     rows = igdb_client.request("games", body, priority=priority)
 
@@ -535,7 +534,7 @@ def _ranked_igdb_search_rows(
                     "games",
                     f"fields {IGDB_GAME_FIELDS}; "
                     f"where id = ({','.join(map(str, ids))}) & version_parent = null; limit 20;",
-                    priority=Priority.SEARCH,
+                    priority=priority,
                 )
         except HTTPException:
             # IGDB fallback is best-effort; a failed alias lookup must not
