@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.database import Base
@@ -209,15 +209,16 @@ class SavedLink(Base):
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
     url_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
+    # Only internal games.id values are durable; titles are temporary job input.
+    game_ids: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer), nullable=False, server_default=text("'{}'::integer[]"),
+    )
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'pending'"), index=True)
     error: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    games: Mapped[list["SavedLinkGame"]] = relationship(
-        back_populates="saved_link", cascade="all, delete-orphan",
-    )
     job: Mapped["SavedLinkJob | None"] = relationship(
         back_populates="saved_link", cascade="all, delete-orphan", uselist=False,
     )
@@ -243,22 +244,10 @@ class SavedLinkJob(Base):
     match_failures: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     lease_token: Mapped[str | None] = mapped_column(String(64))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    saved_link: Mapped[SavedLink] = relationship(back_populates="job")
-
-
-class SavedLinkGame(Base):
-    """Extracted string first; nullable canonical game FK after verification."""
-    __tablename__ = "saved_link_games"
-    __table_args__ = (
-        UniqueConstraint("saved_link_id", "normalized_name", name="uq_saved_link_game_name"),
+    names: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'::text[]"),
     )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    saved_link_id: Mapped[int] = mapped_column(ForeignKey("saved_links.id", ondelete="CASCADE"), index=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    normalized_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    game_id: Mapped[int | None] = mapped_column(ForeignKey("games.id", ondelete="SET NULL"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    saved_link: Mapped[SavedLink] = relationship(back_populates="games")
-    game: Mapped[Game | None] = relationship()
+    resolved_ids: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer), nullable=False, server_default=text("'{}'::integer[]"),
+    )
+    saved_link: Mapped[SavedLink] = relationship(back_populates="job")
