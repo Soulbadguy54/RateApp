@@ -1,6 +1,7 @@
 """User-owned saved links; no fetching remote URLs on the API request path."""
 import hashlib
 import ipaddress
+import re
 from datetime import timedelta
 from urllib.parse import urlsplit, urlunsplit
 
@@ -10,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from api.models import Game, SavedLink, SavedLinkGame
+from api.models import Game, SavedLink, SavedLinkGame, User
 from api.security import _current_user, _now, _session
 
 router = APIRouter()
@@ -30,6 +31,8 @@ class LinkGameMatch(BaseModel):
 def canonical_url(raw: str) -> str:
     """Normalize for duplicate detection, not as a network/SSRF clearance."""
     raw = raw.strip()
+    if any(ord(ch) < 32 for ch in raw) or \\"\\ in raw:
+        raise ValueError("В ссылке есть недопустимые символы.")
     if len(raw) > 2048:
         raise ValueError("Слишком длинная ссылка.")
     try:
@@ -42,7 +45,9 @@ def canonical_url(raw: str) -> str:
         if port is not None and port != (443 if parts.scheme.lower() == "https" else 80):
             raise ValueError("Порты, отличные от стандартных, не поддерживаются.")
         host = parts.hostname.encode("idna").decode("ascii").lower().rstrip(".")
-        if not host or "." not in host or host.endswith(
+        if (not re.fullmatch(r"[a-z0-9.-]+", host) or "." not in host
+                or any(not part or part.startswith("-") or part.endswith("-")
+                       for part in host.split(".")) or host.endswith(
             (".local", ".localhost", ".internal", ".test", ".invalid", ".onion")
         ):
             raise ValueError("Не поддерживается локальный или служебный адрес.")
@@ -129,6 +134,8 @@ def save_link(payload: LinkCreate, request: Request) -> dict[str, object]:
         ))
         if existing:
             return _link_payload(_get_user_link(session, user.id, existing.id))
+        # Serialize quota checks for simultaneous saves from the same account.
+        session.execute(select(User.id).where(User.id == user.id).with_for_update()).scalar_one()
         count = session.scalar(select(func.count()).select_from(SavedLink)
                                .where(SavedLink.user_id == user.id)) or 0
         recent = session.scalar(select(func.count()).select_from(SavedLink).where(
