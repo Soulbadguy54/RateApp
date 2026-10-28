@@ -1,3 +1,9 @@
+## 29 октября 2026 — staging проверен: временная очередь и триггер массива ID
+
+- Staging deploy [#40758199173](https://github.com/Soulbadguy54/RateApp/actions/runs/40758199173) успешен: в `rateapp_stage` Alembic `20261029_06`, постоянная таблица `saved_links` с `game_ids INTEGER[]`, отдельная временная `saved_link_jobs`, прежняя `saved_link_games` отсутствует, PostgreSQL trigger `trg_saved_links_game_deleted` установлен.
+- Проверен реальный SQL-сценарий на полностью синтетических данных staging: GPT-имена в job, `claim` → `submit` → `resolve`, после обработки job удалён, локальный `games.id` сохранён в массив; после удаления тестовой игры триггер удалил ID из массива. Все временные тестовые записи очищены. Это не заменяет полный backend/mobile CI перед production.
+- Старое Gateway schedule `--limit 4` удалено; новое часовое staging-only расписание `gsc_01M621B35V00EHJ896JJMPVMHN` с `--limit 1` создано, **ожидает подтверждения владельца в Gateway**. Production не изменён, реальная задача ChatGPT на очередь URL не подключена.
+
 ## 29 октября 2026 — исправление PostgreSQL trigger migration на staging
 
 - Первая попытка staging-деплоя PR #100 остановлена Alembic на `20261029_06`: SQL функции использовал одиночный `$` вместо закрытой dollar-quoted пары. PostgreSQL transactional DDL откатил неполную миграцию, production не затронут.
