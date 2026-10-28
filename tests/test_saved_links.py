@@ -8,9 +8,9 @@ from sqlalchemy import select
 
 from api.index import app
 from api.database import SessionLocal
-from api.models import Game, SavedLink, SavedLinkGame
+from api.models import Game, SavedLink, SavedLinkGame, SavedLinkJob, User
 from api.saved_links_routes import canonical_url
-from api.saved_links_worker import claim_jobs, submit_result
+from api.saved_links_worker import claim_jobs, submit_result, resolve_games
 from api.security import _now
 
 
@@ -32,6 +32,13 @@ class SavedLinkTests(unittest.TestCase):
 
     def tearDown(self):
         self.client.close()
+        with SessionLocal() as session:
+            user = session.scalar(select(User).where(User.nickname == self.nickname))
+            if user is not None:
+                session.delete(user)
+            for game in session.scalars(select(Game).where(Game.igdb_id == self.igdb_id)).all():
+                session.delete(game)
+            session.commit()
 
     def _save(self, url=None):
         return self.client.post("/api/saved-links", json={
@@ -71,8 +78,11 @@ class SavedLinkTests(unittest.TestCase):
         self.assertEqual(self.client.delete(f'/api/saved-links/{item["id"]}').status_code, 204)
         self.assertEqual(self.client.get(f'/api/saved-links/{item["id"]}').status_code, 404)
 
-    def test_worker_atomic_claim_dedupe_and_link_to_existing_igdb(self):
+    def test_link_job_lifecycle_and_manual_matching(self):
         entry = self._save().json()
+        with SessionLocal() as session:
+            self.assertIsNotNone(session.scalar(select(SavedLinkJob).where(
+                SavedLinkJob.saved_link_id == entry["id"])))
         job = claim_jobs(only_id=entry["id"])["jobs"][0]
         self.assertEqual(job["attempt"], 1)
         self.assertEqual(claim_jobs(only_id=entry["id"])["jobs"], [])
@@ -81,34 +91,42 @@ class SavedLinkTests(unittest.TestCase):
             "games": ["Hollow Knight", "  hollow   KNIGHT ", "Outer Wilds"],
         })
         self.assertEqual(submitted["gamesCount"], 2)
-        repeated = submit_result({"id": job["id"], "leaseToken": job["leaseToken"], "games": []})
-        self.assertTrue(repeated["idempotent"])
-        self.assertEqual(claim_jobs(only_id=entry["id"])["jobs"], [])
+        self.assertEqual(submitted["status"], "processing")
+        self.assertTrue(submit_result({
+            "id": job["id"], "leaseToken": job["leaseToken"], "games": [],
+        })["idempotent"])
         response = self.client.get(f'/api/saved-links/{entry["id"]}')
-        self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["gamesCount"], 2)
         name_entry = response.json()["games"][0]["id"]
-        self.assertIsNone(response.json()["games"][0]["igdbId"])
         self.assertEqual(self.client.put(
             f'/api/saved-links/{entry["id"]}/games/{name_entry}',
             json={"igdbId": self.igdb_id + 600_000_000},
         ).status_code, 404)
-        match = self.client.put(
+        self.assertEqual(self.client.put(
             f'/api/saved-links/{entry["id"]}/games/{name_entry}',
             json={"igdbId": self.igdb_id},
-        )
-        self.assertEqual(match.status_code, 200, match.text)
-        self.assertEqual(match.json()["games"][0]["igdbId"], self.igdb_id)
+        ).status_code, 200)
+        from unittest.mock import patch
+        with patch("api.saved_links_worker._find_top_game_id", return_value=None):
+            result = resolve_games(only_id=entry["id"])
+        self.assertTrue(result["complete"])
+        self.assertEqual(result["processed"], 2)
+        saved = self.client.get(f'/api/saved-links/{entry["id"]}').json()
+        self.assertEqual(saved["status"], "ready")
+        self.assertEqual(saved["games"][0]["igdbId"], self.igdb_id)
         with SessionLocal() as session:
+            self.assertIsNone(session.scalar(select(SavedLinkJob).where(
+                SavedLinkJob.saved_link_id == entry["id"])))
             self.assertEqual(len(session.scalars(select(SavedLinkGame)
-                            .where(SavedLinkGame.saved_link_id == entry["id"])).all()), 2)
+                .where(SavedLinkGame.saved_link_id == entry["id"])).all()), 2)
 
-    def test_stale_claim_is_rejected_and_failed_job_can_retry(self):
+    def test_expired_claim_and_retry_with_disposable_job(self):
         entry = self._save().json()
         first = claim_jobs(only_id=entry["id"])["jobs"][0]
         with SessionLocal() as session:
-            link = session.get(SavedLink, entry["id"])
-            link.lease_until = _now() - timedelta(minutes=1)
+            job = session.scalar(select(SavedLinkJob).where(
+                SavedLinkJob.saved_link_id == entry["id"]))
+            job.lease_until = _now() - timedelta(minutes=1)
             session.commit()
         second = claim_jobs(only_id=entry["id"])["jobs"][0]
         self.assertNotEqual(first["leaseToken"], second["leaseToken"])
@@ -121,11 +139,28 @@ class SavedLinkTests(unittest.TestCase):
         failed = submit_result({"id": third["id"], "leaseToken": third["leaseToken"],
                                 "error": "Страница закрыта"})
         self.assertEqual(failed["status"], "failed")
+        with SessionLocal() as session:
+            self.assertIsNone(session.scalar(select(SavedLinkJob).where(
+                SavedLinkJob.saved_link_id == entry["id"])))
         self.assertEqual(claim_jobs(only_id=entry["id"])["jobs"], [])
         retry = self.client.post(f'/api/saved-links/{entry["id"]}/retry')
         self.assertEqual(retry.status_code, 200)
         self.assertEqual(retry.json()["status"], "pending")
-        self.assertEqual(retry.json()["attempts"], 0)
+        self.assertEqual(claim_jobs(only_id=entry["id"])["jobs"][0]["attempt"], 1)
+
+    def test_delete_cascades_queued_names_and_prevents_stale_submit(self):
+        entry = self._save().json()
+        claim = claim_jobs(only_id=entry["id"])["jobs"][0]
+        self.assertEqual(self.client.delete(f'/api/saved-links/{entry["id"]}').status_code, 204)
+        self.assertEqual(claim_jobs(only_id=entry["id"])["jobs"], [])
+        with self.assertRaises(ValueError):
+            submit_result({"id": claim["id"], "leaseToken": claim["leaseToken"],
+                           "games": ["Hades"]})
+        with SessionLocal() as session:
+            self.assertIsNone(session.scalar(select(SavedLinkJob).where(
+                SavedLinkJob.saved_link_id == entry["id"])))
+            self.assertEqual(session.scalars(select(SavedLinkGame).where(
+                SavedLinkGame.saved_link_id == entry["id"])).all(), [])
 
     def test_other_user_cannot_access_or_attach_to_link(self):
         entry = self._save().json()
