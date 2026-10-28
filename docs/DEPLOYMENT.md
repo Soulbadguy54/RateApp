@@ -53,6 +53,12 @@ mobile browser jobs on main. It never sends real user credentials.
 - Release gating: protect main and configure Vercel Deployment Checks on
   the CI jobs; Vercel Git integration can otherwise deploy before CI finishes.
 
+## Saved-link schema rollout (staging-first, 29.10.2026)
+
+Migration `20261029_04` adds user-scoped `saved_links` and `saved_link_games`; it **does not backfill, reset, or copy** user data. On staging, the restricted deploy command backs up `rateapp_stage`, upgrades Alembic there and verifies health; it must not touch `rateapp`. The baseline already initializes new tables for a fresh CI database, so the migration checks for their presence before creating them.
+
+Before a later production release: complete full CI including `tests/test_saved_links.py`, review the additive schema on a production-like staging snapshot, verify the automatic production pre-migration backup, then use the approved main release process; no manual migration against `rateapp` from a staging task. The Gateway CLI must be launched in the appropriate environment's **API container** with `--expect-environment` and its DB connection. Do not copy staging saved links to production. Details: [SAVED_LINKS](SAVED_LINKS.md).
+
 ## VPS environment and rollback — active production (2026-10-21)
 
 The VPS migration and cutover are described in [VPS_MIGRATION.md](VPS_MIGRATION.md). Active production is https://r-app.ru on local PostgreSQL 18. GitHub Actions deploy is gated on successful main CI and uses the pinned SSH host key + restricted deploy account. Release runs pre-migration local pg_dump, Alembic, containers update and health check; app-image rollback does not downgrade database schema. Daily server-side pg_dump uploads to owner-managed Google Drive at 03:40 UTC, with separate restore validation. Vercel is paused and Neon retained temporarily as an archive/rollback source; neither is on the request path. Never treat a local dump as the sole disaster-recovery copy, drop the persistent PostgreSQL volume, or automatically downgrade a DB schema during image rollback.
