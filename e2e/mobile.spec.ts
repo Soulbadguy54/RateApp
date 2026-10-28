@@ -161,16 +161,45 @@ test('search -> game -> new playthrough -> back returns to search with fresh rat
     expect(geometry.emptyWidth).toBeGreaterThan(20)
   }
 
-  // Both icons occupy the same position on ONE collections button. Fade
-  // through each other indefinitely, using the shared wishlist emoji.
+  // The two neutral outline icons are identically sized and exactly
+  // centered. Each slow dissolve lasts 35% of a 7.2s cycle = 2.52s.
   const collectionsButton = page.locator('.detail-catalog-icon--collections')
   const layers = collectionsButton.locator('.detail-catalog-icon__symbol--layers')
   const heart = collectionsButton.locator('.detail-catalog-icon__symbol--heart')
   await expect(layers).toHaveAttribute('aria-hidden', 'true')
   await expect(heart).toHaveAttribute('aria-hidden', 'true')
+  await expect(heart.locator('img')).toHaveCount(0)
+  await expect(layers.locator('svg')).toHaveAttribute('width', '19')
+  await expect(layers.locator('svg')).toHaveAttribute('height', '19')
+  await expect(heart.locator('svg')).toHaveAttribute('width', '19')
+  await expect(heart.locator('svg')).toHaveAttribute('height', '19')
+  const iconGeometry = await collectionsButton.evaluate(button => {
+    const a = button.querySelector('.detail-catalog-icon__symbol--layers svg')!.getBoundingClientRect()
+    const b = button.querySelector('.detail-catalog-icon__symbol--heart svg')!.getBoundingClientRect()
+    const layerStyle = getComputedStyle(button.querySelector('.detail-catalog-icon__symbol--layers svg')!)
+    const heartStyle = getComputedStyle(button.querySelector('.detail-catalog-icon__symbol--heart svg')!)
+    return {
+      widthDelta: Math.abs(a.width - b.width),
+      heightDelta: Math.abs(a.height - b.height),
+      centerXDelta: Math.abs((a.left + a.right) / 2 - (b.left + b.right) / 2),
+      centerYDelta: Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2),
+      sameStroke: layerStyle.stroke === heartStyle.stroke,
+      sameStrokeWidth: layerStyle.strokeWidth === heartStyle.strokeWidth,
+      sameFill: layerStyle.fill === heartStyle.fill,
+    }
+  })
+  expect(iconGeometry.widthDelta).toBeLessThan(0.5)
+  expect(iconGeometry.heightDelta).toBeLessThan(0.5)
+  expect(iconGeometry.centerXDelta).toBeLessThan(0.5)
+  expect(iconGeometry.centerYDelta).toBeLessThan(0.5)
+  expect(iconGeometry.sameStroke).toBe(true)
+  expect(iconGeometry.sameStrokeWidth).toBe(true)
+  expect(iconGeometry.sameFill).toBe(true)
   await expect(layers).toHaveCSS('animation-name', 'detail-collections-layers')
   await expect(heart).toHaveCSS('animation-name', 'detail-collections-heart')
-  await expect(heart).toHaveCSS('animation-duration', '3s')
+  await expect(layers).toHaveCSS('animation-duration', '7.2s')
+  await expect(heart).toHaveCSS('animation-duration', '7.2s')
+  await expect(heart).toHaveCSS('animation-timing-function', 'ease-in-out')
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(layers).toHaveCSS('animation-name', 'none')
   await expect(heart).toHaveCSS('opacity', '0')
