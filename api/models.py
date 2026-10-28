@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -200,6 +200,7 @@ class SavedLink(Base):
     __tablename__ = "saved_links"
     __table_args__ = (
         UniqueConstraint("user_id", "url_hash", name="uq_saved_links_user_url"),
+        Index("ix_saved_links_game_ids_gin", "game_ids", postgresql_using="gin"),
         CheckConstraint("status IN ('pending', 'processing', 'ready', 'failed')",
                         name="ck_saved_links_status"),
     )
