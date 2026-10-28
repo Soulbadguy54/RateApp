@@ -49,7 +49,7 @@ def canonical_url(raw: str) -> str:
                 or any(not part or part.startswith("-") or part.endswith("-")
                        for part in host.split(".")) or host.endswith(
             (".local", ".localhost", ".internal", ".test", ".invalid", ".onion")
-        ):
+        )):
             raise ValueError("Не поддерживается локальный или служебный адрес.")
         try:
             address = ipaddress.ip_address(host)
