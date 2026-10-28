@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -193,3 +193,49 @@ class DiscoveryFeedback(Base):
     action: Mapped[str] = mapped_column(String(16), nullable=False)
     wishlist_added: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SavedLink(Base):
+    """User-owned source URL, separate from ingestion jobs and library entries."""
+    __tablename__ = "saved_links"
+    __table_args__ = (
+        UniqueConstraint("user_id", "url_hash", name="uq_saved_links_user_url"),
+        CheckConstraint("status IN ('pending', 'processing', 'ready', 'failed')",
+                        name="ck_saved_links_status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    url_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'pending'"), index=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    lease_token: Mapped[str | None] = mapped_column(String(64))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    games: Mapped[list["SavedLinkGame"]] = relationship(
+        back_populates="saved_link", cascade="all, delete-orphan",
+    )
+
+
+class SavedLinkGame(Base):
+    """Extracted string first; nullable canonical game FK after verification."""
+    __tablename__ = "saved_link_games"
+    __table_args__ = (
+        UniqueConstraint("saved_link_id", "normalized_name", name="uq_saved_link_game_name"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    saved_link_id: Mapped[int] = mapped_column(ForeignKey("saved_links.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    game_id: Mapped[int | None] = mapped_column(ForeignKey("games.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    saved_link: Mapped[SavedLink] = relationship(back_populates="games")
+    game: Mapped[Game | None] = relationship()
