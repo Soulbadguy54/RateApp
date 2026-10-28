@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from api.models import Game, SavedLink, SavedLinkGame, User
+from api.models import Game, SavedLink, SavedLinkGame, SavedLinkJob, User
 from api.security import _current_user, _now, _session
 
 router = APIRouter()
@@ -86,7 +86,6 @@ def _link_payload(link: SavedLink) -> dict[str, object]:
         "url": link.url,
         "title": link.title,
         "status": link.status,
-        "attempts": link.attempts,
         "createdAt": link.created_at.isoformat(),
         "updatedAt": link.updated_at.isoformat(),
         "finishedAt": link.finished_at.isoformat() if link.finished_at else None,
@@ -95,8 +94,7 @@ def _link_payload(link: SavedLink) -> dict[str, object]:
         "games": [{
             "id": entry.id,
             "name": entry.name,
-            "matchStatus": "matched" if entry.game else entry.match_status,
-            "matchError": entry.match_error,
+            "matchStatus": "matched" if entry.game else ("no_match" if link.status == "ready" else "pending"),
             "igdbId": entry.game.igdb_id if entry.game else None,
             "gameTitle": entry.game.title if entry.game else None,
             "coverUrl": entry.game.cover_url if entry.game else None,
@@ -148,6 +146,8 @@ def save_link(payload: LinkCreate, request: Request) -> dict[str, object]:
         row = SavedLink(user_id=user.id, url=url, url_hash=digest, title=title)
         session.add(row)
         try:
+            session.flush()
+            session.add(SavedLinkJob(saved_link_id=row.id))
             session.commit()
         except IntegrityError:
             session.rollback()
@@ -191,10 +191,6 @@ def match_saved_link_game(link_id: int, entry_id: int, payload: LinkGameMatch,
         if game is None:
             raise HTTPException(404, detail="Сначала найдите игру в каталоге IGDB.")
         entry.game_id = game.id
-        entry.match_status = "matched"
-        entry.match_lease_token = None
-        entry.match_lease_until = None
-        entry.match_error = None
         link.updated_at = _now()
         session.commit()
         return _link_payload(_get_user_link(session, user.id, link_id))
@@ -209,11 +205,9 @@ def retry_saved_link(link_id: int, request: Request) -> dict[str, object]:
         if row.status != "failed":
             raise HTTPException(409, detail="Повтор возможен только для неудачной обработки.")
         row.status = "pending"
-        row.attempts = 0
-        row.lease_token = None
-        row.lease_until = None
         row.error = None
         row.finished_at = None
         row.updated_at = _now()
+        session.add(SavedLinkJob(saved_link_id=row.id))
         session.commit()
         return _link_payload(row)
