@@ -1355,8 +1355,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-color: rgba(155, 170, 206, .22);
   background: linear-gradient(145deg, #242936, #11141c);
 }
-/* Both symbols share the exact center of ONE button: a 3s cycle gives
-   each icon about 1.5s, including a soft ~0.5s crossfade. */
+/* Both 19px outline SVGs share one centered slot and the same stroke.
+   A 7.2s cycle has two slow 2.52s dissolves with relaxed pauses between. */
 .detail-catalog-icon__symbol {
   position: absolute;
   inset: 0;
@@ -1365,20 +1365,20 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   pointer-events: none;
 }
 .detail-catalog-icon__symbol--layers {
-  animation: detail-collections-layers 3s ease-in-out infinite;
+  animation: detail-collections-layers 7.2s ease-in-out infinite;
 }
 .detail-catalog-icon__symbol--heart {
   opacity: 0;
-  animation: detail-collections-heart 3s ease-in-out infinite;
+  animation: detail-collections-heart 7.2s ease-in-out infinite;
 }
 @keyframes detail-collections-layers {
-  0%, 33% { opacity: 1; }
-  50%, 83% { opacity: 0; }
+  0%, 15% { opacity: 1; }
+  50%, 65% { opacity: 0; }
   100% { opacity: 1; }
 }
 @keyframes detail-collections-heart {
-  0%, 33% { opacity: 0; }
-  50%, 83% { opacity: 1; }
+  0%, 15% { opacity: 0; }
+  50%, 65% { opacity: 1; }
   100% { opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
