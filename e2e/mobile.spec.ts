@@ -183,9 +183,9 @@ test('search -> game -> new playthrough -> back returns to search with fresh rat
       heightDelta: Math.abs(a.height - b.height),
       centerXDelta: Math.abs((a.left + a.right) / 2 - (b.left + b.right) / 2),
       centerYDelta: Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2),
-      sameStroke: layerStyle.stroke === heartStyle.stroke,
-      sameStrokeWidth: layerStyle.strokeWidth === heartStyle.strokeWidth,
-      sameFill: layerStyle.fill === heartStyle.fill,
+      sameStroke: layerStyle.getPropertyValue('stroke') === heartStyle.getPropertyValue('stroke'),
+      sameStrokeWidth: layerStyle.getPropertyValue('stroke-width') === heartStyle.getPropertyValue('stroke-width'),
+      sameFill: layerStyle.getPropertyValue('fill') === heartStyle.getPropertyValue('fill'),
     }
   })
   expect(iconGeometry.widthDelta).toBeLessThan(0.5)
