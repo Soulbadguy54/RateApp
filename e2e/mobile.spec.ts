@@ -183,7 +183,6 @@ test('search -> game -> new playthrough -> back returns to search with fresh rat
       heightDelta: Math.abs(a.height - b.height),
       centerXDelta: Math.abs((a.left + a.right) / 2 - (b.left + b.right) / 2),
       centerYDelta: Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2),
-      sameStroke: layerStyle.getPropertyValue('stroke') === heartStyle.getPropertyValue('stroke'),
       sameStrokeWidth: layerStyle.getPropertyValue('stroke-width') === heartStyle.getPropertyValue('stroke-width'),
       sameFill: layerStyle.getPropertyValue('fill') === heartStyle.getPropertyValue('fill'),
     }
@@ -192,7 +191,12 @@ test('search -> game -> new playthrough -> back returns to search with fresh rat
   expect(iconGeometry.heightDelta).toBeLessThan(0.5)
   expect(iconGeometry.centerXDelta).toBeLessThan(0.5)
   expect(iconGeometry.centerYDelta).toBeLessThan(0.5)
-  expect(iconGeometry.sameStroke).toBe(true)
+  // Same outline geometry, but distinct semantic colors: the neutral
+  // collections icon and the rose accent shared with wishlist.
+  await expect(layers).toHaveCSS('color', 'rgb(191, 196, 215)')
+  await expect(heart).toHaveCSS('color', 'rgb(255, 162, 202)')
+  await expect(layers.locator('svg')).toHaveAttribute('stroke', 'currentColor')
+  await expect(heart.locator('svg')).toHaveAttribute('stroke', 'currentColor')
   expect(iconGeometry.sameStrokeWidth).toBe(true)
   expect(iconGeometry.sameFill).toBe(true)
   await expect(layers).toHaveCSS('animation-name', 'detail-collections-layers')
