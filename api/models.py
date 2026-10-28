@@ -234,6 +234,16 @@ class SavedLinkGame(Base):
     saved_link_id: Mapped[int] = mapped_column(ForeignKey("saved_links.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Resolution is independent from link ingestion and retries in small batches.
+    match_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'pending'"),
+    )
+    match_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"),
+    )
+    match_lease_token: Mapped[str | None] = mapped_column(String(64))
+    match_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    match_error: Mapped[str | None] = mapped_column(String(200))
     game_id: Mapped[int | None] = mapped_column(ForeignKey("games.id", ondelete="SET NULL"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

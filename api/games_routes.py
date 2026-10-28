@@ -503,29 +503,18 @@ def game_details(game_id: int, request: Request) -> dict[str, object]:
         return _detail_response(session, game, details)
 
 
-@router.get("/api/games/search")
-def search_games(
-    request: Request,
-    q: str = Query(max_length=100),
-    source: Literal["local", "igdb"] = "local",
-    offset: int = Query(default=0, ge=0, le=10000),
-) -> dict[str, object]:
-    query = q.strip()
-    if len(query) < 3:
-        return {"items": [], "hasMore": False, "nextOffset": None}
+def _ranked_igdb_search_rows(
+    query: str, offset: int = 0, *, priority: Priority = Priority.SEARCH,
+) -> tuple[list[dict[str, object]], bool]:
+    """Same IGDB candidates and popularity/relevance order as /api/games/search.
 
-    with _session() as session:
-        _current_user(request, session)
-        if source == "local":
-            return _local_game_search(session, query, offset)
-
-    if offset >= 10000:
-        return {"items": [], "hasMore": False, "nextOffset": None}
-
-    # External search runs after an empty local search or a manual deep search.
+    Return raw rows so background matching only caches the winning game,
+    instead of writing 20 candidates into the shared catalog per title.
+    """
+    # Share the existing search behavior with the lightweight matcher.
     # Cache the results in PostgreSQL for future local queries.
     body = _igdb_search_body(query, offset)
-    rows = igdb_client.request("games", body, priority=Priority.SEARCH)
+    rows = igdb_client.request("games", body, priority=priority)
 
     # If IGDB's title search misses, its /search index also includes
     # alternative-name records pointing back to the parent game.
@@ -535,7 +524,7 @@ def search_games(
             matches = igdb_client.request(
                 "search",
                 f'fields game,alternative_name,name; search "{escaped}"; where game != null; limit 20;',
-                priority=Priority.SEARCH,
+                priority=priority,
             )
             ids = list(dict.fromkeys(
                 int(item["game"]) for item in matches
@@ -575,6 +564,31 @@ def search_games(
         return (exact * 2 + prefix, popularity)
 
     page_rows = sorted(rows[:GAME_SEARCH_PAGE_SIZE], key=page_rank, reverse=True)
+    return page_rows, has_more
+
+
+@router.get("/api/games/search")
+def search_games(
+    request: Request,
+    q: str = Query(max_length=100),
+    source: Literal["local", "igdb"] = "local",
+    offset: int = Query(default=0, ge=0, le=10000),
+) -> dict[str, object]:
+    query = q.strip()
+    if len(query) < 3:
+        return {"items": [], "hasMore": False, "nextOffset": None}
+
+    with _session() as session:
+        _current_user(request, session)
+        if source == "local":
+            return _local_game_search(session, query, offset)
+
+    if offset >= 10000:
+        return {"items": [], "hasMore": False, "nextOffset": None}
+
+    # External search runs after an empty local search or a manual deep search.
+    # Cache all first-page candidates for the interactive search UI as before.
+    page_rows, has_more = _ranked_igdb_search_rows(query, offset)
     cached = _cache_igdb_games(page_rows) if page_rows else []
     return {
         "items": cached,

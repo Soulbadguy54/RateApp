@@ -95,6 +95,8 @@ def _link_payload(link: SavedLink) -> dict[str, object]:
         "games": [{
             "id": entry.id,
             "name": entry.name,
+            "matchStatus": "matched" if entry.game else entry.match_status,
+            "matchError": entry.match_error,
             "igdbId": entry.game.igdb_id if entry.game else None,
             "gameTitle": entry.game.title if entry.game else None,
             "coverUrl": entry.game.cover_url if entry.game else None,
@@ -189,6 +191,10 @@ def match_saved_link_game(link_id: int, entry_id: int, payload: LinkGameMatch,
         if game is None:
             raise HTTPException(404, detail="Сначала найдите игру в каталоге IGDB.")
         entry.game_id = game.id
+        entry.match_status = "matched"
+        entry.match_lease_token = None
+        entry.match_lease_until = None
+        entry.match_error = None
         link.updated_at = _now()
         session.commit()
         return _link_payload(_get_user_link(session, user.id, link_id))
