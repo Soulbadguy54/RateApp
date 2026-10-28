@@ -5,7 +5,7 @@ import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
 import BottomNavGameSlot from './components/BottomNavGameSlot'
 import RatingWheel, { closestHalfPoint } from './components/RatingWheel'
-import { CollectionIcon, CollectionAppearanceEditor } from './components/CollectionAppearance'
+import { CollectionIcon, CollectionAppearanceEditor, WishlistHeart } from './components/CollectionAppearance'
 import {
   WISHLIST_COLLECTION_ID, collectionThemeStyle,
   sortCollections, sortCollectionsForGame, isPlaythrough, withCollectionMembership,
@@ -1921,12 +1921,10 @@ function App() {
         </div>
       )
     }
-    const rateAppScore = selectedGame.communityRatings > 0
-      ? selectedGame.communityRating.toFixed(1)
-      : '—'
-    const igdbScore = selectedGame.igdbRating > 0
-      ? String(selectedGame.igdbRating)
-      : '—'
+    const hasRateAppRating = selectedGame.communityRatings > 0
+    const hasIgdbRating = selectedGame.igdbRating > 0
+    const rateAppScore = hasRateAppRating ? selectedGame.communityRating.toFixed(1) : null
+    const igdbScore = hasIgdbRating ? String(selectedGame.igdbRating) : null
     const gameDetails = gameDetailsById[selectedGame.id]
     // Saved PostgreSQL metadata accompanies the game record in bootstrap
     // and search results; show links immediately while playtime enriches.
@@ -1967,8 +1965,12 @@ function App() {
               aria-controls="game-collection-picker"
               onClick={() => setCollectionPickerOpen((open) => !open)}
             >
-              <Icon name="layers" size={19} />
-              <span className="detail-catalog-icon__heart" aria-hidden="true">❤️</span>
+              <span className="detail-catalog-icon__symbol detail-catalog-icon__symbol--layers" aria-hidden="true">
+                <Icon name="layers" size={19} />
+              </span>
+              <span className="detail-catalog-icon__symbol detail-catalog-icon__symbol--heart" aria-hidden="true">
+                <WishlistHeart size={21} />
+              </span>
             </button>
             {isPlaythrough(selectedEntry) ? (
               <>
@@ -2111,19 +2113,31 @@ function App() {
         </section>
 
         <section className="detail-rating-section" aria-label="Рейтинги игры">
-          <div className="detail-rating-panel detail-rating-panel--igdb" aria-label={`IGDB: ${igdbScore} из 100`}>
+          <div className="detail-rating-panel detail-rating-panel--igdb" aria-label={hasIgdbRating ? `IGDB: ${igdbScore} из 100` : 'IGDB: нет рейтинга'}>
             <span className="detail-rating-panel__label">IGDB</span>
-            <span className="detail-rating-panel__score">
-              <strong>{igdbScore}</strong>
-              <small>/ 100</small>
-            </span>
+            {hasIgdbRating ? (
+              <span className="detail-rating-panel__score">
+                <strong>{igdbScore}</strong>
+                <small>/ 100</small>
+              </span>
+            ) : (
+              <span className="detail-rating-panel__score detail-rating-panel__score--empty">
+                <span>Нет</span><span>рейтинга</span>
+              </span>
+            )}
           </div>
-          <div className="detail-rating-panel detail-rating-panel--community" aria-label={`RateApp: ${rateAppScore} из 10`}>
+          <div className="detail-rating-panel detail-rating-panel--community" aria-label={hasRateAppRating ? `RateApp: ${rateAppScore} из 10` : 'RateApp: нет рейтинга'}>
             <span className="detail-rating-panel__label">RateApp</span>
-            <span className="detail-rating-panel__score">
-              <strong>{rateAppScore}</strong>
-              <small>/ 10</small>
-            </span>
+            {hasRateAppRating ? (
+              <span className="detail-rating-panel__score">
+                <strong>{rateAppScore}</strong>
+                <small>/ 10</small>
+              </span>
+            ) : (
+              <span className="detail-rating-panel__score detail-rating-panel__score--empty">
+                <span>Нет</span><span>рейтинга</span>
+              </span>
+            )}
           </div>
         </section>
 
