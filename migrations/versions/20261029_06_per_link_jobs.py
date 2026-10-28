@@ -103,14 +103,14 @@ def upgrade():
     # future catalog maintenance introduces game deletion.
     op.execute("""
         CREATE OR REPLACE FUNCTION rateapp_saved_links_prune_deleted_game()
-        RETURNS TRIGGER LANGUAGE plpgsql AS $
+        RETURNS TRIGGER LANGUAGE plpgsql AS $saved_links_cleanup$
         BEGIN
             UPDATE saved_links
                SET game_ids = array_remove(game_ids, OLD.id)
              WHERE game_ids @> ARRAY[OLD.id]::integer[];
             RETURN OLD;
         END;
-        $
+        $saved_links_cleanup$
     """)
     op.execute("""
         DROP TRIGGER IF EXISTS trg_saved_links_game_deleted ON games
