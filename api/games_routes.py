@@ -537,8 +537,11 @@ def _ranked_igdb_search_rows(
                     priority=priority,
                 )
         except HTTPException:
-            # IGDB fallback is best-effort; a failed alias lookup must not
-            # make the original (valid) empty search into an API error.
+            # Interactive search keeps the established best-effort fallback.
+            # The background resolver must retry transient IGDB failures, not
+            # permanently label a title "no match" on a provider outage.
+            if priority == Priority.BACKGROUND:
+                raise
             pass
 
     has_more = len(rows) > GAME_SEARCH_PAGE_SIZE and offset + GAME_SEARCH_PAGE_SIZE < 10000
