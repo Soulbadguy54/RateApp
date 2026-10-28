@@ -9,9 +9,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
 
-from api.models import Game, SavedLink, SavedLinkGame, User
+from api.models import Game, SavedLink, SavedLinkJob, User
 from api.security import _current_user, _now, _session
 
 router = APIRouter()
@@ -22,10 +21,6 @@ MAX_NEW_LINKS_PER_DAY = 15
 class LinkCreate(BaseModel):
     url: str = Field(min_length=10, max_length=2048)
     title: str | None = Field(default=None, max_length=200)
-
-
-class LinkGameMatch(BaseModel):
-    igdbId: int = Field(gt=0)
 
 
 def canonical_url(raw: str) -> str:
@@ -69,38 +64,43 @@ def canonical_url(raw: str) -> str:
 
 
 def _get_user_link(session, user_id: int, link_id: int) -> SavedLink:
-    link = session.scalar(
-        select(SavedLink)
-        .options(selectinload(SavedLink.games).selectinload(SavedLinkGame.game))
-        .where(SavedLink.id == link_id, SavedLink.user_id == user_id)
-    )
+    link = session.scalar(select(SavedLink).where(
+        SavedLink.id == link_id, SavedLink.user_id == user_id,
+    ))
     if link is None:
         raise HTTPException(404, detail="Ссылка не найдена.")
     return link
 
 
-def _link_payload(link: SavedLink) -> dict[str, object]:
-    games = sorted(link.games, key=lambda item: item.id)
+def _game_map(session, links: list[SavedLink]) -> dict[int, Game]:
+    """Single catalog query across the entire page; no N+1 or network calls."""
+    ids = {item for link in links for item in (link.game_ids or [])}
+    if not ids:
+        return {}
+    return {game.id: game for game in session.scalars(
+        select(Game).where(Game.id.in_(ids))
+    ).all()}
+
+
+def _link_payload(link: SavedLink, games: dict[int, Game]) -> dict[str, object]:
+    ids = list(link.game_ids or [])
     return {
         "id": link.id,
         "url": link.url,
         "title": link.title,
         "status": link.status,
-        "attempts": link.attempts,
         "createdAt": link.created_at.isoformat(),
         "updatedAt": link.updated_at.isoformat(),
         "finishedAt": link.finished_at.isoformat() if link.finished_at else None,
         "error": link.error,
-        "gamesCount": len(games),
+        "gameIds": ids,
+        "gamesCount": len(ids),
         "games": [{
-            "id": entry.id,
-            "name": entry.name,
-            "matchStatus": "matched" if entry.game else entry.match_status,
-            "matchError": entry.match_error,
-            "igdbId": entry.game.igdb_id if entry.game else None,
-            "gameTitle": entry.game.title if entry.game else None,
-            "coverUrl": entry.game.cover_url if entry.game else None,
-        } for entry in games],
+            "id": games[game_id].id,
+            "igdbId": games[game_id].igdb_id,
+            "title": games[game_id].title,
+            "coverUrl": games[game_id].cover_url,
+        } for game_id in ids if game_id in games],
     }
 
 
@@ -109,16 +109,15 @@ def list_saved_links(request: Request, limit: int = Query(default=50, ge=1, le=5
                      before: int | None = Query(default=None, ge=1)) -> dict[str, object]:
     with _session() as session:
         user = _current_user(request, session)
-        stmt = (select(SavedLink)
-                .options(selectinload(SavedLink.games).selectinload(SavedLinkGame.game))
-                .where(SavedLink.user_id == user.id)
+        stmt = (select(SavedLink).where(SavedLink.user_id == user.id)
                 .order_by(SavedLink.id.desc()).limit(limit + 1))
         if before is not None:
             stmt = stmt.where(SavedLink.id < before)
         rows = session.scalars(stmt).all()
-        more = len(rows) > limit
-        return {"items": [_link_payload(row) for row in rows[:limit]],
-                "nextBefore": rows[limit - 1].id if more else None}
+        page = rows[:limit]
+        games = _game_map(session, page)
+        return {"items": [_link_payload(link, games) for link in page],
+                "nextBefore": page[-1].id if len(rows) > limit else None}
 
 
 @router.post("/api/saved-links", status_code=201)
@@ -135,37 +134,40 @@ def save_link(payload: LinkCreate, request: Request) -> dict[str, object]:
             SavedLink.user_id == user.id, SavedLink.url_hash == digest,
         ))
         if existing:
-            return _link_payload(_get_user_link(session, user.id, existing.id))
-        # Serialize quota checks for simultaneous saves from the same account.
+            return _link_payload(existing, _game_map(session, [existing]))
+        # Lock the account to serialize concurrent quota checks and dedup.
         session.execute(select(User.id).where(User.id == user.id).with_for_update()).scalar_one()
         count = session.scalar(select(func.count()).select_from(SavedLink)
                                .where(SavedLink.user_id == user.id)) or 0
         recent = session.scalar(select(func.count()).select_from(SavedLink).where(
-            SavedLink.user_id == user.id, SavedLink.created_at >= _now() - timedelta(days=1),
+            SavedLink.user_id == user.id,
+            SavedLink.created_at >= _now() - timedelta(days=1),
         )) or 0
         if count >= MAX_LINKS_PER_USER or recent >= MAX_NEW_LINKS_PER_DAY:
             raise HTTPException(429, detail="Достигнут лимит сохранённых ссылок.")
         row = SavedLink(user_id=user.id, url=url, url_hash=digest, title=title)
         session.add(row)
         try:
+            session.flush()
+            session.add(SavedLinkJob(saved_link_id=row.id))
             session.commit()
         except IntegrityError:
             session.rollback()
-            # Concurrent duplicate inserts are harmless and return the same ID.
             match = session.scalar(select(SavedLink).where(
                 SavedLink.user_id == user.id, SavedLink.url_hash == digest,
             ))
             if match is None:
                 raise
             row = match
-        return _link_payload(_get_user_link(session, user.id, row.id))
+        return _link_payload(row, _game_map(session, [row]))
 
 
 @router.get("/api/saved-links/{link_id}")
 def get_saved_link(link_id: int, request: Request) -> dict[str, object]:
     with _session() as session:
         user = _current_user(request, session)
-        return _link_payload(_get_user_link(session, user.id, link_id))
+        link = _get_user_link(session, user.id, link_id)
+        return _link_payload(link, _game_map(session, [link]))
 
 
 @router.delete("/api/saved-links/{link_id}", status_code=204)
@@ -173,47 +175,25 @@ def delete_saved_link(link_id: int, request: Request) -> None:
     with _session() as session:
         user = _current_user(request, session)
         row = _get_user_link(session, user.id, link_id)
-        session.delete(row)
+        session.delete(row)  # cascades into its queue row, including active leases
         session.commit()
-
-
-@router.put("/api/saved-links/{link_id}/games/{entry_id}")
-def match_saved_link_game(link_id: int, entry_id: int, payload: LinkGameMatch,
-                          request: Request) -> dict[str, object]:
-    """Only verified existing catalog games can become associations."""
-    with _session() as session:
-        user = _current_user(request, session)
-        link = _get_user_link(session, user.id, link_id)
-        entry = next((item for item in link.games if item.id == entry_id), None)
-        if entry is None:
-            raise HTTPException(404, detail="Название не найдено в этой ссылке.")
-        game = session.scalar(select(Game).where(Game.igdb_id == payload.igdbId))
-        if game is None:
-            raise HTTPException(404, detail="Сначала найдите игру в каталоге IGDB.")
-        entry.game_id = game.id
-        entry.match_status = "matched"
-        entry.match_lease_token = None
-        entry.match_lease_until = None
-        entry.match_error = None
-        link.updated_at = _now()
-        session.commit()
-        return _link_payload(_get_user_link(session, user.id, link_id))
 
 
 @router.post("/api/saved-links/{link_id}/retry")
 def retry_saved_link(link_id: int, request: Request) -> dict[str, object]:
-    """User-controlled retry; never enqueues background work from web requests."""
     with _session() as session:
         user = _current_user(request, session)
         row = _get_user_link(session, user.id, link_id)
         if row.status != "failed":
             raise HTTPException(409, detail="Повтор возможен только для неудачной обработки.")
+        # No orphan queue state: a new job is created exactly once.
+        if session.scalar(select(SavedLinkJob.id).where(
+                SavedLinkJob.saved_link_id == row.id)) is not None:
+            raise HTTPException(409, detail="Ссылка уже поставлена в очередь.")
         row.status = "pending"
-        row.attempts = 0
-        row.lease_token = None
-        row.lease_until = None
         row.error = None
         row.finished_at = None
         row.updated_at = _now()
+        session.add(SavedLinkJob(saved_link_id=row.id))
         session.commit()
-        return _link_payload(row)
+        return _link_payload(row, _game_map(session, [row]))

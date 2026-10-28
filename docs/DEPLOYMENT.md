@@ -53,6 +53,12 @@ mobile browser jobs on main. It never sends real user credentials.
 - Release gating: protect main and configure Vercel Deployment Checks on
   the CI jobs; Vercel Git integration can otherwise deploy before CI finishes.
 
+## Saved-link permanent ID array + disposable queue (29.10.2026)
+
+Revision `20261029_06` is a **data-preserving but schema-removing** migration on staging: copy confirmed `saved_link_games.game_id` to `saved_links.game_ids INTEGER[]`, transfer unresolved titles to transient `saved_link_jobs`, drop the old extracted-name table and legacy lease columns. It adds `ix_saved_links_game_ids_gin` and an `AFTER DELETE ON games` trigger to prune deleted game PKs from link arrays. The staging deploy must retain its normal pre-migration backup. Do not manually downgrade; rollback requires restoring the original DB snapshot. On a fresh CI DB, baseline already creates current tables; `20261029_04/05` create the historical intermediate table, and `06` removes it.
+
+Verify `rateapp_stage` and revision `20261029_06`, `saved_links.game_ids`, `saved_link_jobs`, absence of `saved_link_games`, and trigger presence. Read-only smoke: `docker exec rateapp-stage-api /usr/local/bin/rateapp-api-entrypoint python -m api.saved_links_worker resolve --limit 1 --expect-environment staging`; empty queue causes **zero IGDB calls**. The OLD Gateway Free hourly schedule `gsc_01M61ZA6VQ00CJF3Z4JJZBSRGX` was paused because `--limit 4` is incompatible with the new one-link worker; replace its command/schedule before enabling it. One source per cycle, bounded at 12 titles/120s; no cross-environment jobs, no HTTP LLM API dependency. Before production, complete full release QA and verify backup/restore path. Never apply staging migrations to production without explicit release approval.
+
 ## Saved-link schema rollout (staging-first, 29.10.2026)
 
 Migration `20261029_04` adds user-scoped `saved_links` and `saved_link_games`; it **does not backfill, reset, or copy** user data. On staging, the restricted deploy command backs up `rateapp_stage`, upgrades Alembic there and verifies health; it must not touch `rateapp`. The baseline already initializes new tables for a fresh CI database, so the migration checks for their presence before creating them.
