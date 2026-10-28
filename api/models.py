@@ -210,9 +210,6 @@ class SavedLink(Base):
     url_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'pending'"), index=True)
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    lease_token: Mapped[str | None] = mapped_column(String(64))
-    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -221,6 +218,32 @@ class SavedLink(Base):
     games: Mapped[list["SavedLinkGame"]] = relationship(
         back_populates="saved_link", cascade="all, delete-orphan",
     )
+    job: Mapped["SavedLinkJob | None"] = relationship(
+        back_populates="saved_link", cascade="all, delete-orphan", uselist=False,
+    )
+
+
+class SavedLinkJob(Base):
+    """Disposable queue state, one job per link, deleted at terminal state."""
+    __tablename__ = "saved_link_jobs"
+    __table_args__ = (
+        CheckConstraint("phase IN ('pending', 'claimed', 'resolving', 'matching')",
+                        name="ck_saved_link_job_phase"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    saved_link_id: Mapped[int] = mapped_column(
+        ForeignKey("saved_links.id", ondelete="CASCADE"), unique=True, index=True,
+    )
+    phase: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'pending'"), index=True,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    cursor: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    match_failures: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    lease_token: Mapped[str | None] = mapped_column(String(64))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    saved_link: Mapped[SavedLink] = relationship(back_populates="job")
 
 
 class SavedLinkGame(Base):
@@ -234,16 +257,6 @@ class SavedLinkGame(Base):
     saved_link_id: Mapped[int] = mapped_column(ForeignKey("saved_links.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    # Resolution is independent from link ingestion and retries in small batches.
-    match_status: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default=text("'pending'"),
-    )
-    match_attempts: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0"),
-    )
-    match_lease_token: Mapped[str | None] = mapped_column(String(64))
-    match_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    match_error: Mapped[str | None] = mapped_column(String(200))
     game_id: Mapped[int | None] = mapped_column(ForeignKey("games.id", ondelete="SET NULL"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
