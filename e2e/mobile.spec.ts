@@ -81,6 +81,33 @@ test('search -> game -> new playthrough -> back returns to search with fresh rat
   const installClose = page.getByRole('button', { name: 'Закрыть предложение установки' })
   if (await installClose.isVisible()) await installClose.click()
 
+  // Force both ratings to be absent on the initial detail view; the real
+  // API still handles the subsequent save and fresh community aggregate.
+  await page.route('**/api/games/search?*', async route => {
+    const response = await route.fetch()
+    const payload = await response.json()
+    await route.fulfill({ response, json: {
+      ...payload,
+      items: payload.items.map((game: { title: string }) =>
+        game.title === 'Neon Divide'
+          ? { ...game, igdbRating: 0, communityRating: 0, communityRatings: 0 }
+          : game,
+      ),
+    } })
+  })
+  await page.route('**/api/games/1/details', async route => {
+    const response = await route.fetch()
+    const payload = await response.json()
+    await route.fulfill({ response, json: {
+      ...payload,
+      game: payload.game ? { ...payload.game, igdbRating: 0 } : payload.game,
+    } })
+  })
+  await page.route('**/api/games/1/community-rating', route =>
+    route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ gameId: 1, communityRating: 0, communityRatings: 0 }) }),
+  )
+
   await page.locator('.bottom-nav__item').filter({ hasText: 'База игр' }).click()
   await page.getByRole('textbox', { name: 'Поиск по базе игр' }).fill('Neon')
   const result = page.getByRole('button', { name: 'Открыть игру «Neon Divide»' })
@@ -116,16 +143,46 @@ test('search -> game -> new playthrough -> back returns to search with fresh rat
     expect(rating.centerDifference).toBeLessThan(12)
   }
 
-  // The ❤️ is only a visual cue on the existing collections button:
-  // clicking anywhere on that button still opens the collection picker.
+  // The missing score is two centered grey lines against the right edge,
+  // without the former big dash or a misleading /100 or /10 suffix.
+  for (const kind of ['igdb', 'community']) {
+    const panel = page.locator(`.detail-rating-panel--${kind}`)
+    await expect(panel).toHaveAttribute('aria-label', /нет рейтинга/)
+    const empty = panel.locator('.detail-rating-panel__score--empty')
+    await expect(empty.locator('span')).toHaveText(['Нет', 'рейтинга'])
+    await expect(empty).toHaveCSS('color', 'rgb(140, 152, 172)')
+    const geometry = await panel.evaluate(el => {
+      const panelBox = el.getBoundingClientRect()
+      const emptyBox = el.querySelector('.detail-rating-panel__score--empty')!.getBoundingClientRect()
+      return { rightGap: panelBox.right - emptyBox.right, emptyWidth: emptyBox.width }
+    })
+    expect(geometry.rightGap).toBeGreaterThan(0)
+    expect(geometry.rightGap).toBeLessThan(16)
+    expect(geometry.emptyWidth).toBeGreaterThan(20)
+  }
+
+  // Both icons occupy the same position on ONE collections button. Fade
+  // through each other indefinitely, using the shared wishlist emoji.
   const collectionsButton = page.locator('.detail-catalog-icon--collections')
-  await expect(collectionsButton.locator('.detail-catalog-icon__heart')).toHaveText('❤️')
-  await expect(collectionsButton.locator('.detail-catalog-icon__heart')).toHaveAttribute('aria-hidden', 'true')
+  const layers = collectionsButton.locator('.detail-catalog-icon__symbol--layers')
+  const heart = collectionsButton.locator('.detail-catalog-icon__symbol--heart')
+  await expect(layers).toHaveAttribute('aria-hidden', 'true')
+  await expect(heart).toHaveAttribute('aria-hidden', 'true')
+  await expect(layers).toHaveCSS('animation-name', 'detail-collections-layers')
+  await expect(heart).toHaveCSS('animation-name', 'detail-collections-heart')
+  await expect(heart).toHaveCSS('animation-duration', '3s')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(layers).toHaveCSS('animation-name', 'none')
+  await expect(heart).toHaveCSS('opacity', '0')
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
   await collectionsButton.click()
   await expect(page.getByRole('region', { name: 'Управление коллекциями' })).toBeVisible()
   await collectionsButton.click()
   await expect(page.getByRole('region', { name: 'Управление коллекциями' })).toHaveCount(0)
 
+  await page.unroute('**/api/games/search?*')
+  await page.unroute('**/api/games/1/details')
+  await page.unroute('**/api/games/1/community-rating')
   await page.getByRole('button', { name: 'Добавить прохождение' }).click()
   await expect(page.getByRole('heading', { name: 'Прохождение' })).toBeVisible()
 
