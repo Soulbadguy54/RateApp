@@ -31,7 +31,7 @@ class LinkGameMatch(BaseModel):
 def canonical_url(raw: str) -> str:
     """Normalize for duplicate detection, not as a network/SSRF clearance."""
     raw = raw.strip()
-    if any(ord(ch) < 32 for ch in raw) or \\"\\ in raw:
+    if any(ord(ch) < 32 for ch in raw) or chr(92) in raw:
         raise ValueError("В ссылке есть недопустимые символы.")
     if len(raw) > 2048:
         raise ValueError("Слишком длинная ссылка.")
