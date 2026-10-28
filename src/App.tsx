@@ -1968,6 +1968,7 @@ function App() {
               onClick={() => setCollectionPickerOpen((open) => !open)}
             >
               <Icon name="layers" size={19} />
+              <span className="detail-catalog-icon__heart" aria-hidden="true">❤️</span>
             </button>
             {isPlaythrough(selectedEntry) ? (
               <>
