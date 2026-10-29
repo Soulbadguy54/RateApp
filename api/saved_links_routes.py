@@ -95,7 +95,7 @@ def _link_payload(link: SavedLink, games: dict[int, Game]) -> dict[str, object]:
         "finishedAt": link.finished_at.isoformat() if link.finished_at else None,
         "error": link.error,
         "gameIds": ids,
-        "gameNames": link.game_names,
+        "gameNames": link.gpt_names,
         "gamesCount": len(ids),
         "games": [{
             "id": games[game_id].id,
@@ -199,21 +199,6 @@ def _reset_for_recheck(link: SavedLink) -> None:
     link.updated_at = _now()
 
 
-def _requeue(row: SavedLink) -> None:
-    """Explicit re-analysis; invalidate any in-flight ChatGPT/IGDB result."""
-    row.game_names = None
-    row.game_ids = []
-    row.status = "pending"
-    row.error = None
-    row.finished_at = None
-    row.attempts = 0
-    row.resolve_cursor = 0
-    row.match_failures = 0
-    row.lease_token = None
-    row.lease_until = None
-    row.updated_at = _now()
-
-
 @router.post("/api/saved-links/{link_id}/retry")
 def retry_saved_link(link_id: int, request: Request) -> dict[str, object]:
     with _session() as session:
@@ -221,7 +206,7 @@ def retry_saved_link(link_id: int, request: Request) -> dict[str, object]:
         link = _get_user_link(session, user.id, link_id)
         if link.status != "failed":
             raise HTTPException(409, detail="Повтор возможен только после ошибки.")
-        _requeue(link)
+        _reset_for_recheck(link)
         session.commit()
         return _link_payload(link, _game_map(session, [link]))
 
@@ -232,6 +217,6 @@ def refresh_saved_link(link_id: int, request: Request) -> dict[str, object]:
     with _session() as session:
         user = _current_user(request, session)
         link = _get_user_link(session, user.id, link_id)
-        _requeue(link)
+        _reset_for_recheck(link)
         session.commit()
         return _link_payload(link, _game_map(session, [link]))
