@@ -62,7 +62,7 @@ class SavedLinkMatchTests(unittest.TestCase):
         self.assertEqual(result["matched"], 1)
         page = self.client.get(f'/api/saved-links/{link["id"]}').json()
         self.assertEqual(page["gameIds"], [self.local_id])
-        self.assertEqual(page["gameNames"], ["Hollow Knight Test"])
+        self.assertEqual(page["gptNames"], ["Hollow Knight Test"])
 
     def test_igdb_first_result_caches_only_one(self):
         link, _ = self.submit_link(["Never Cached Series 98"])
@@ -103,16 +103,16 @@ class SavedLinkMatchTests(unittest.TestCase):
             self.assertFalse(first["complete"])
             with SessionLocal() as session:
                 source = session.get(SavedLink, link["id"])
-                self.assertEqual(source.resolve_cursor, 12)
+                self.assertEqual(source.match_cursor, 12)
                 self.assertEqual(source.game_ids, [self.local_id])
-                self.assertEqual(len(source.game_names), 14)
+                self.assertEqual(len(source.gpt_names), 14)
             second = resolve_games(only_id=link["id"])
         self.assertTrue(second["complete"])
         self.assertEqual(second["processed"], 2)
         final = self.client.get(f'/api/saved-links/{link["id"]}').json()
         self.assertEqual(final["status"], "ready")
         self.assertEqual(final["gameIds"], [self.local_id])
-        self.assertEqual(final["gameNames"], titles)
+        self.assertEqual(final["gptNames"], titles)
 
     def test_network_errors_are_retried_only_three_times(self):
         link, _ = self.submit_link(["Temporary Provider Error"])
@@ -124,7 +124,7 @@ class SavedLinkMatchTests(unittest.TestCase):
         page = self.client.get(f'/api/saved-links/{link["id"]}').json()
         self.assertEqual(page["status"], "ready")
         self.assertEqual(page["gameIds"], [])
-        self.assertEqual(page["gameNames"], ["Temporary Provider Error"])
+        self.assertEqual(page["gptNames"], ["Temporary Provider Error"])
         self.assertIsNotNone(page["error"])
 
     def test_delete_during_igdb_lookup_cannot_restore_link(self):
@@ -148,5 +148,5 @@ class SavedLinkMatchTests(unittest.TestCase):
             outcome = resolve_games(only_id=link["id"])
         self.assertTrue(outcome["cancelled"])
         changed = self.client.get(f'/api/saved-links/{link["id"]}').json()
-        self.assertIsNone(changed["gameNames"])
+        self.assertIsNone(changed["gptNames"])
         self.assertEqual(changed["gameIds"], [])
