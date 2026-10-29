@@ -7,10 +7,10 @@ from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
-from api.models import Game, SavedLink, SavedLinkJob, User
+from api.models import Game, SavedLink, User
 from api.security import _current_user, _now, _session
 
 router = APIRouter()
@@ -89,6 +89,7 @@ def _link_payload(link: SavedLink, games: dict[int, Game]) -> dict[str, object]:
         "url": link.url,
         "title": link.title,
         "status": link.status,
+        "gptNames": link.gpt_names,
         "createdAt": link.created_at.isoformat(),
         "updatedAt": link.updated_at.isoformat(),
         "finishedAt": link.finished_at.isoformat() if link.finished_at else None,
@@ -110,9 +111,14 @@ def list_saved_links(request: Request, limit: int = Query(default=50, ge=1, le=5
     with _session() as session:
         user = _current_user(request, session)
         stmt = (select(SavedLink).where(SavedLink.user_id == user.id)
-                .order_by(SavedLink.id.desc()).limit(limit + 1))
+                .order_by(SavedLink.created_at.desc(), SavedLink.id.desc())
+                .limit(limit + 1))
         if before is not None:
-            stmt = stmt.where(SavedLink.id < before)
+            anchor = _get_user_link(session, user.id, before)
+            stmt = stmt.where(or_(
+                SavedLink.created_at < anchor.created_at,
+                and_(SavedLink.created_at == anchor.created_at, SavedLink.id < before),
+            ))
         rows = session.scalars(stmt).all()
         page = rows[:limit]
         games = _game_map(session, page)
@@ -148,8 +154,6 @@ def save_link(payload: LinkCreate, request: Request) -> dict[str, object]:
         row = SavedLink(user_id=user.id, url=url, url_hash=digest, title=title)
         session.add(row)
         try:
-            session.flush()
-            session.add(SavedLinkJob(saved_link_id=row.id))
             session.commit()
         except IntegrityError:
             session.rollback()
@@ -175,25 +179,47 @@ def delete_saved_link(link_id: int, request: Request) -> None:
     with _session() as session:
         user = _current_user(request, session)
         row = _get_user_link(session, user.id, link_id)
-        session.delete(row)  # cascades into its queue row, including active leases
+        session.delete(row)  # removes the row, its GPT names and every associated game ID
         session.commit()
+
+
+def _reset_for_recheck(link: SavedLink) -> None:
+    """Explicitly re-analyze a URL after an edit; invalidate stale leases."""
+    link.gpt_names = None
+    link.game_ids = []
+    link.status = "pending"
+    link.attempts = 0
+    link.match_cursor = 0
+    link.match_failures = 0
+    link.lease_token = None
+    link.lease_until = None
+    link.error = None
+    link.finished_at = None
+    link.updated_at = _now()
 
 
 @router.post("/api/saved-links/{link_id}/retry")
 def retry_saved_link(link_id: int, request: Request) -> dict[str, object]:
     with _session() as session:
         user = _current_user(request, session)
-        row = _get_user_link(session, user.id, link_id)
-        if row.status != "failed":
+        link = _get_user_link(session, user.id, link_id)
+        if link.status != "failed":
             raise HTTPException(409, detail="Повтор возможен только для неудачной обработки.")
-        # No orphan queue state: a new job is created exactly once.
-        if session.scalar(select(SavedLinkJob.id).where(
-                SavedLinkJob.saved_link_id == row.id)) is not None:
-            raise HTTPException(409, detail="Ссылка уже поставлена в очередь.")
-        row.status = "pending"
-        row.error = None
-        row.finished_at = None
-        row.updated_at = _now()
-        session.add(SavedLinkJob(saved_link_id=row.id))
+        _reset_for_recheck(link)
         session.commit()
-        return _link_payload(row, _game_map(session, [row]))
+        return _link_payload(link, _game_map(session, [link]))
+
+
+@router.post("/api/saved-links/{link_id}/refresh")
+def refresh_saved_link(link_id: int, request: Request) -> dict[str, object]:
+    """User requests recheck because an article/video might have changed."""
+    with _session() as session:
+        user = _current_user(request, session)
+        link = session.scalar(select(SavedLink).where(
+            SavedLink.id == link_id, SavedLink.user_id == user.id,
+        ).with_for_update())
+        if link is None:
+            raise HTTPException(404, detail="Ссылка не найдена.")
+        _reset_for_recheck(link)
+        session.commit()
+        return _link_payload(link, {})
