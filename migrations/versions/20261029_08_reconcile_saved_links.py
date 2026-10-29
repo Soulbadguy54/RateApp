@@ -46,12 +46,8 @@ def upgrade():
         op.add_column("saved_links", sa.Column(
             "match_cursor", sa.Integer(), nullable=False, server_default=sa.text("0")))
 
-    # Old completed records had already lost their raw GPT names in earlier
-    # versions: mark a completed scan as [] rather than processing them again.
-    op.execute("""
-        UPDATE saved_links SET gpt_names = '{}'::text[]
-        WHERE status = 'ready' AND gpt_names IS NULL
-    """)
+    # Existing ready links have known game IDs but old GPT names were erased.
+    # Leave gpt_names NULL and status ready; only explicit refresh re-enqueues.
 
     indexes = {i["name"] for i in inspect(bind).get_indexes("saved_links")}
     if "ix_saved_links_queue" not in indexes:
