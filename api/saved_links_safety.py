@@ -48,12 +48,83 @@ def safe_browsing_key() -> str:
             or os.environ.get("WEB_RISK_API_KEY", "").strip())
 
 
-def check_safe_browsing(url: str, *, timeout: float = 5.0) -> None:
-    """Require a successful v5 Lookup check before downloading a URL.
+def _proto_fields(payload: bytes):
+    """Decode bounded protobuf fields, rejecting truncated or invalid wire data."""
+    if not payload or len(payload) > 32_768:
+        raise ValueError("Invalid Safe Browsing response size")
 
-    Every URL is checked again, including redirects. Responses without a
-    valid threats list are treated as unavailable rather than safe.
+    def varint(offset):
+        number = 0
+        for i in range(10):
+            if offset >= len(payload):
+                raise ValueError("Truncated protobuf varint")
+            octet = payload[offset]
+            offset += 1
+            if i == 9 and octet > 1:
+                raise ValueError("Oversized protobuf varint")
+            number |= (octet & 127) << (7 * i)
+            if not octet & 128:
+                return number, offset
+        raise ValueError("Unterminated protobuf varint")
+
+    cursor = 0
+    while cursor < len(payload):
+        tag, cursor = varint(cursor)
+        field, wire = tag >> 3, tag & 7
+        if not field:
+            raise ValueError("Invalid protobuf field number")
+        if wire == 0:
+            value, cursor = varint(cursor)
+        elif wire == 2:
+            length, cursor = varint(cursor)
+            if length > len(payload) - cursor:
+                raise ValueError("Truncated protobuf field")
+            value = payload[cursor:cursor + length]
+            cursor += length
+        elif wire in (1, 5):
+            length = 8 if wire == 1 else 4
+            if length > len(payload) - cursor:
+                raise ValueError("Truncated protobuf fixed-width field")
+            value = payload[cursor:cursor + length]
+            cursor += length
+        else:
+            raise ValueError("Unsupported protobuf wire type")
+        yield field, wire, value
+
+
+def _safe_browsing_v5_has_threats(payload: bytes) -> bool:
+    """Read SearchUrlsResponse: threats=1, cache_duration=2 (Duration).
+
+    Google Safe Browsing v5 REST sends protobuf even for HTTP 200.
+    A clean response still includes cache_duration; absent, malformed and
+    incorrectly framed responses must never authorize a download.
     """
+    found_duration = False
+    found_threat = False
+    for field, wire, value in _proto_fields(payload):
+        if field == 1:
+            if wire != 2 or not value:
+                raise ValueError("Malformed Safe Browsing threat")
+            nested = list(_proto_fields(value))
+            if not any(tag == 1 and kind == 2 and url for tag, kind, url in nested):
+                raise ValueError("Malformed Safe Browsing threat URL")
+            found_threat = True
+        elif field == 2:
+            if wire != 2 or found_duration:
+                raise ValueError("Malformed Safe Browsing cache duration")
+            duration_fields = list(_proto_fields(value))
+            if not any(tag == 1 and kind == 0 for tag, kind, _ in duration_fields):
+                raise ValueError("Missing Safe Browsing duration seconds")
+            if any(tag not in (1, 2) or kind != 0 for tag, kind, _ in duration_fields):
+                raise ValueError("Malformed Safe Browsing duration data")
+            found_duration = True
+    if not found_duration:
+        raise ValueError("Missing Safe Browsing cache duration")
+    return found_threat
+
+
+def check_safe_browsing(url: str, *, timeout: float = 5.0) -> None:
+    """Require a valid Google Safe Browsing v5 protobuf lookup before HTTP."""
     api_key = safe_browsing_key()
     if not api_key:
         raise SourceSafetyError("Safe Browsing не настроен: чтение ссылок отключено.")
@@ -63,19 +134,17 @@ def check_safe_browsing(url: str, *, timeout: float = 5.0) -> None:
                 ("urls", url), ("key", api_key),
             ])
             response.raise_for_status()
-            result = response.json()
+            if response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/x-protobuf":
+                raise ValueError("Unexpected Safe Browsing response format")
+            threats = _safe_browsing_v5_has_threats(response.content)
     except (httpx.HTTPError, ValueError) as exc:
         raise SourceSafetyError("Проверка безопасности Safe Browsing временно недоступна.") from exc
-    if not isinstance(result, dict):
-        raise SourceSafetyError("Некорректный ответ Safe Browsing.")
-    threats = result.get("threats", [])
-    if not isinstance(threats, list) or any(not isinstance(item, dict) for item in threats):
-        raise SourceSafetyError("Некорректный ответ Safe Browsing.")
     if threats:
         raise SourceSafetyError(
             "Ссылка отмечена Google Safe Browsing как потенциально опасная "
             "(проверка может быть неточной).", terminal=True,
         )
+
 
 def _public_address(host: str, port: int) -> str:
     """Bounded system DNS lookup, then pin one validated public IP.
