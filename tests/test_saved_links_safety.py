@@ -127,7 +127,7 @@ class SavedLinksSafetyTests(unittest.TestCase):
                                    "https://destination.example.org/article"])
         self.assertEqual(fetch.call_count, 2)
         checked.clear()
-        with patch("api.saved_links_safety.check_web_risk", side_effect=checker), patch(
+        with patch("api.saved_links_safety.check_safe_browsing", side_effect=checker), patch(
             "api.saved_links_safety._fetch_once",
             return_value=(302, {"location": "http://127.0.0.1/admin"}, b""),
         ):
