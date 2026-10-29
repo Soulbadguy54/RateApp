@@ -201,8 +201,6 @@ class SavedLink(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "url_hash", name="uq_saved_links_user_url"),
         Index("ix_saved_links_game_ids_gin", "game_ids", postgresql_using="gin"),
-        Index("ix_saved_links_pending_created", "created_at", "id",
-              postgresql_where=text("game_names IS NULL AND status = 'pending'")),
         Index("ix_saved_links_queue", "created_at", "id",
               postgresql_where=text("gpt_names IS NULL AND status IN ('pending', 'processing')")),
         CheckConstraint("status IN ('pending', 'processing', 'ready', 'failed')",
