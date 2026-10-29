@@ -18,9 +18,15 @@ from api.saved_links_safety import (
 
 
 class _SafeBrowsingClient:
-    def __init__(self, payload, status=200):
+    # Real Safe Browsing v5 uses protobuf for success, including clean URLs:
+    # SearchUrlsResponse(cache_duration=Duration(seconds=300)).
+    CLEAN = bytes.fromhex("120308ac02")
+    INFECTED = bytes.fromhex("0a070a056261642121") + CLEAN
+
+    def __init__(self, payload, status=200, content_type="application/x-protobuf"):
         self.payload = payload
         self.status = status
+        self.content_type = content_type
         self.params = None
 
     def __enter__(self):
@@ -31,7 +37,8 @@ class _SafeBrowsingClient:
 
     def get(self, url, params):
         self.params = params
-        return Mock(status_code=self.status, json=lambda: self.payload,
+        return Mock(status_code=self.status, content=self.payload,
+                    headers={"content-type": self.content_type},
                     raise_for_status=lambda: None if self.status == 200 else
                         (_ for _ in ()).throw(ValueError("not authorized")))
 
@@ -46,7 +53,7 @@ class SavedLinksSafetyTests(unittest.TestCase):
                 check_safe_browsing("https://example.org/article")
 
     def test_google_safe_browsing_rejects_malware_and_api_failures(self):
-        clean = _SafeBrowsingClient({"threats": []})
+        clean = _SafeBrowsingClient(_SafeBrowsingClient.CLEAN)
         with patch.dict(os.environ, {"SAFE_BROWSING_API_KEY": "dummy", "WEB_RISK_API_KEY": ""}), patch(
             "api.saved_links_safety.httpx.Client", return_value=clean,
         ):
@@ -54,16 +61,14 @@ class SavedLinksSafetyTests(unittest.TestCase):
         self.assertEqual(clean.params, [
             ("urls", "https://example.org/article"), ("key", "dummy"),
         ])
-        infected = _SafeBrowsingClient({"threats": [
-            {"url": "https://example.org/article", "threatTypes": ["MALWARE"]},
-        ]})
+        infected = _SafeBrowsingClient(_SafeBrowsingClient.INFECTED)
         with patch.dict(os.environ, {"SAFE_BROWSING_API_KEY": "dummy", "WEB_RISK_API_KEY": ""}), patch(
             "api.saved_links_safety.httpx.Client", return_value=infected,
         ):
             with self.assertRaises(SourceSafetyError) as ctx:
                 check_safe_browsing("https://example.org/article")
             self.assertTrue(ctx.exception.terminal)
-        broken = _SafeBrowsingClient({}, status=503)
+        broken = _SafeBrowsingClient(_SafeBrowsingClient.CLEAN, status=503)
         with patch.dict(os.environ, {"SAFE_BROWSING_API_KEY": "dummy", "WEB_RISK_API_KEY": ""}), patch(
             "api.saved_links_safety.httpx.Client", return_value=broken,
         ):
@@ -72,17 +77,40 @@ class SavedLinksSafetyTests(unittest.TestCase):
             self.assertFalse(ctx.exception.terminal)
 
     def test_malformed_response_fails_closed(self):
-        for malformed in (None, [], {"threats": None}, {"threats": {"url": "x"}}, {"threats": [1]}):
-            client = _SafeBrowsingClient(malformed)
-            with self.subTest(payload=malformed), patch.dict(
+        malformed = (
+            b"", b"not-protobuf", bytes.fromhex("12"), bytes.fromhex("1200"),
+            bytes.fromhex("1f00"), bytes.fromhex("120308ff"),
+            bytes.fromhex("120308ac0200"),
+            bytes.fromhex("0a070a056261642121"),
+        )
+        for payload in malformed:
+            client = _SafeBrowsingClient(payload)
+            with self.subTest(payload=payload), patch.dict(
                 os.environ, {"SAFE_BROWSING_API_KEY": "dummy", "WEB_RISK_API_KEY": ""},
             ), patch("api.saved_links_safety.httpx.Client", return_value=client):
                 with self.assertRaises(SourceSafetyError) as ctx:
                     check_safe_browsing("https://example.org/article")
                 self.assertFalse(ctx.exception.terminal)
 
+    def test_wrong_content_type_fails_closed(self):
+        client = _SafeBrowsingClient(_SafeBrowsingClient.CLEAN, content_type="text/html")
+        with patch.dict(os.environ, {"SAFE_BROWSING_API_KEY": "dummy"}), patch(
+            "api.saved_links_safety.httpx.Client", return_value=client,
+        ):
+            with self.assertRaises(SourceSafetyError) as ctx:
+                check_safe_browsing("https://example.org/article")
+            self.assertFalse(ctx.exception.terminal)
+
+    def test_live_clean_protobuf_cache_duration_is_recognized(self):
+        # Captured wire-format shape from the live benign lookup (no keys/URLs).
+        client = _SafeBrowsingClient(bytes.fromhex("120308ac02"))
+        with patch.dict(os.environ, {"SAFE_BROWSING_API_KEY": "dummy"}), patch(
+            "api.saved_links_safety.httpx.Client", return_value=client,
+        ):
+            check_safe_browsing("https://example.org/article")
+
     def test_legacy_stage_secret_name_remains_supported(self):
-        client = _SafeBrowsingClient({})
+        client = _SafeBrowsingClient(_SafeBrowsingClient.CLEAN)
         with patch.dict(os.environ, {"SAFE_BROWSING_API_KEY": "", "WEB_RISK_API_KEY": "legacy-value"}), patch(
             "api.saved_links_safety.httpx.Client", return_value=client,
         ):
