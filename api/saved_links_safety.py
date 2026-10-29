@@ -1,7 +1,7 @@
 """Small fail-closed external URL reader for saved-link ChatGPT jobs.
 
 Only a deliberately claimed URL is read here. No browser, JS, cookies, proxy,
-file downloads, or arbitrary tool calls; Web Risk lookup precedes every hop.
+file downloads, or arbitrary tool calls; Safe Browsing lookup precedes every hop.
 """
 import html
 import ipaddress
@@ -23,8 +23,7 @@ MAX_TEXT_CHARS = 60_000
 MAX_REDIRECTS = 3
 MAX_SECONDS = 15
 MAX_HOST_LOOKUP_SECONDS = 5
-WEB_RISK_ENDPOINT = "https://webrisk.googleapis.com/v1/uris:search"
-THREAT_TYPES = ("MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE")
+SAFE_BROWSING_ENDPOINT = "https://safebrowsing.googleapis.com/v5/urls:search"
 ACCEPTED_TYPES = ("text/html", "application/xhtml+xml", "text/plain")
 BLOCKED_TAGS = {"script", "style", "noscript", "iframe", "object", "embed",
                 "svg", "form", "nav", "aside", "footer", "header", "template"}
@@ -43,26 +42,40 @@ class SourceSafetyError(ValueError):
         self.terminal = terminal
 
 
-def check_web_risk(url: str, *, timeout: float = 5.0) -> None:
-    """Lookup API, one URL per request. Missing key/errors = no access."""
-    api_key = os.environ.get("WEB_RISK_API_KEY", "").strip()
+def safe_browsing_key() -> str:
+    """Accept the legacy staging secret name until it is rotated."""
+    return (os.environ.get("SAFE_BROWSING_API_KEY", "").strip()
+            or os.environ.get("WEB_RISK_API_KEY", "").strip())
+
+
+def check_safe_browsing(url: str, *, timeout: float = 5.0) -> None:
+    """Require a successful v5 Lookup check before downloading a URL.
+
+    Every URL is checked again, including redirects. Responses without a
+    valid threats list are treated as unavailable rather than safe.
+    """
+    api_key = safe_browsing_key()
     if not api_key:
-        raise SourceSafetyError("Web Risk не настроен: чтение ссылок отключено.")
-    params = [("uri", url), ("key", api_key)]
-    params += [("threatTypes", threat) for threat in THREAT_TYPES]
+        raise SourceSafetyError("Safe Browsing не настроен: чтение ссылок отключено.")
     try:
         with httpx.Client(timeout=min(timeout, 5.0), follow_redirects=False, trust_env=False) as client:
-            response = client.get(WEB_RISK_ENDPOINT, params=params)
+            response = client.get(SAFE_BROWSING_ENDPOINT, params=[
+                ("urls", url), ("key", api_key),
+            ])
             response.raise_for_status()
             result = response.json()
     except (httpx.HTTPError, ValueError) as exc:
-        raise SourceSafetyError("Проверка безопасности ссылки временно недоступна.") from exc
+        raise SourceSafetyError("Проверка безопасности Safe Browsing временно недоступна.") from exc
     if not isinstance(result, dict):
-        raise SourceSafetyError("Некорректный ответ Web Risk.")
-    threat = result.get("threat")
-    if threat:
-        raise SourceSafetyError("Ссылка отмечена как опасная Google Web Risk.", terminal=True)
-
+        raise SourceSafetyError("Некорректный ответ Safe Browsing.")
+    threats = result.get("threats", [])
+    if not isinstance(threats, list) or any(not isinstance(item, dict) for item in threats):
+        raise SourceSafetyError("Некорректный ответ Safe Browsing.")
+    if threats:
+        raise SourceSafetyError(
+            "Ссылка отмечена Google Safe Browsing как потенциально опасная "
+            "(проверка может быть неточной).", terminal=True,
+        )
 
 def _public_address(host: str, port: int) -> str:
     """Bounded system DNS lookup, then pin one validated public IP.
@@ -250,7 +263,7 @@ def prepare_source(url: str) -> dict[str, str | int]:
         seen.add(current)
         if deadline - time.monotonic() <= 0:
             raise SourceSafetyError("Истекло время чтения ссылки.")
-        check_web_risk(current, timeout=min(5.0, deadline - time.monotonic()))
+        check_safe_browsing(current, timeout=min(5.0, deadline - time.monotonic()))
         status, headers, body = _fetch_once(current, deadline)
         if status == 200:
             text = _read_text(body, headers)

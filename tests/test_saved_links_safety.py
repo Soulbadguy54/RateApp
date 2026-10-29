@@ -12,12 +12,12 @@ from api.saved_links_safety import (
     _fetch_once,
     _public_address,
     _read_text,
-    check_web_risk,
+    check_safe_browsing,
     prepare_source,
 )
 
 
-class _WebRiskClient:
+class _SafeBrowsingClient:
     def __init__(self, payload, status=200):
         self.payload = payload
         self.status = status
@@ -38,37 +38,56 @@ class _WebRiskClient:
 
 class SavedLinksSafetyTests(unittest.TestCase):
     def test_missing_key_blocks_before_any_request(self):
-        with patch.dict(os.environ, {"WEB_RISK_API_KEY": ""}), patch(
+        with patch.dict(os.environ, {"WEB_RISK_API_KEY": "", "SAFE_BROWSING_API_KEY": ""}), patch(
             "api.saved_links_safety.httpx.Client",
             side_effect=AssertionError("no external request without key"),
         ):
             with self.assertRaisesRegex(SourceSafetyError, "не настроен"):
-                check_web_risk("https://example.org/article")
+                check_safe_browsing("https://example.org/article")
 
-    def test_google_web_risk_rejects_malware_and_api_failures(self):
-        clean = _WebRiskClient({})
-        with patch.dict(os.environ, {"WEB_RISK_API_KEY": "not-a-real-key"}), patch(
+    def test_google_safe_browsing_rejects_malware_and_api_failures(self):
+        clean = _SafeBrowsingClient({"threats": []})
+        with patch.dict(os.environ, {"SAFE_BROWSING_API_KEY": "dummy", "WEB_RISK_API_KEY": ""}), patch(
             "api.saved_links_safety.httpx.Client", return_value=clean,
         ):
-            check_web_risk("https://example.org/article")
-        self.assertEqual([pair[1] for pair in clean.params if pair[0] == "threatTypes"],
-                         ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE"])
-        self.assertEqual([x[1] for x in clean.params if x[0] == "uri"],
-                         ["https://example.org/article"])
-        infected = _WebRiskClient({"threat": {"threatTypes": ["MALWARE"]}})
-        with patch.dict(os.environ, {"WEB_RISK_API_KEY": "dummy"}), patch(
+            check_safe_browsing("https://example.org/article")
+        self.assertEqual(clean.params, [
+            ("urls", "https://example.org/article"), ("key", "dummy"),
+        ])
+        infected = _SafeBrowsingClient({"threats": [
+            {"url": "https://example.org/article", "threatTypes": ["MALWARE"]},
+        ]})
+        with patch.dict(os.environ, {"SAFE_BROWSING_API_KEY": "dummy", "WEB_RISK_API_KEY": ""}), patch(
             "api.saved_links_safety.httpx.Client", return_value=infected,
         ):
             with self.assertRaises(SourceSafetyError) as ctx:
-                check_web_risk("https://example.org/article")
+                check_safe_browsing("https://example.org/article")
             self.assertTrue(ctx.exception.terminal)
-        broken = _WebRiskClient({}, status=503)
-        with patch.dict(os.environ, {"WEB_RISK_API_KEY": "dummy"}), patch(
+        broken = _SafeBrowsingClient({}, status=503)
+        with patch.dict(os.environ, {"SAFE_BROWSING_API_KEY": "dummy", "WEB_RISK_API_KEY": ""}), patch(
             "api.saved_links_safety.httpx.Client", return_value=broken,
         ):
             with self.assertRaises(SourceSafetyError) as ctx:
-                check_web_risk("https://example.org/article")
+                check_safe_browsing("https://example.org/article")
             self.assertFalse(ctx.exception.terminal)
+
+    def test_malformed_response_fails_closed(self):
+        for malformed in (None, [], {"threats": None}, {"threats": {"url": "x"}}, {"threats": [1]}):
+            client = _SafeBrowsingClient(malformed)
+            with self.subTest(payload=malformed), patch.dict(
+                os.environ, {"SAFE_BROWSING_API_KEY": "dummy", "WEB_RISK_API_KEY": ""},
+            ), patch("api.saved_links_safety.httpx.Client", return_value=client):
+                with self.assertRaises(SourceSafetyError) as ctx:
+                    check_safe_browsing("https://example.org/article")
+                self.assertFalse(ctx.exception.terminal)
+
+    def test_legacy_stage_secret_name_remains_supported(self):
+        client = _SafeBrowsingClient({})
+        with patch.dict(os.environ, {"SAFE_BROWSING_API_KEY": "", "WEB_RISK_API_KEY": "legacy-value"}), patch(
+            "api.saved_links_safety.httpx.Client", return_value=client,
+        ):
+            check_safe_browsing("https://example.org/article")
+        self.assertIn(("key", "legacy-value"), client.params)
 
     def test_mixed_private_dns_answer_is_rejected(self):
         result = Mock(stdout="8.8.8.8 STREAM trusted.example.org\n127.0.0.1 STREAM trusted.example.org\n")
@@ -95,7 +114,7 @@ class SavedLinksSafetyTests(unittest.TestCase):
         checked = []
         def checker(url, **kwargs):
             checked.append(url)
-        with patch("api.saved_links_safety.check_web_risk", side_effect=checker), patch(
+        with patch("api.saved_links_safety.check_safe_browsing", side_effect=checker), patch(
             "api.saved_links_safety._fetch_once",
             side_effect=[
                 (302, {"location": "https://destination.example.org/article"}, b""),
@@ -108,7 +127,7 @@ class SavedLinksSafetyTests(unittest.TestCase):
                                    "https://destination.example.org/article"])
         self.assertEqual(fetch.call_count, 2)
         checked.clear()
-        with patch("api.saved_links_safety.check_web_risk", side_effect=checker), patch(
+        with patch("api.saved_links_safety.check_safe_browsing", side_effect=checker), patch(
             "api.saved_links_safety._fetch_once",
             return_value=(302, {"location": "http://127.0.0.1/admin"}, b""),
         ):
