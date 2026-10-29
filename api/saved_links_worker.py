@@ -1,8 +1,8 @@
-"""One-shot per-LINK queue worker, launched inside the chosen API container.
+"""Single-table saved link processing, one URL per invocation.
 
-Only links and resolved catalog game IDs are durable. Extracted titles,
-claims, cursors and tokens live in saved_link_jobs until completion/deletion.
-No resident service, video downloads, browser, or HTTP user endpoint.
+Queue selection uses saved_links.gpt_names IS NULL and created_at ASC.
+Row-level leases prevent concurrent ChatGPT claims or game matching;
+deleting a link deletes all its titles and IDs, with no separate job records.
 """
 import argparse
 import json
@@ -14,10 +14,10 @@ import unicodedata
 from datetime import timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from api.models import Game, SavedLink, SavedLinkJob
+from api.models import Game, SavedLink
 from api.security import _now, _session
 
 MAX_CLAIM_ATTEMPTS = 3
@@ -30,77 +30,71 @@ MAX_PASS_SECONDS = 120
 
 
 def claim_jobs(limit: int = 1, *, only_id: int | None = None) -> dict:
-    """Claim ONE source link, never individual game names."""
+    """Claim the oldest URL where GPT has not returned a names array."""
     if limit != 1:
         raise ValueError("Each ChatGPT claim processes exactly one link")
     now = _now()
     with _session() as session:
-        # Retire abandoned third attempts, retaining link for the UI.
-        abandoned = session.scalars(
-            select(SavedLinkJob)
-            .where(SavedLinkJob.phase == "claimed",
-                   SavedLinkJob.lease_until <= now,
-                   SavedLinkJob.attempts >= MAX_CLAIM_ATTEMPTS)
-            .with_for_update(skip_locked=True)
-        ).all()
-        for job in abandoned:
-            link = session.get(SavedLink, job.saved_link_id)
-            if link:
-                link.status = "failed"
-                link.error = "Истекло время обработки ссылки."
-                link.finished_at = now
-                link.updated_at = now
-            session.delete(job)
-        query = (select(SavedLinkJob)
-                 .join(SavedLink, SavedLink.id == SavedLinkJob.saved_link_id)
+        # A last expired claim leaves its URL visible as failed, not in queue.
+        session.execute(
+            SavedLink.__table__.update().where(
+                SavedLink.gpt_names.is_(None),
+                SavedLink.status == "processing",
+                SavedLink.lease_until <= now,
+                SavedLink.attempts >= MAX_CLAIM_ATTEMPTS,
+            ).values(status="failed", error="Истекло время обработки ссылки.",
+                     lease_token=None, lease_until=None, updated_at=now,
+                     finished_at=now)
+        )
+        query = (select(SavedLink)
                  .where(
-                     SavedLinkJob.attempts < MAX_CLAIM_ATTEMPTS,
-                     or_(SavedLinkJob.phase == "pending",
-                         and_(SavedLinkJob.phase == "claimed",
-                              SavedLinkJob.lease_until <= now)),
+                     SavedLink.gpt_names.is_(None),
+                     SavedLink.attempts < MAX_CLAIM_ATTEMPTS,
+                     or_(SavedLink.status == "pending",
+                         and_(SavedLink.status == "processing",
+                              SavedLink.lease_until <= now)),
                  )
-                 .order_by(SavedLinkJob.id)
-                 .limit(1).with_for_update(of=SavedLinkJob, skip_locked=True))
+                 .order_by(SavedLink.created_at.asc(), SavedLink.id.asc())
+                 .limit(1)
+                 .with_for_update(skip_locked=True))
         if only_id is not None:
             query = query.where(SavedLink.id == only_id)
-        job = session.scalar(query)
-        if job is None:
+        link = session.scalar(query)
+        if link is None:
             session.commit()
             return {"jobs": []}
-        link = session.get(SavedLink, job.saved_link_id)
-        job.phase = "claimed"
-        job.attempts += 1
-        job.lease_token = secrets.token_urlsafe(24)
-        job.lease_until = now + timedelta(hours=CLAIM_LEASE_HOURS)
         link.status = "processing"
+        link.attempts += 1
+        link.lease_token = secrets.token_urlsafe(24)
+        link.lease_until = now + timedelta(hours=CLAIM_LEASE_HOURS)
         link.error = None
         link.updated_at = now
         result = {"id": link.id, "url": link.url, "title": link.title,
-                  "leaseToken": job.lease_token, "attempt": job.attempts}
+                  "leaseToken": link.lease_token, "attempt": link.attempts}
         session.commit()
         return {"jobs": [result]}
 
 
-def _validated_names(payload: dict) -> list[tuple[str, str]]:
-    names = payload.get("games")
-    if not isinstance(names, list) or len(names) > MAX_GAMES:
+def _validated_names(payload: dict) -> list[str]:
+    raw = payload.get("games")
+    if not isinstance(raw, list) or len(raw) > MAX_GAMES:
         raise ValueError("Expected at most 80 game titles")
-    found, seen = [], set()
-    for value in names:
+    names, seen = [], set()
+    for value in raw:
         if not isinstance(value, str):
             raise ValueError("Game title must be a string")
         name = " ".join(unicodedata.normalize("NFKC", value).split())
         if not 1 <= len(name) <= 255:
             raise ValueError("Game title length must be 1–255 characters")
-        normalized = name.casefold()
-        if normalized not in seen:
-            seen.add(normalized)
-            found.append((name, normalized))
-    return found
+        key = name.casefold()
+        if key not in seen:
+            seen.add(key)
+            names.append(name)
+    return names
 
 
 def submit_result(payload: dict) -> dict:
-    """Keep GPT names only in disposable per-link job until matching finishes."""
+    """Return GPT names to the URL itself; [] is a completed empty scan."""
     if not isinstance(payload, dict):
         raise ValueError("Expected JSON object")
     link_id, token = payload.get("id"), payload.get("leaseToken")
@@ -112,44 +106,30 @@ def submit_result(payload: dict) -> dict:
     names = _validated_names(payload) if error is None else []
     now = _now()
     with _session() as session:
-        job = session.scalar(select(SavedLinkJob).where(
-            SavedLinkJob.saved_link_id == link_id,
-        ).with_for_update())
-        if job is None or job.lease_token != token:
-            # Completed or deleted links have no queue record to write into.
-            raise ValueError("Unknown/deleted link or stale claim token")
-        if job.phase in ("resolving", "matching"):
+        link = session.scalar(
+            select(SavedLink).where(SavedLink.id == link_id).with_for_update()
+        )
+        if link is None or link.lease_token != token:
+            raise ValueError("Deleted link or stale claim token")
+        if link.gpt_names is not None:
             return {"saved": True, "idempotent": True, "id": link_id}
-        if job.phase != "claimed" or not job.lease_until or job.lease_until <= now:
-            raise ValueError("Claim has expired")
-        link = session.get(SavedLink, link_id)
-        if link is None:
-            raise ValueError("Link has been deleted")
+        if link.status != "processing" or link.lease_until is None or link.lease_until <= now:
+            raise ValueError("Claim expired or not processing")
         if error is not None:
-            if job.attempts >= MAX_CLAIM_ATTEMPTS:
-                link.status = "failed"
-                link.finished_at = now
-                session.delete(job)
-            else:
-                link.status = "pending"
-                job.phase = "pending"
-                job.lease_token = None
-                job.lease_until = None
+            link.status = "failed" if link.attempts >= MAX_CLAIM_ATTEMPTS else "pending"
             link.error = error
+            link.finished_at = now if link.status == "failed" else None
+            link.lease_token = None
+            link.lease_until = None
         else:
-            job.names = [name for name, _ in names]
-            job.resolved_ids = []
-            job.cursor = 0
-            job.match_failures = 0
-            if not names:
-                link.game_ids = []
-                link.status = "ready"
-                link.finished_at = now
-                session.delete(job)
-            else:
-                link.status = "processing"
-                job.phase = "resolving"
-                job.lease_until = None
+            link.gpt_names = names
+            link.game_ids = []
+            link.match_cursor = 0
+            link.match_failures = 0
+            link.status = "processing" if names else "ready"
+            link.finished_at = None if names else now
+            link.lease_until = None
+            # Hold token until resolver starts, permitting immediate submit replay.
         link.updated_at = now
         session.commit()
         return {"saved": True, "idempotent": False, "id": link_id,
@@ -157,7 +137,7 @@ def submit_result(payload: dict) -> dict:
 
 
 def _find_top_game_id(name: str) -> int | None:
-    """Same title/alias/popularity rank as interactive search, local first."""
+    """The same local ranking, then IGDB ranking, as catalog search."""
     from api.games_routes import (
         _local_game_search, _ranked_igdb_search_rows, _cache_igdb_games,
     )
@@ -167,59 +147,52 @@ def _find_top_game_id(name: str) -> int | None:
     if len(query) < 3:
         return None
     with _session() as session:
-        local = _local_game_search(session, query, 0)["items"]
-        if local:
-            return int(local[0]["id"])
-    ranked, _ = _ranked_igdb_search_rows(query, priority=Priority.BACKGROUND)
-    if not ranked:
+        items = _local_game_search(session, query, 0)["items"]
+        if items:
+            return int(items[0]["id"])
+    items, _ = _ranked_igdb_search_rows(query, priority=Priority.BACKGROUND)
+    if not items:
         return None
-    cached = _cache_igdb_games([ranked[0]])
+    cached = _cache_igdb_games([items[0]])
     return int(cached[0]["id"]) if cached else None
 
 
 def resolve_games(limit: int = 1, *, only_id: int | None = None) -> dict:
-    """Resolve ONE source link with all its titles, resumable on long articles.
-
-    Work done outside the DB transaction; status/cursor/temp results are
-    persisted after every name. Final commit moves resolved IDs to saved_links
-    and deletes the entire job (including temporary GPT names).
-    """
+    """Match ONE saved URL's names, continuing by cursor without a job table."""
     if limit != 1:
         raise ValueError("Resolution processes exactly one link per invocation")
     now = _now()
     with _session() as session:
-        query = (select(SavedLinkJob)
-                 .join(SavedLink, SavedLink.id == SavedLinkJob.saved_link_id)
-                 .where(or_(
-                     SavedLinkJob.phase == "resolving",
-                     and_(SavedLinkJob.phase == "matching",
-                          SavedLinkJob.lease_until <= now),
-                 ))
-                 .order_by(SavedLinkJob.id).limit(1)
-                 .with_for_update(of=SavedLinkJob, skip_locked=True))
+        query = (select(SavedLink)
+                 .where(SavedLink.status == "processing",
+                        SavedLink.gpt_names.is_not(None),
+                        or_(SavedLink.lease_until.is_(None),
+                            SavedLink.lease_until <= now))
+                 .order_by(SavedLink.created_at.asc(), SavedLink.id.asc())
+                 .limit(1).with_for_update(skip_locked=True))
         if only_id is not None:
             query = query.where(SavedLink.id == only_id)
-        job = session.scalar(query)
-        if job is None:
+        link = session.scalar(query)
+        if link is None:
             return {"links": 0, "processed": 0, "matched": 0,
                     "remaining": 0, "complete": True}
-        link_id, job_id = job.saved_link_id, job.id
+        link_id = link.id
         token = secrets.token_urlsafe(24)
-        job.phase = "matching"
-        job.lease_token = token
-        job.lease_until = now + timedelta(minutes=MATCH_LEASE_MINUTES)
+        link.lease_token = token
+        link.lease_until = now + timedelta(minutes=MATCH_LEASE_MINUTES)
         session.commit()
 
     processed = matched = 0
     start = time.monotonic()
     while processed < MAX_TITLES_PER_PASS and time.monotonic() - start < MAX_PASS_SECONDS:
         with _session() as session:
-            job = session.get(SavedLinkJob, job_id)
-            if job is None or job.phase != "matching" or job.lease_token != token:
+            link = session.get(SavedLink, link_id)
+            if (link is None or link.status != "processing"
+                    or link.lease_token != token or link.gpt_names is None):
                 return {"links": 0, "processed": processed, "matched": matched,
                         "remaining": 0, "complete": False, "cancelled": True}
-            cursor = job.cursor
-            names = job.names or []
+            cursor = link.match_cursor
+            names = link.gpt_names
             if cursor >= len(names):
                 break
             name = names[cursor]
@@ -231,73 +204,62 @@ def resolve_games(limit: int = 1, *, only_id: int | None = None) -> dict:
             temporary_error = True
 
         with _session() as session:
-            job = session.scalar(select(SavedLinkJob).where(
-                SavedLinkJob.id == job_id,
-            ).with_for_update())
-            if (job is None or job.phase != "matching"
-                    or job.lease_token != token):
+            link = session.scalar(
+                select(SavedLink).where(SavedLink.id == link_id).with_for_update()
+            )
+            if (link is None or link.status != "processing"
+                    or link.lease_token != token or link.gpt_names is None):
                 return {"links": 0, "processed": processed, "matched": matched,
                         "remaining": 0, "complete": False, "cancelled": True}
-            link = session.get(SavedLink, link_id)
-            if link is None:
-                return {"links": 0, "processed": processed, "matched": matched,
-                        "remaining": 0, "complete": False, "cancelled": True}
-            if temporary_error or job.lease_until <= _now():
-                job.match_failures += 1
-                if job.match_failures < MAX_MATCH_ATTEMPTS:
-                    job.phase = "resolving"
-                    job.lease_token = None
-                    job.lease_until = None
+            if temporary_error or link.lease_until <= _now():
+                link.match_failures += 1
+                if link.match_failures < MAX_MATCH_ATTEMPTS:
+                    link.lease_token = None
+                    link.lease_until = None
                     session.commit()
                     return {"links": 1, "linkId": link_id, "processed": processed,
-                            "matched": matched, "remaining": len(job.names) - job.cursor,
+                            "matched": matched,
+                            "remaining": len(link.gpt_names) - link.match_cursor,
                             "complete": False, "retry": True}
-                link.error = "Некоторые названия не удалось найти в каталоге."
+                link.error = "Некоторые названия не удалось сопоставить с каталогом."
             elif candidate_id is not None:
-                # Public game search returns IGDB IDs; store only local game PKs.
+                # The catalog search returns IGDB IDs; persist our own PKs.
                 game = session.scalar(select(Game).where(Game.igdb_id == candidate_id))
-                if game is not None and game.id not in (job.resolved_ids or []):
-                    job.resolved_ids = list(job.resolved_ids or []) + [game.id]
+                if game is not None and game.id not in (link.game_ids or []):
+                    link.game_ids = list(link.game_ids or []) + [game.id]
                     matched += 1
-            job.cursor += 1
-            job.match_failures = 0
+            link.match_cursor += 1
+            link.match_failures = 0
+            link.updated_at = _now()
             processed += 1
             session.commit()
 
     with _session() as session:
-        job = session.scalar(select(SavedLinkJob).where(
-            SavedLinkJob.id == job_id,
-        ).with_for_update())
-        if (job is None or job.phase != "matching"
-                or job.lease_token != token):
+        link = session.scalar(select(SavedLink).where(
+            SavedLink.id == link_id).with_for_update())
+        if (link is None or link.status != "processing" or
+                link.lease_token != token or link.gpt_names is None):
             return {"links": 0, "processed": processed, "matched": matched,
                     "remaining": 0, "complete": False, "cancelled": True}
-        remaining = len(job.names or []) - job.cursor
+        remaining = len(link.gpt_names) - link.match_cursor
         if remaining == 0:
-            link = session.get(SavedLink, link_id)
-            if link is None:
-                return {"links": 0, "processed": processed, "matched": matched,
-                        "remaining": 0, "complete": False, "cancelled": True}
-            # Exclude games that may have been deleted during this slow batch.
-            ids = list(dict.fromkeys(job.resolved_ids or []))
-            live_ids = set(session.scalars(select(Game.id).where(Game.id.in_(ids))).all()) if ids else set()
-            link.game_ids = [game_id for game_id in ids if game_id in live_ids]
+            ids = list(dict.fromkeys(link.game_ids or []))
+            live = set(session.scalars(
+                select(Game.id).where(Game.id.in_(ids))
+            ).all()) if ids else set()
+            link.game_ids = [game_id for game_id in ids if game_id in live]
             link.status = "ready"
             link.finished_at = _now()
-            link.updated_at = _now()
-            session.delete(job)
-        else:
-            job.phase = "resolving"
-            job.lease_token = None
-            job.lease_until = None
+        link.lease_token = None
+        link.lease_until = None
+        link.updated_at = _now()
         session.commit()
         return {"links": 1, "linkId": link_id, "processed": processed,
                 "matched": matched, "remaining": remaining,
                 "complete": remaining == 0}
 
 
-
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("claim", "submit", "resolve"))
     parser.add_argument("--limit", type=int, default=1)
