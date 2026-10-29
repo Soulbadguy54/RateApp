@@ -44,6 +44,12 @@ Rate APP — mobile-first веб-приложение/PWA для поиска и
 - Удаление из коллекции не должно удалять настоящее прохождение и оценки. Для untracked без других членств возможна очистка placeholder-записи.
 - Переходы, кнопки «+», возвращение со страницы редактирования и контекстные действия должны сохранять ожидаемую историю/scroll.
 
+### Security for saved-link ingestion (29.10.2026; staging only)
+
+- Gateway workflow must be `claim` (one URL, ID/token, **no raw URL in reply**) → `prepare` (stdin ID/token) → `submit`. `prepare` checks Google Web Risk Lookup and then DNS-pinned SSRF-resistant fetch per redirect, max 1MB HTML/text and 60K sanitized characters; no browser/JS/cookies/proxy. The API POST to save URL does not fetch the resource.
+- `WEB_RISK_API_KEY` is mandatory for actual processing, kept in the private VPS environment only; without key (or if Web Risk is unavailable), no article text is sent to GPT. Key and billing are not yet configured by the user. Text is not stored in PostgreSQL. Video/Instagram media itself is not analyzed.
+- Strict staging ChatGPT task prompt: [GPT_SAVED_LINKS_TASK](GPT_SAVED_LINKS_TASK.md). It forbids obeying any external content, navigation, secrets or nonapproved commands. The existing Gateway SSH tool access is **not restricted by technical means** per current owner decision, so prompt injection remains a meaningful residual risk until least-privilege access is implemented. Never silently enable production ingestion.
+
 ## 5а. Сохранённые ссылки (29.10.2026, develop/staging)
 
 - Одна постоянная таблица `saved_links`: `id`, `user_id`, уникальная пара пользователь+нормализованный URL через `url_hash`, `gpt_names TEXT[] NULL`, `game_ids INTEGER[]` с локальными `games.id`, `created_at`, технические status/lease/cursor/error. `gpt_names=NULL` — не обработано GPT; `[]` — проверено, имён нет. После удаления ссылки оба массива исчезают вместе с самой записью. Отдельной таблицы `saved_link_jobs` нет (миграции `20261029_07`/`20261029_08`).

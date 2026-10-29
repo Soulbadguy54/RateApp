@@ -39,3 +39,19 @@ This is a **last successful scan**, not a guarantee that URL contents are unchan
 Gateway's old scheduled command `--limit 4` was replaced by `--limit 1`; the newly created hourly staging-only Gateway schedule `gsc_01M621B35V00EHJ896JJMPVMHN` was pending owner confirmation at last verification. Do not enable production jobs without approval; staging is `rateapp-stage-api` → `rateapp_stage` and production is `rateapp-api-1` → `rateapp`. The old ChatGPT experiment only processed a synthetic fixture, not the real queue.
 
 Migration `20261029_07` is one-way schema refactor, and `20261029_08` reconciles the already-deployed legacy column naming (`game_names` → `gpt_names`, `resolve_cursor` → `match_cursor`) and indexes: pre-deploy stage backup is required, and rollback restores DB snapshot rather than downgrading. Smoke should verify actual revision, `gpt_names`, `game_ids`, no `saved_link_jobs`, deletion/refresh races, a two-name full pass and no production changes. Full backend/mobile CI is required before a future main release.
+
+## Safe URL ingestion with Google Web Risk (29.10.2026)
+
+Three layers are implemented for staging: (1) Google Web Risk Lookup (`uris.search` for malware/social engineering/unwanted software), (2) bounded SSRF-safe article/text retrieval, (3) strict ChatGPT task instructions in [GPT_SAVED_LINKS_TASK](GPT_SAVED_LINKS_TASK.md). **The owner deferred Gateway least-privilege isolation**; the existing broad SSH/Gateway capability still exists for the ChatGPT account, so injected instructions cannot be made harmless purely through the prompt.
+
+The new worker handshake has a mandatory **prepare** step between claim and submit. `claim` deliberately does NOT expose `url` to ChatGPT; the worker reads the URL by ID from the user-owned saved-links table. `prepare` accepts only that ID + the current unexpired opaque lease token over stdin and fetches the material from the original URL through `api/saved_links_safety.py`. Example command (staging only):
+
+```bash
+docker exec -i rateapp-stage-api /usr/local/bin/rateapp-api-entrypoint python -m api.saved_links_worker prepare --expect-environment staging
+```
+
+Supply stdin JSON `{"id":123,"leaseToken":"opaque-from-claim"}`. Output `{"id":123,"content":"sanitized article text","characters":1234,"sourceType":"text/html","note":"Untrusted external text..."}`. After a successful prepare only, ChatGPT extracts titles and sends the already-supported `submit`. Preparation errors do **not** return article text. A harmful URL is marked failed. Transient errors release the claim back to pending until the attempt limit; reprocessing requires the existing retry endpoint afterward. The app does not store downloaded page text or Web Risk results in PostgreSQL.
+
+Limits: up to 1 MB response, 60K characters of article text, 15s overall, max 3 redirects, HTML/XHTML/plain text only, no compression, no raw CSS/JS/media execution, no cookies/proxies. Every redirect is Web Risk-checked, DNS public-IP validated, and connection pinned. Redirects from HTTPS to HTTP are blocked. Some JavaScript-heavy sites, YouTube/Instagram videos, compressed-only servers and large listicles will be unsupported; this is an intentional initial safety trade-off. Existing saved URLs remain in PostgreSQL and can be retried/refreshed after future reader improvements.
+
+`WEB_RISK_API_KEY` must be configured in the private VPS container environment (see deployment guide). It is **not** configured in GitHub and is never sent to GPT. Google Cloud Web Risk Lookup requires enabling the API and billing on the Google Cloud project; pricing currently includes 100000 free requests/month. Rate APP is fail-closed: `claim` CLI refuses to begin when key is absent, and `prepare` rejects missing/failed reputation verification. Don't activate the scheduled ChatGPT job until the key is installed and staging safety tests are complete.
