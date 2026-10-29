@@ -56,14 +56,8 @@ def upgrade():
         """)
         op.drop_table("saved_link_jobs")
 
-    # Old completed jobs deleted their GPT names, so those names are not
-    # recoverable. An empty array marks the past scan as completed (rather
-    # than incorrectly enqueueing it). User can explicitly request refresh.
-    op.execute("""
-        UPDATE saved_links
-           SET gpt_names = '{}'::text[]
-         WHERE status = 'ready' AND gpt_names IS NULL
-    """)
+    # Existing ready links have known game IDs but old GPT names were erased.
+    # Leave gpt_names NULL and status ready; only explicit refresh re-enqueues.
 
     if "ix_saved_links_queue" not in {
         ix["name"] for ix in inspect(bind).get_indexes("saved_links")

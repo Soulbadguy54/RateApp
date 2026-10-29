@@ -1,3 +1,5 @@
+
+**Saved-links staging migration fix:** после неудачи #40807031673 из-за двух файлов с одинаковым `revision=20261029_07` остаётся единственный файл `20261029_07_single_table_saved_links.py` и последующий `20261029_08_reconcile_saved_links.py`. Проверить единственный Alembic head, upgrade `rateapp_stage`, поле `gpt_names`, отсутствие `saved_link_jobs`, health и replay/refresh smoke. Production не менять.
 # RateApp: safe schema changes and deploys
 
 ## Required order
