@@ -21,7 +21,7 @@ class _SafeBrowsingClient:
     # Real Safe Browsing v5 uses protobuf for success, including clean URLs:
     # SearchUrlsResponse(cache_duration=Duration(seconds=300)).
     CLEAN = bytes.fromhex("120308ac02")
-    INFECTED = b"\\x0a\\x07\\x0a\\x05bad!!" + CLEAN
+    INFECTED = bytes.fromhex("0a070a056261642121") + CLEAN
 
     def __init__(self, payload, status=200, content_type="application/x-protobuf"):
         self.payload = payload
@@ -78,10 +78,10 @@ class SavedLinksSafetyTests(unittest.TestCase):
 
     def test_malformed_response_fails_closed(self):
         malformed = (
-            b"", b"not-protobuf", b"\\x12", b"\\x12\\x00",
-            b"\\x1f\\x00", b"\\x12\\x03\\x08\\xff",
-            b"\\x12\\x03\\x08\\xac\\x02\\x00",
-            b"\\x0a\\x07\\x0a\\x05bad!!",
+            b"", b"not-protobuf", bytes.fromhex("12"), bytes.fromhex("1200"),
+            bytes.fromhex("1f00"), bytes.fromhex("120308ff"),
+            bytes.fromhex("120308ac0200"),
+            bytes.fromhex("0a070a056261642121"),
         )
         for payload in malformed:
             client = _SafeBrowsingClient(payload)
