@@ -8,6 +8,7 @@ import ipaddress
 import os
 import socket
 import ssl
+import subprocess
 import time
 from html.parser import HTMLParser
 from http.client import HTTPConnection, HTTPSConnection, HTTPException
@@ -42,7 +43,7 @@ class SourceSafetyError(ValueError):
         self.terminal = terminal
 
 
-def check_web_risk(url: str) -> None:
+def check_web_risk(url: str, *, timeout: float = 5.0) -> None:
     """Lookup API, one URL per request. Missing key/errors = no access."""
     api_key = os.environ.get("WEB_RISK_API_KEY", "").strip()
     if not api_key:
@@ -50,7 +51,7 @@ def check_web_risk(url: str) -> None:
     params = [("uri", url), ("key", api_key)]
     params += [("threatTypes", threat) for threat in THREAT_TYPES]
     try:
-        with httpx.Client(timeout=5.0, follow_redirects=False, trust_env=False) as client:
+        with httpx.Client(timeout=min(timeout, 5.0), follow_redirects=False, trust_env=False) as client:
             response = client.get(WEB_RISK_ENDPOINT, params=params)
             response.raise_for_status()
             result = response.json()
@@ -64,17 +65,30 @@ def check_web_risk(url: str) -> None:
 
 
 def _public_address(host: str, port: int) -> str:
-    """Validate every DNS answer, pin the chosen public address for connect."""
+    """Bounded system DNS lookup, then pin one validated public IP.
+
+    getent ahosts uses the container's normal resolver, but runs in a short
+    subprocess so a stalled DNS server cannot hang the worker indefinitely.
+    Connection never resolves the hostname again after this verification.
+    """
+    del port  # HTTP transport already restricts this to 80/443.
     try:
-        records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-        addresses = {entry[4][0] for entry in records}
+        lookup = subprocess.run(
+            ["getent", "ahosts", host],
+            capture_output=True, text=True, timeout=MAX_HOST_LOOKUP_SECONDS,
+            check=True,
+        )
+        if len(lookup.stdout) > 65_536:
+            raise SourceSafetyError("Слишком большой DNS-ответ.", terminal=True)
+        addresses = {line.split()[0] for line in lookup.stdout.splitlines() if line.split()}
         if not addresses or any(not ipaddress.ip_address(value).is_global
                                 for value in addresses):
             raise SourceSafetyError("Недопустимый сетевой адрес ссылки.", terminal=True)
         return sorted(addresses)[0]
     except SourceSafetyError:
         raise
-    except (socket.gaierror, ValueError, OSError) as exc:
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError,
+            FileNotFoundError, ValueError, OSError) as exc:
         raise SourceSafetyError("Не удалось безопасно проверить адрес ссылки.") from exc
 
 
@@ -234,7 +248,9 @@ def prepare_source(url: str) -> dict[str, str | int]:
         if current in seen:
             raise SourceSafetyError("Циклический редирект.", terminal=True)
         seen.add(current)
-        check_web_risk(current)
+        if deadline - time.monotonic() <= 0:
+            raise SourceSafetyError("Истекло время чтения ссылки.")
+        check_web_risk(current, timeout=min(5.0, deadline - time.monotonic()))
         status, headers, body = _fetch_once(current, deadline)
         if status == 200:
             text = _read_text(body, headers)
