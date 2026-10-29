@@ -196,7 +196,7 @@ class DiscoveryFeedback(Base):
 
 
 class SavedLink(Base):
-    """User-owned source URL, separate from ingestion jobs and library entries."""
+    """One user-owned URL and the names/verified IDs last extracted from it."""
     __tablename__ = "saved_links"
     __table_args__ = (
         UniqueConstraint("user_id", "url_hash", name="uq_saved_links_user_url"),
@@ -210,45 +210,23 @@ class SavedLink(Base):
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
     url_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
-    # Only internal games.id values are durable; titles are temporary job input.
+    # NULL: GPT has not supplied any result; []: processed, zero games.
+    game_names: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+    # Internal games.id values (not IGDB IDs), in source appearance order.
     game_ids: Mapped[list[int]] = mapped_column(
         ARRAY(Integer), nullable=False, server_default=text("'{}'::integer[]"),
     )
-    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'pending'"), index=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'pending'"), index=True,
+    )
     error: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    job: Mapped["SavedLinkJob | None"] = relationship(
-        back_populates="saved_link", cascade="all, delete-orphan", uselist=False,
-    )
-
-
-class SavedLinkJob(Base):
-    """Disposable queue state, one job per link, deleted at terminal state."""
-    __tablename__ = "saved_link_jobs"
-    __table_args__ = (
-        CheckConstraint("phase IN ('pending', 'claimed', 'resolving', 'matching')",
-                        name="ck_saved_link_job_phase"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    saved_link_id: Mapped[int] = mapped_column(
-        ForeignKey("saved_links.id", ondelete="CASCADE"), unique=True, index=True,
-    )
-    phase: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default=text("'pending'"), index=True,
-    )
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    cursor: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    match_failures: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    # Tiny transient processing markers on the same row; not another queue.
     lease_token: Mapped[str | None] = mapped_column(String(64))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    names: Mapped[list[str]] = mapped_column(
-        ARRAY(Text), nullable=False, server_default=text("'{}'::text[]"),
-    )
-    resolved_ids: Mapped[list[int]] = mapped_column(
-        ARRAY(Integer), nullable=False, server_default=text("'{}'::integer[]"),
-    )
-    saved_link: Mapped[SavedLink] = relationship(back_populates="job")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    resolve_cursor: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    match_failures: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
