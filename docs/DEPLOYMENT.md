@@ -1,3 +1,11 @@
+## Saved-links URL security: staging configuration (29.10.2026)
+
+The new `api.saved_links_worker prepare` requires Google Cloud **Web Risk Lookup API** (`uris.search`). On a Google Cloud project, enable Web Risk API, billing, create an API key and restrict the key to the Web Risk API. Add `WEB_RISK_API_KEY=<key>` only to the root-owned **/srv/rateapp/secrets/app.env** (shared env file for API containers); no API keys in GitHub, ChatGPT prompts, command arguments or logs. Recreate **staging only** through the approved staging deploy/restart after updating the private environment. Do not paste this key into a chat. Existing production app may inherit the env file when recreated, but it must not run saved-links ingestion or receive a GPT schedule without explicit production approval.
+
+**Fail closed:** absence/denial/timeout of Web Risk prevents `prepare` from returning any content, and CLI `claim` checks that a key is present before attempting a URL. One lookup per URL and per redirect hop; count this toward Google Cloud quota. Verify an innocuous *mocked* source in staging first and then an authorized public URL before enabling the ChatGPT job. Note: URL reputation is not proof against prompt injection. No change is made to Gateway SSH access (owner's explicit decision), and prompt-only guardrails cannot guarantee safety. Prompt: [GPT_SAVED_LINKS_TASK](GPT_SAVED_LINKS_TASK.md).
+
+No extra Docker image, long-running process, browser, model or PostgreSQL migration is introduced. External HTML parsing stays on one-shot CLI, with 1MB network cap and total 15s deadline. If private network egress restriction is later approved, add egress firewalls and a dedicated read-only Gateway identity; not part of this change.
+
 
 **Saved-links staging migration fix:** после неудачи #40807031673 из-за двух файлов с одинаковым `revision=20261029_07` остаётся единственный файл `20261029_07_single_table_saved_links.py` и последующий `20261029_08_reconcile_saved_links.py`. Проверить единственный Alembic head, upgrade `rateapp_stage`, поле `gpt_names`, отсутствие `saved_link_jobs`, health и replay/refresh smoke. Production не менять.
 # RateApp: safe schema changes and deploys
