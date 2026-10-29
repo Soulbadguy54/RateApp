@@ -77,7 +77,7 @@ def claim_jobs(limit: int = 1, *, only_id: int | None = None) -> dict:
 
 
 def prepare_job(payload: dict) -> dict:
-    """Read only a currently leased URL through Web Risk and a pinned fetch.
+    """Read only a currently leased URL through Safe Browsing and a pinned fetch.
 
     GPT gets text, never the raw URL or generic browsing instructions.
     No DB lock is held during network I/O; refresh/deletion revokes the token.
@@ -321,8 +321,9 @@ def main() -> None:
         parser.error(f"Environment mismatch: expected {args.expect_environment}, running {current_env}")
     try:
         if args.action == "claim":
-            if not os.environ.get("WEB_RISK_API_KEY", "").strip():
-                raise ValueError("Web Risk key is not configured; URL claims are disabled")
+            from api.saved_links_safety import safe_browsing_key
+            if not safe_browsing_key():
+                raise ValueError("Safe Browsing key is not configured; URL claims are disabled")
             output = claim_jobs(args.limit)
         elif args.action == "prepare":
             body = sys.stdin.read(8192)
