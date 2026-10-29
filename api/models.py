@@ -196,11 +196,13 @@ class DiscoveryFeedback(Base):
 
 
 class SavedLink(Base):
-    """One user-owned URL and the names/verified IDs last extracted from it."""
+    """One durable owner/URL record: GPT names and resolved catalog IDs."""
     __tablename__ = "saved_links"
     __table_args__ = (
         UniqueConstraint("user_id", "url_hash", name="uq_saved_links_user_url"),
         Index("ix_saved_links_game_ids_gin", "game_ids", postgresql_using="gin"),
+        Index("ix_saved_links_queue", "created_at", "id",
+              postgresql_where=text("gpt_names IS NULL AND status IN ('pending', 'processing')")),
         CheckConstraint("status IN ('pending', 'processing', 'ready', 'failed')",
                         name="ck_saved_links_status"),
     )
@@ -210,23 +212,21 @@ class SavedLink(Base):
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
     url_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
-    # NULL: GPT has not supplied any result; []: processed, zero games.
-    game_names: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
-    # Internal games.id values (not IGDB IDs), in source appearance order.
+    # NULL: GPT has not processed this URL; []: processed, no game names found.
+    gpt_names: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    # Local games.id only, not IGDB IDs; deletion trigger prunes removed games.
     game_ids: Mapped[list[int]] = mapped_column(
         ARRAY(Integer), nullable=False, server_default=text("'{}'::integer[]"),
     )
-    status: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default=text("'pending'"), index=True,
-    )
-    error: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    # Tiny transient processing markers on the same row; not another queue.
+    status: Mapped[str] = mapped_column(String(16), nullable=False,
+                                        server_default=text("'pending'"), index=True)
+    # Lightweight per-row lease/cursor, not a separate queue or cache.
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    match_cursor: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    match_failures: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     lease_token: Mapped[str | None] = mapped_column(String(64))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    resolve_cursor: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    match_failures: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    error: Mapped[str | None] = mapped_column(String(300))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
