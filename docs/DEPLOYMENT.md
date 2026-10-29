@@ -53,6 +53,10 @@ mobile browser jobs on main. It never sends real user credentials.
 - Release gating: protect main and configure Vercel Deployment Checks on
   the CI jobs; Vercel Git integration can otherwise deploy before CI finishes.
 
+## Saved links single-table follow-up (29.10.2026)
+
+Alembic `20261029_07` moves temporary GPT names, claim leases, retry counters and match cursor from `saved_link_jobs` into the owner row `saved_links` and drops the separate table. Production is **not** migrated automatically by staging. Staging migration must preserve any partially matched `game_ids` and old completed results. Old completed scans lost their names in prior code, so only explicit refresh can restore them. Check `gpt_names IS NULL` (unprocessed) vs `= '{}'::text[]` (processed empty), FIFO claim by created_at and game IDs on the same record. Staging DB backup and schema verification are required; no automatic downgrade.
+
 ## Saved-link permanent ID array + disposable queue (29.10.2026)
 
 Revision `20261029_06` is a **data-preserving but schema-removing** migration on staging: copy confirmed `saved_link_games.game_id` to `saved_links.game_ids INTEGER[]`, transfer unresolved titles to transient `saved_link_jobs`, drop the old extracted-name table and legacy lease columns. It adds `ix_saved_links_game_ids_gin` and an `AFTER DELETE ON games` trigger to prune deleted game PKs from link arrays. The staging deploy must retain its normal pre-migration backup. Do not manually downgrade; rollback requires restoring the original DB snapshot. On a fresh CI DB, baseline already creates current tables; `20261029_04/05` create the historical intermediate table, and `06` removes it.
