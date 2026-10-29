@@ -71,7 +71,7 @@ class SavedLinksSafetyTests(unittest.TestCase):
             self.assertFalse(ctx.exception.terminal)
 
     def test_mixed_private_dns_answer_is_rejected(self):
-        result = Mock(stdout="8.8.8.8 STREAM trusted.example.org\\n127.0.0.1 STREAM trusted.example.org\\n")
+        result = Mock(stdout="8.8.8.8 STREAM trusted.example.org\n127.0.0.1 STREAM trusted.example.org\n")
         with patch("api.saved_links_safety.subprocess.run", return_value=result):
             with self.assertRaises(SourceSafetyError) as caught:
                 _public_address("trusted.example.org", 443)
