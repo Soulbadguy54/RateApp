@@ -55,7 +55,7 @@ mobile browser jobs on main. It never sends real user credentials.
 
 ## Saved links single-table migration (29.10.2026)
 
-Revision `20261029_07` folds transient `saved_link_jobs` into the same `saved_links` row; `game_names TEXT[] NULL` persist until link removal, and `game_ids INTEGER[]` stay on the row. `NULL` means not GPT-processed while `'{}'` means processed with no names; only pending+NULL are eligible for claiming (oldest first). Existing in-flight names, partial IDs, and cursor migrate before dropping `saved_link_jobs`; historical completed rows retain game IDs but cannot reconstruct deleted names until explicit `POST /refresh`. Existing GIN index and game-delete trigger remain. Deployment uses the normal staging backup; verify revision, columns, absence of old job table and read-only queue. Production must not be modified before owner approval. See [SAVED_LINKS](SAVED_LINKS.md).
+Revision `20261029_07` folds transient `saved_link_jobs` into the same `saved_links` row; `gpt_names TEXT[] NULL` persist until link removal, and `game_ids INTEGER[]` stay on the row. `NULL` means not GPT-processed while `'{}'` means processed with no names; only pending+NULL are eligible for claiming (oldest first). Existing in-flight names, partial IDs, and cursor migrate before dropping `saved_link_jobs`; historical completed rows retain game IDs but cannot reconstruct deleted names until explicit `POST /refresh`. Existing GIN index and game-delete trigger remain. Deployment uses the normal staging backup; verify revision, columns, absence of old job table and read-only queue. Production must not be modified before owner approval. See [SAVED_LINKS](SAVED_LINKS.md).
 
 ## Saved-link permanent ID array + disposable queue (29.10.2026, superseded)
 
