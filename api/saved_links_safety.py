@@ -10,7 +10,7 @@ import socket
 import ssl
 import time
 from html.parser import HTMLParser
-from http.client import HTTPConnection, HTTPSConnection
+from http.client import HTTPConnection, HTTPSConnection, HTTPException
 from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
@@ -27,6 +27,8 @@ THREAT_TYPES = ("MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE")
 ACCEPTED_TYPES = ("text/html", "application/xhtml+xml", "text/plain")
 BLOCKED_TAGS = {"script", "style", "noscript", "iframe", "object", "embed",
                 "svg", "form", "nav", "aside", "footer", "header", "template"}
+VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input",
+                 "link", "meta", "param", "source", "track", "wbr"}
 BLOCKED_HINTS = ("sidebar", "advert", "promo", "related", "recommend",
                  "cookie", "newsletter", "sponsor", "widget", "share-",
                  "navigation")
@@ -148,7 +150,7 @@ def _fetch_once(url: str, deadline: float) -> tuple[int, dict[str, str], bytes]:
         return response.status, headers, b"".join(chunks)
     except SourceSafetyError:
         raise
-    except (OSError, ssl.SSLError, TimeoutError, ValueError) as exc:
+    except (OSError, HTTPException, ssl.SSLError, TimeoutError, ValueError) as exc:
         raise SourceSafetyError("Не удалось безопасно загрузить содержимое.") from exc
     finally:
         connection.close()
@@ -176,7 +178,12 @@ class _ArticleText(HTMLParser):
         is_article = (tag in ("main", "article") or
                       any(x in hint for x in ("article-body", "post-content", "entry-content")))
         parent_article = self.stack[-1][2] if self.stack else False
-        self.stack.append((tag, hidden or parent_blocked, is_article or parent_article))
+        if tag not in VOID_ELEMENTS:
+            self.stack.append((tag, hidden or parent_blocked, is_article or parent_article))
+
+    def handle_startendtag(self, tag, attrs):
+        # Self-closing tags never change ancestor visibility/article context.
+        return
 
     def handle_endtag(self, tag):
         for i in range(len(self.stack) - 1, -1, -1):
