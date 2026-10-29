@@ -1,7 +1,8 @@
-"""Saved-links one-table worker: claim oldest URL, save titles, resolve one URL.
+"""Single-table saved link processing, one URL per invocation.
 
-No separate queue, no cached result shared across users, no resident worker.
-Run inside the intended API container using its rateapp-api-entrypoint.
+Queue selection uses saved_links.gpt_names IS NULL and created_at ASC.
+Row-level leases prevent concurrent ChatGPT claims or game matching;
+deleting a link deletes all its titles and IDs, with no separate job records.
 """
 import argparse
 import json
@@ -13,15 +14,15 @@ import unicodedata
 from datetime import timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from api.models import Game, SavedLink
 from api.security import _now, _session
 
-MAX_GAMES = 80
 MAX_CLAIM_ATTEMPTS = 3
 MAX_MATCH_ATTEMPTS = 3
+MAX_GAMES = 80
 CLAIM_LEASE_HOURS = 2
 MATCH_LEASE_MINUTES = 5
 MAX_TITLES_PER_PASS = 12
@@ -29,32 +30,33 @@ MAX_PASS_SECONDS = 120
 
 
 def claim_jobs(limit: int = 1, *, only_id: int | None = None) -> dict:
-    """Oldest unprocessed URL first. NULL != [] for the extracted title array."""
+    """Claim the oldest URL where GPT has not returned a names array."""
     if limit != 1:
-        raise ValueError("One link per ChatGPT claim")
+        raise ValueError("Each ChatGPT claim processes exactly one link")
     now = _now()
     with _session() as session:
-        abandoned = session.scalars(select(SavedLink).where(
-            SavedLink.game_names.is_(None),
-            SavedLink.status == "processing",
-            SavedLink.lease_until <= now,
-            SavedLink.attempts >= MAX_CLAIM_ATTEMPTS,
-        ).with_for_update(skip_locked=True)).all()
-        for link in abandoned:
-            link.status = "failed"
-            link.error = "Превышено число попыток распознать статью."
-            link.lease_token = None
-            link.lease_until = None
-            link.finished_at = now
-            link.updated_at = now
+        # A last expired claim leaves its URL visible as failed, not in queue.
+        session.execute(
+            SavedLink.__table__.update().where(
+                SavedLink.gpt_names.is_(None),
+                SavedLink.status == "processing",
+                SavedLink.lease_until <= now,
+                SavedLink.attempts >= MAX_CLAIM_ATTEMPTS,
+            ).values(status="failed", error="Истекло время обработки ссылки.",
+                     lease_token=None, lease_until=None, updated_at=now,
+                     finished_at=now)
+        )
         query = (select(SavedLink)
-                 .where(SavedLink.game_names.is_(None),
-                        SavedLink.attempts < MAX_CLAIM_ATTEMPTS,
-                        or_(SavedLink.status == "pending",
-                            and_(SavedLink.status == "processing",
-                                 SavedLink.lease_until <= now)))
+                 .where(
+                     SavedLink.gpt_names.is_(None),
+                     SavedLink.attempts < MAX_CLAIM_ATTEMPTS,
+                     or_(SavedLink.status == "pending",
+                         and_(SavedLink.status == "processing",
+                              SavedLink.lease_until <= now)),
+                 )
                  .order_by(SavedLink.created_at.asc(), SavedLink.id.asc())
-                 .limit(1).with_for_update(skip_locked=True))
+                 .limit(1)
+                 .with_for_update(skip_locked=True))
         if only_id is not None:
             query = query.where(SavedLink.id == only_id)
         link = session.scalar(query)
@@ -67,23 +69,23 @@ def claim_jobs(limit: int = 1, *, only_id: int | None = None) -> dict:
         link.lease_until = now + timedelta(hours=CLAIM_LEASE_HOURS)
         link.error = None
         link.updated_at = now
-        output = {"id": link.id, "url": link.url, "title": link.title,
+        result = {"id": link.id, "url": link.url, "title": link.title,
                   "leaseToken": link.lease_token, "attempt": link.attempts}
         session.commit()
-        return {"jobs": [output]}
+        return {"jobs": [result]}
 
 
 def _validated_names(payload: dict) -> list[str]:
     raw = payload.get("games")
     if not isinstance(raw, list) or len(raw) > MAX_GAMES:
-        raise ValueError("Expected a list of up to 80 names")
+        raise ValueError("Expected at most 80 game titles")
     names, seen = [], set()
-    for item in raw:
-        if not isinstance(item, str):
-            raise ValueError("Each name must be a string")
-        name = " ".join(unicodedata.normalize("NFKC", item).split())
+    for value in raw:
+        if not isinstance(value, str):
+            raise ValueError("Game title must be a string")
+        name = " ".join(unicodedata.normalize("NFKC", value).split())
         if not 1 <= len(name) <= 255:
-            raise ValueError("Game name length must be 1..255")
+            raise ValueError("Game title length must be 1–255 characters")
         key = name.casefold()
         if key not in seen:
             seen.add(key)
@@ -92,44 +94,46 @@ def _validated_names(payload: dict) -> list[str]:
 
 
 def submit_result(payload: dict) -> dict:
+    """Return GPT names to the URL itself; [] is a completed empty scan."""
     if not isinstance(payload, dict):
-        raise ValueError("Expected a JSON object")
+        raise ValueError("Expected JSON object")
     link_id, token = payload.get("id"), payload.get("leaseToken")
     if type(link_id) is not int or link_id <= 0 or not isinstance(token, str) or not token:
-        raise ValueError("Missing id/leaseToken")
+        raise ValueError("id and leaseToken are required")
     error = payload.get("error")
     if error is not None and (not isinstance(error, str) or not 1 <= len(error) <= 300):
-        raise ValueError("Invalid error string")
-    names = _validated_names(payload) if error is None else None
+        raise ValueError("error must be 1–300 characters")
+    names = _validated_names(payload) if error is None else []
     now = _now()
     with _session() as session:
-        link = session.scalar(select(SavedLink)
-                              .where(SavedLink.id == link_id).with_for_update())
+        link = session.scalar(
+            select(SavedLink).where(SavedLink.id == link_id).with_for_update()
+        )
         if link is None or link.lease_token != token:
-            raise ValueError("Deleted link or stale token")
-        if link.game_names is not None:
-            # Duplicate submit while a previously accepted result is still here.
+            raise ValueError("Deleted link or stale claim token")
+        if link.gpt_names is not None:
             return {"saved": True, "idempotent": True, "id": link_id}
-        if link.status != "processing" or not link.lease_until or link.lease_until <= now:
-            raise ValueError("Expired claim")
+        if link.status != "processing" or link.lease_until is None or link.lease_until <= now:
+            raise ValueError("Claim expired or not processing")
         if error is not None:
             link.status = "failed" if link.attempts >= MAX_CLAIM_ATTEMPTS else "pending"
             link.error = error
             link.finished_at = now if link.status == "failed" else None
+            link.lease_token = None
+            link.lease_until = None
         else:
-            link.game_names = names
+            link.gpt_names = names
             link.game_ids = []
-            link.resolve_cursor = 0
+            link.match_cursor = 0
             link.match_failures = 0
-            link.error = None
-            link.status = "ready" if not names else "processing"
-            link.finished_at = now if not names else None
-        link.lease_token = None
-        link.lease_until = None
+            link.status = "processing" if names else "ready"
+            link.finished_at = None if names else now
+            link.lease_until = None
+            # Hold token until resolver starts, permitting immediate submit replay.
         link.updated_at = now
         session.commit()
         return {"saved": True, "idempotent": False, "id": link_id,
-                "status": link.status, "gamesCount": len(names) if names is not None else 0}
+                "status": link.status, "gamesCount": len(names) if error is None else 0}
 
 
 def _find_top_game_id(name: str) -> int | None:
@@ -154,18 +158,14 @@ def _find_top_game_id(name: str) -> int | None:
 
 
 def resolve_games(limit: int = 1, *, only_id: int | None = None) -> dict:
-    """Resolve one article; commit progress directly to that article's row.
-
-    A bounded pass handles at most 12 names/120 sec; subsequent passes resume
-    on the same link (oldest first). No job table or global title cache exists.
-    """
+    """Match ONE saved URL's names, continuing by cursor without a job table."""
     if limit != 1:
-        raise ValueError("Resolve one link at a time")
+        raise ValueError("Resolution processes exactly one link per invocation")
     now = _now()
     with _session() as session:
         query = (select(SavedLink)
-                 .where(SavedLink.game_names.is_not(None),
-                        SavedLink.status == "processing",
+                 .where(SavedLink.status == "processing",
+                        SavedLink.gpt_names.is_not(None),
                         or_(SavedLink.lease_until.is_(None),
                             SavedLink.lease_until <= now))
                  .order_by(SavedLink.created_at.asc(), SavedLink.id.asc())
@@ -187,44 +187,48 @@ def resolve_games(limit: int = 1, *, only_id: int | None = None) -> dict:
     while processed < MAX_TITLES_PER_PASS and time.monotonic() - start < MAX_PASS_SECONDS:
         with _session() as session:
             link = session.get(SavedLink, link_id)
-            if link is None or link.lease_token != token or link.status != "processing":
+            if (link is None or link.status != "processing"
+                    or link.lease_token != token or link.gpt_names is None):
                 return {"links": 0, "processed": processed, "matched": matched,
                         "remaining": 0, "complete": False, "cancelled": True}
-            names = link.game_names
-            cursor = link.resolve_cursor
-            if names is None or cursor >= len(names):
+            cursor = link.match_cursor
+            names = link.gpt_names
+            if cursor >= len(names):
                 break
             name = names[cursor]
 
-        igdb_id, temporary_error = None, False
+        candidate_id, temporary_error = None, False
         try:
-            igdb_id = _find_top_game_id(name)
+            candidate_id = _find_top_game_id(name)
         except (HTTPException, SQLAlchemyError, OSError, ValueError):
             temporary_error = True
 
         with _session() as session:
-            link = session.scalar(select(SavedLink)
-                                  .where(SavedLink.id == link_id).with_for_update())
-            if (link is None or link.lease_token != token
-                    or link.status != "processing" or link.game_names is None):
+            link = session.scalar(
+                select(SavedLink).where(SavedLink.id == link_id).with_for_update()
+            )
+            if (link is None or link.status != "processing"
+                    or link.lease_token != token or link.gpt_names is None):
                 return {"links": 0, "processed": processed, "matched": matched,
                         "remaining": 0, "complete": False, "cancelled": True}
-            if temporary_error or link.lease_until is None or link.lease_until <= _now():
+            if temporary_error or link.lease_until <= _now():
                 link.match_failures += 1
                 if link.match_failures < MAX_MATCH_ATTEMPTS:
                     link.lease_token = None
                     link.lease_until = None
                     session.commit()
                     return {"links": 1, "linkId": link_id, "processed": processed,
-                            "matched": matched, "remaining": len(link.game_names) - link.resolve_cursor,
+                            "matched": matched,
+                            "remaining": len(link.gpt_names) - link.match_cursor,
                             "complete": False, "retry": True}
-                link.error = "Не все названия удалось сопоставить с каталогом."
-            elif igdb_id is not None:
-                game = session.scalar(select(Game).where(Game.igdb_id == igdb_id))
+                link.error = "Некоторые названия не удалось сопоставить с каталогом."
+            elif candidate_id is not None:
+                # The catalog search returns IGDB IDs; persist our own PKs.
+                game = session.scalar(select(Game).where(Game.igdb_id == candidate_id))
                 if game is not None and game.id not in (link.game_ids or []):
                     link.game_ids = list(link.game_ids or []) + [game.id]
                     matched += 1
-            link.resolve_cursor += 1
+            link.match_cursor += 1
             link.match_failures = 0
             link.updated_at = _now()
             processed += 1
@@ -233,15 +237,17 @@ def resolve_games(limit: int = 1, *, only_id: int | None = None) -> dict:
     with _session() as session:
         link = session.scalar(select(SavedLink).where(
             SavedLink.id == link_id).with_for_update())
-        if link is None or link.lease_token != token or link.game_names is None:
+        if (link is None or link.status != "processing" or
+                link.lease_token != token or link.gpt_names is None):
             return {"links": 0, "processed": processed, "matched": matched,
                     "remaining": 0, "complete": False, "cancelled": True}
-        remaining = len(link.game_names) - link.resolve_cursor
+        remaining = len(link.gpt_names) - link.match_cursor
         if remaining == 0:
-            # Clean up deleted games even if they vanished during this pass.
             ids = list(dict.fromkeys(link.game_ids or []))
-            live_ids = set(session.scalars(select(Game.id).where(Game.id.in_(ids))).all()) if ids else set()
-            link.game_ids = [id_ for id_ in ids if id_ in live_ids]
+            live = set(session.scalars(
+                select(Game.id).where(Game.id.in_(ids))
+            ).all()) if ids else set()
+            link.game_ids = [game_id for game_id in ids if game_id in live]
             link.status = "ready"
             link.finished_at = _now()
         link.lease_token = None
@@ -260,22 +266,22 @@ def main() -> None:
     parser.add_argument("--expect-environment", required=True,
                         choices=("staging", "production", "development"))
     args = parser.parse_args()
-    current = os.getenv("VERCEL_ENV", "development")
-    if current != args.expect_environment:
-        parser.error(f"Environment mismatch: expected {args.expect_environment}, running {current}")
+    current_env = os.getenv("VERCEL_ENV", "development")
+    if current_env != args.expect_environment:
+        parser.error(f"Environment mismatch: expected {args.expect_environment}, running {current_env}")
     try:
         if args.action == "claim":
-            out = claim_jobs(args.limit)
+            output = claim_jobs(args.limit)
         elif args.action == "resolve":
-            out = resolve_games(args.limit)
+            output = resolve_games(args.limit)
         else:
             body = sys.stdin.read(64 * 1024 + 1)
             if len(body) > 64 * 1024:
                 raise ValueError("Payload too large")
-            out = submit_result(json.loads(body))
+            output = submit_result(json.loads(body))
     except (ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
-    print(json.dumps(out, ensure_ascii=False))
+    print(json.dumps(output, ensure_ascii=False))
 
 
 if __name__ == "__main__":
