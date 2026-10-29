@@ -71,11 +71,8 @@ class SavedLinksSafetyTests(unittest.TestCase):
             self.assertFalse(ctx.exception.terminal)
 
     def test_mixed_private_dns_answer_is_rejected(self):
-        answers = [
-            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443)),
-            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443)),
-        ]
-        with patch("api.saved_links_safety.socket.getaddrinfo", return_value=answers):
+        result = Mock(stdout="8.8.8.8 STREAM trusted.example.org\\n127.0.0.1 STREAM trusted.example.org\\n")
+        with patch("api.saved_links_safety.subprocess.run", return_value=result):
             with self.assertRaises(SourceSafetyError) as caught:
                 _public_address("trusted.example.org", 443)
         self.assertTrue(caught.exception.terminal)
@@ -96,7 +93,7 @@ class SavedLinksSafetyTests(unittest.TestCase):
 
     def test_redirects_recheck_reputation_and_deny_local(self):
         checked = []
-        def checker(url):
+        def checker(url, **kwargs):
             checked.append(url)
         with patch("api.saved_links_safety.check_web_risk", side_effect=checker), patch(
             "api.saved_links_safety._fetch_once",
