@@ -121,7 +121,7 @@
 .profile-top-game::after {
   content: '';
   position: absolute;
-  z-index: -1;
+  z-index: 0;
   border: 1px solid rgba(255,255,255,.12);
   border-radius: 50%;
   background: linear-gradient(160deg, rgba(125,159,201,.35), rgba(28,43,69,.36));
