@@ -100,6 +100,7 @@ test('profile keeps nickname, avatar and tint inside one sticky glass panel', as
 
 
 test('floating cloud cards only use personal completed/dropped scores and open the game detail', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
   const game = (id: number, title: string) => ({
     id, title, genres: [], year: 2025, releaseDate: '2025-01-01',
     developer: 'Example', platforms: ['PC'], igdbRating: 90,
@@ -142,6 +143,12 @@ test('floating cloud cards only use personal completed/dropped scores and open t
   const steam = page.getByRole('img', { name: 'Steam — интеграция пока не подключена' })
   await expect(steam).toBeVisible()
   await expect(page.getByRole('button', { name: /Steam/ })).toHaveCount(0)
+  await expect(steam).toHaveCSS('animation-name', 'profile-steam-cloud-drift')
+  await expect(steam).toHaveCSS('animation-duration', '8.3s')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(steam).toHaveCSS('animation-name', 'none')
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await expect(steam).toHaveCSS('animation-name', 'profile-steam-cloud-drift')
   const avatarCenter = await page.locator('.profile-glass-header__avatar-row').boundingBox()
   const hero = await page.locator('.profile-glass-header__hero').boundingBox()
   expect(avatarCenter && hero).toBeTruthy()
