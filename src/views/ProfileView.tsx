@@ -306,7 +306,8 @@ export default function ProfileView({
         </AnimatePresence>
       </header>
 
-      <section className="profile-settings" aria-label="Настройки профиля">
+      <section className="profile-settings" aria-label="Настройки профиля"
+        style={{ '--profile-accent-color': chosenTint.color, '--profile-tint-rgb': chosenTint.rgb } as CSSProperties}>
         <div className="profile-settings__tabs" role="tablist" aria-label="Разделы настроек">
           {([
             { id: 'notifications' as const, label: 'Уведомления', icon: 'bell' as const, ref: notificationsTabRef },
@@ -327,7 +328,8 @@ export default function ProfileView({
                   : event.key === 'End' ? 'security'
                   : settingsTab === 'notifications' ? 'security' : 'notifications'
                 setSettingsTab(next)
-                ;(next === 'notifications' ? notificationsTabRef : securityTabRef).current?.focus()
+                const targetTab = next === 'notifications' ? notificationsTabRef : securityTabRef
+                targetTab.current?.focus()
               }}>
               {settingsTab === tab.id && (
                 <motion.span className="profile-settings__tab-active" layoutId="profile-settings-active"
