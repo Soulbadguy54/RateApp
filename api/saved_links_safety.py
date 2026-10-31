@@ -14,7 +14,7 @@ import subprocess
 import time
 from html.parser import HTMLParser
 from http.client import HTTPConnection, HTTPSConnection, HTTPException
-from urllib.parse import quote, urljoin, urlsplit
+from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
 import httpx
 
@@ -464,42 +464,100 @@ def _parse_page_preview(body: bytes, headers: dict[str, str]) -> dict[str, str]:
     return parser.result()
 
 
+_YOUTUBE_ID_PATTERN = re.compile(r"[a-zA-Z0-9_-]{11}\\Z")
+
+
+def _youtube_video_id(url: str) -> str | None:
+    """Recognize only official YouTube URL shapes; never fetch query hosts."""
+    try:
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower().rstrip(".")
+        if parts.scheme not in ("http", "https") or parts.username or parts.password:
+            return None
+        segments = [part for part in parts.path.split("/") if part]
+        if host in ("youtu.be", "www.youtu.be"):
+            candidate = segments[0] if len(segments) == 1 else ""
+        elif host in ("youtube.com", "www.youtube.com", "m.youtube.com",
+                      "music.youtube.com", "youtube-nocookie.com", "www.youtube-nocookie.com"):
+            if parts.path == "/watch":
+                candidate = parse_qs(parts.query).get("v", [""])[0]
+            elif len(segments) == 2 and segments[0] in ("shorts", "live", "embed"):
+                candidate = segments[1]
+            else:
+                candidate = ""
+        else:
+            return None
+        return candidate if _YOUTUBE_ID_PATTERN.fullmatch(candidate) else None
+    except ValueError:
+        return None
+
+
 def preview_source(url: str) -> dict[str, str]:
-    """Reputation-checked generic text metadata for any public HTTP(S) page."""
-    body, headers = _safe_page_response(url)
+    """Safe HTML preview, with explicitly labelled fallback on YouTube DNS loss."""
+    try:
+        body, headers = _safe_page_response(url)
+    except SourceSafetyError as exc:
+        # YouTube and youtu.be occasionally fail DNS from the VPS. A generic
+        # label is better than an empty title, but never claim video metadata
+        # was retrieved, nor bypass Safe Browsing to produce the fallback.
+        if exc.terminal or _youtube_video_id(url) is None:
+            raise
+        check_safe_browsing(canonical_url(url))
+        return {"title": "Видео YouTube", "description": ""}
     metadata = _parse_page_preview(body, headers)
     return {"title": metadata["title"], "description": metadata["description"]}
 
 
-def preview_thumbnail_source(url: str) -> tuple[bytes, str] | None:
-    """Verified same-origin image proxy for any public article or video.
-
-    All source and image redirect hops use the same reputation, public-IP,
-    hostname-pinned TLS and maximum response safeguards as GPT fetching.
-    """
-    body, headers = _safe_page_response(url)
-    metadata = _parse_page_preview(body, headers)
-    if not metadata["image_url"]:
-        return None
-    try:
-        media_url = canonical_url(urljoin(headers.get("__verified_final_url", url), metadata["image_url"]))
-    except ValueError:
-        return None
-    if urlsplit(media_url).scheme != "https":
-        return None
+def _verified_thumbnail(media_url: str) -> tuple[bytes, str] | None:
     mime_types = ("image/jpeg", "image/png", "image/webp")
     image, image_headers = _safe_page_response(
         media_url, accepted_types=mime_types, max_bytes=512_000, require_https=True,
     )
     mime = image_headers.get("content-type", "").split(";", 1)[0].strip().lower()
     valid = (
-        mime == "image/jpeg" and image.startswith(b"\xff\xd8\xff")
-        or mime == "image/png" and image.startswith(b"\x89PNG\r\n\x1a\n")
+        mime == "image/jpeg" and image.startswith(b"\\xff\\xd8\\xff")
+        or mime == "image/png" and image.startswith(b"\\x89PNG\\r\\n\\x1a\\n")
         or mime == "image/webp" and image.startswith(b"RIFF") and image[8:12] == b"WEBP"
     )
     if not valid or len(image) < 20:
         return None
     return image, mime
+
+
+def _youtube_thumbnail(video_id: str) -> tuple[bytes, str] | None:
+    # Video ID is strictly validated, the CDN hostname is fixed and HTTPS,
+    # and the normal pinned-public-IP / Safe Browsing checks remain enabled.
+    return _verified_thumbnail(f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg")
+
+
+def preview_thumbnail_source(url: str) -> tuple[bytes, str] | None:
+    """Verified article OG image, or safe YouTube CDN image if page DNS fails."""
+    video_id = _youtube_video_id(url)
+    try:
+        body, headers = _safe_page_response(url)
+    except SourceSafetyError as exc:
+        if exc.terminal or video_id is None:
+            raise
+        check_safe_browsing(canonical_url(url))
+        return _youtube_thumbnail(video_id)
+
+    metadata = _parse_page_preview(body, headers)
+    if metadata["image_url"]:
+        try:
+            media_url = canonical_url(urljoin(headers.get("__verified_final_url", url), metadata["image_url"]))
+        except ValueError:
+            media_url = ""
+        if media_url and urlsplit(media_url).scheme == "https":
+            try:
+                image = _verified_thumbnail(media_url)
+            except SourceSafetyError:
+                if not video_id:
+                    raise
+            else:
+                if image is not None:
+                    return image
+
+    return _youtube_thumbnail(video_id) if video_id else None
 
 
 def _safe_page_response(url: str, *,
