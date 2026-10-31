@@ -103,6 +103,32 @@ class SavedLinkTests(unittest.TestCase):
             submit_result({"id":link["id"], "leaseToken":claim["leaseToken"],
                            "games":["Hollow Knight Test"]})
 
+    def test_bulk_delete_is_atomic_scoped_and_preserves_catalog(self):
+        first = self.save("bulk-a")
+        second = self.save("bulk-b")
+        keeper = self.save("bulk-kept")
+        endpoint = "/api/saved-links/bulk-delete"
+
+        # A missing/foreign row makes the entire operation fail: no partial delete.
+        self.assertEqual(self.client.post(endpoint, json={
+            "ids": [first["id"], 2147483647],
+        }).status_code, 404)
+        self.assertEqual(self.client.get(f'/api/saved-links/{first["id"]}').status_code, 200)
+        for ids in ([], [first["id"], first["id"]], [-1], [True], ["1"]):
+            self.assertEqual(self.client.post(endpoint, json={"ids": ids}).status_code, 422)
+        self.assertEqual(TestClient(app).post(endpoint, json={
+            "ids": [first["id"]],
+        }).status_code, 401)
+
+        response = self.client.post(endpoint, json={"ids": [first["id"], second["id"]]})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {"deleted": 2})
+        self.assertEqual(self.client.get(f'/api/saved-links/{first["id"]}').status_code, 404)
+        self.assertEqual(self.client.get(f'/api/saved-links/{second["id"]}').status_code, 404)
+        self.assertEqual(self.client.get(f'/api/saved-links/{keeper["id"]}').status_code, 200)
+        with SessionLocal() as session:
+            self.assertIsNotNone(session.get(Game, self.game_pk))
+
     def test_expired_claim_retry_failed_and_explicit_refresh(self):
         link = self.save()
         first = claim_jobs(only_id=link["id"])["jobs"][0]
@@ -160,6 +186,10 @@ class SavedLinkTests(unittest.TestCase):
         for method, path in [("get",""),("delete",""),("post","/refresh"),("post","/retry")]:
             self.assertEqual(getattr(other,method)(
                 f'/api/saved-links/{link["id"]}{path}').status_code,404)
+        self.assertEqual(other.post("/api/saved-links/bulk-delete", json={
+            "ids": [link["id"]],
+        }).status_code, 404)
+        self.assertEqual(self.client.get(f'/api/saved-links/{link["id"]}').status_code, 200)
         other.close()
         with SessionLocal() as session:
             user = session.scalar(select(User).where(User.nickname == nick))
