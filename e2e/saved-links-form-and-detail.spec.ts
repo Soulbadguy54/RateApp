@@ -67,6 +67,7 @@ test('Game detail from links: IGDB ID, similar covers, and wishlist hold toast',
     glyph: 'S', coverUrl: '' }
   const related = { ...details, id: 26472, title: 'Disco Elysium', glyph: 'D' }
   let added = 0
+  let removed = 0
   await page.route('**/api/**', async route => {
     const pathname = new URL(route.request().url()).pathname
     const method = route.request().method()
@@ -92,6 +93,9 @@ test('Game detail from links: IGDB ID, similar covers, and wishlist hold toast',
       await json({ items: [related] })
     } else if (pathname.endsWith('/wishlist') && method === 'PUT') {
       added++
+      await json({})
+    } else if (pathname.endsWith('/wishlist') && method === 'DELETE') {
+      removed++
       await json({})
     } else await json({})
   })
@@ -128,6 +132,28 @@ test('Game detail from links: IGDB ID, similar covers, and wishlist hold toast',
   })
   await expect(page.getByText('Добавлено в «Хочу пройти»')).toBeVisible()
   expect(added).toBe(1)
+  await expect(collection).toHaveAttribute('aria-pressed', 'true')
+  await expect(collection.locator('svg')).toHaveCSS('fill', 'rgb(255, 162, 202)')
+  await collection.evaluate(el => {
+    const touch = { identifier: 40, clientX: 45, clientY: 45, target: el }
+    const event = new Event('touchstart', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'touches', { value: [touch] })
+    Object.defineProperty(event, 'targetTouches', { value: [touch] })
+    Object.defineProperty(event, 'changedTouches', { value: [touch] })
+    el.dispatchEvent(event)
+  })
+  await page.waitForTimeout(540)
+  await collection.evaluate(el => {
+    const touch = { identifier: 40, clientX: 45, clientY: 45, target: el }
+    const event = new Event('touchend', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'touches', { value: [] })
+    Object.defineProperty(event, 'targetTouches', { value: [] })
+    Object.defineProperty(event, 'changedTouches', { value: [touch] })
+    el.dispatchEvent(event)
+  })
+  await expect(page.getByText('Убрано из «Хочу пройти»')).toBeVisible()
+  await expect(collection).toHaveAttribute('aria-pressed', 'false')
+  expect(removed).toBe(1)
   await expect(page.locator('.detail-collection-picker')).toHaveCount(0)
   // PWA install overlay appears on a delay on some mobile engines.
 
