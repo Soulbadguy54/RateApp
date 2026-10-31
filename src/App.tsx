@@ -1,10 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import GameCard, { Cover } from './components/GameCard'
 import CarouselArrows from './components/CarouselArrows'
 import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
 import BottomNavGameSlot from './components/BottomNavGameSlot'
+import { profileTintOption } from './profilePalette'
 import RatingWheel, { closestHalfPoint } from './components/RatingWheel'
 import { CollectionIcon, CollectionAppearanceEditor } from './components/CollectionAppearance'
 import {
@@ -3726,7 +3727,11 @@ function App() {
                 if (activeTab === item.id) resetTab(item.id)
                 else openTab(item.id)
               }}
-              className={activeTab === item.id ? 'bottom-nav__item bottom-nav__item--active' : 'bottom-nav__item'}
+              className={'bottom-nav__item' + (item.id === 'profile' ? ' bottom-nav__item--profile' : '') +
+                (activeTab === item.id ? ' bottom-nav__item--active' : '')}
+              style={item.id === 'profile'
+                ? { '--profile-accent-rgb': profileTintOption(authUser.profileTint).accentRgb } as CSSProperties
+                : undefined}
               whileTap={shouldReduceMotion ? undefined : { scale: .92 }}
               transition={{ type: 'spring', stiffness: 500, damping: 34 }}
             >
