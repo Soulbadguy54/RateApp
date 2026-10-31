@@ -41,6 +41,7 @@ html, body {
   --section-caption-gap: 4px;
   --section-header-height: 54px;
   --section-header-bottom-gap: 14px;
+  --nav-liquid-fill: rgba(16, 24, 41, .5);
   --text-field-height: 52px;
   --text-field-radius: 14px;
   --text-field-font-size: 14px;
@@ -4331,3 +4332,7 @@ body:has(.auth-shell) .install-prompt { display: none; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .bottom-nav { background: rgba(15,21,33,.90); }
 }
+
+/* The expanding IGDB/Collections nav bubbles use the same translucent tint,
+   not the former 92%-opaque black backing. Animated SVG geometry unchanged. */
+.bottom-nav__liquid-path { fill: var(--nav-liquid-fill); }
