@@ -2191,11 +2191,15 @@ function App() {
 
         <AnimatePresence initial={false}>
         {collectionPickerOpen && (
-          <motion.section className="detail-collection-picker" id="game-collection-picker" aria-label="Управление коллекциями"
-            initial={shouldReduceMotion ? false : { opacity: 0, height: 0, y: -9 }}
-            animate={{ opacity: 1, height: 'auto', y: 0 }}
-            exit={shouldReduceMotion ? undefined : { opacity: 0, height: 0, y: -9 }}
-            transition={{ duration: shouldReduceMotion ? 0 : .28, ease: 'easeOut' }}>
+          <motion.div className="detail-collection-picker-motion"
+            initial={shouldReduceMotion ? false : { opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={shouldReduceMotion ? undefined : { opacity: 0, height: 0 }}
+            style={{ overflow: 'hidden' }}
+            transition={{ height: { duration: shouldReduceMotion ? 0 : .32, ease: [.2, .7, .2, 1] },
+              opacity: { duration: shouldReduceMotion ? 0 : .19 } }}>
+          <section className="detail-collection-picker" id="game-collection-picker"
+            aria-label="Управление коллекциями">
             <div className="detail-collection-picker__heading">
               <h2>Коллекции</h2>
             </div>
@@ -2252,7 +2256,8 @@ function App() {
               })}
               </LayoutGroup>
             </div>
-          </motion.section>
+          </section>
+          </motion.div>
         )}
         </AnimatePresence>
 
