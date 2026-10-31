@@ -25,7 +25,7 @@
 .collection-card__mosaic {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  height: 150px;
+  height: clamp(112px, 39vw, 168px);
   overflow: hidden;
   background:
     radial-gradient(circle at 18% 10%,
@@ -60,7 +60,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 7px;
-  padding: 12px;
+  padding: clamp(8px, 2.6vw, 12px);
   background:
     radial-gradient(ellipse at 5% 0%,
       color-mix(in srgb, var(--collection-accent, #c4a2ff) 16%, transparent),
