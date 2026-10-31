@@ -2376,25 +2376,37 @@ function App() {
 
         <section className="info-card detail-similar" aria-label="Похожие игры">
           <span className="eyebrow detail-section-eyebrow">ПОХОЖИЕ</span>
-          {similarGamesById[selectedGame.id] === undefined && (
-            <p className="detail-similar__empty">Подбираем похожие игры…</p>
+          {(!similarGamesById[selectedGame.id] ||
+              (similarGamesById[selectedGame.id].length > 0 && !similarCoversReadyById[selectedGame.id])) && (
+            <div className="detail-similar__loading-track" role="status" aria-label="Загружаются обложки похожих игр">
+              {Array.from({ length: 4 }, (_, i) => (
+                <div className="detail-similar__skeleton-item" key={i}>
+                  <div className="detail-similar__skeleton-cover" />
+                  <div className="detail-similar__skeleton-title" />
+                </div>
+              ))}
+            </div>
           )}
           {similarGamesById[selectedGame.id]?.length === 0 && (
             <p className="detail-similar__empty">Похожих игр пока нет в каталоге.</p>
           )}
-          {(similarGamesById[selectedGame.id]?.length ?? 0) > 0 && (
-            <div className="detail-similar__track" role="list" aria-label="Карусель похожих игр">
-              {similarGamesById[selectedGame.id].map(game => (
-                <div key={game.id} role="listitem" className="detail-similar__item">
-                  <button type="button" className="detail-similar__game"
-                    aria-label={'Открыть похожую игру ' + game.title}
-                    onClick={() => openGame(game.id)}>
-                    <div className="detail-similar__cover"><Cover game={game} compact /></div>
-                    <span>{game.title}</span>
-                  </button>
-                </div>
-              ))}
-            </div>
+          {(similarGamesById[selectedGame.id]?.length ?? 0) > 0 &&
+            similarCoversReadyById[selectedGame.id] && (
+            <motion.div initial={shouldReduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }} transition={{ duration: shouldReduceMotion ? 0 : .35 }}>
+              <CarouselArrows className="detail-similar__track" label="Карусель похожих игр">
+                {similarGamesById[selectedGame.id].map(game => (
+                  <div key={game.id} role="listitem" className="detail-similar__item">
+                    <button type="button" className="detail-similar__game"
+                      aria-label={'Открыть похожую игру ' + game.title}
+                      onClick={() => openGame(game.id)}>
+                      <div className="detail-similar__cover"><Cover game={game} compact smoothLoad /></div>
+                      <span>{game.title}</span>
+                    </button>
+                  </div>
+                ))}
+              </CarouselArrows>
+            </motion.div>
           )}
         </section>
 
