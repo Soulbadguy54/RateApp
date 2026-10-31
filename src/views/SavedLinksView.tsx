@@ -1,30 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
+import { createPortal } from 'react-dom'
 import Icon from '../components/Icon'
 import { sessionFetch } from '../sessionFetch'
 import './SavedLinksView.css'
 
-type SavedGame = { id: number; igdbId: number; title: string; coverUrl?: string | null }
+type SavedGame = { id: number; title: string; coverUrl?: string | null }
 type SavedLink = {
   id: number
   url: string
   title: string | null
-  status: 'pending' | 'processing' | 'ready' | 'failed'
-  gptNames: string[] | null
   createdAt: string
-  error: string | null
   games: SavedGame[]
-  gamesCount: number
 }
 type LinksPage = { items: SavedLink[]; nextBefore: number | null }
 
-const stateMeta: Record<SavedLink['status'], { label: string; tip: string }> = {
-  pending: { label: 'В очереди', tip: 'Ссылка ожидает обработки.' },
-  processing: { label: 'Обрабатываем', tip: 'Ищем упомянутые игры.' },
-  ready: { label: 'Обработано', tip: 'Результат последней проверки.' },
-  failed: { label: 'Ошибка', tip: 'Ссылку не удалось обработать.' },
-}
+const DELETE_DELAY_MS = 4000
+const HOLD_DELAY_MS = 480
+const COUNTDOWN_SEGMENTS = Array.from({ length: 12 }, (_, index) => index)
 
 function displayHost(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
@@ -50,12 +44,49 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [busyId, setBusyId] = useState<number | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const requestRef = useRef<AbortController | null>(null)
+  const pendingDeleteRef = useRef<{ id: number; timer: number } | null>(null)
+  const holdRef = useRef<{ pointerId: number; id: number; x: number; y: number; timer: number } | null>(null)
+  const suppressCardClickRef = useRef<number | null>(null)
+  const cancelDialogRef = useRef<HTMLButtonElement>(null)
+
+  const cancelDelete = () => {
+    if (pendingDeleteRef.current) window.clearTimeout(pendingDeleteRef.current.timer)
+    pendingDeleteRef.current = null
+    setPendingDeleteId(null)
+  }
+  const cancelHold = () => {
+    if (holdRef.current) window.clearTimeout(holdRef.current.timer)
+    holdRef.current = null
+  }
+
+  useEffect(() => {
+    return () => {
+      requestRef.current?.abort()
+      if (pendingDeleteRef.current) window.clearTimeout(pendingDeleteRef.current.timer)
+      if (holdRef.current) window.clearTimeout(holdRef.current.timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!bulkConfirmOpen) return
+    cancelDialogRef.current?.focus()
+    const onEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape' && !deleting) {
+        event.preventDefault()
+        setBulkConfirmOpen(false)
+      }
+    }
+    document.addEventListener('keydown', onEscape)
+    return () => document.removeEventListener('keydown', onEscape)
+  }, [bulkConfirmOpen, deleting])
 
   const fetchLinks = useCallback(async (before: number | null = null) => {
     if (!before) requestRef.current?.abort()
@@ -64,17 +95,17 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
     if (before) setLoadingMore(true)
     else setLoading(true)
     try {
-      const result = await sessionFetch('/api/saved-links?limit=50' + (before ? '&before=' + before : ''), {
-        signal: controller.signal,
-      })
-      if (!result.ok) throw new Error(await responseError(result, 'Не удалось загрузить ссылки.'))
-      const page = await result.json() as LinksPage
+      const response = await sessionFetch('/api/saved-links?limit=50' + (before ? '&before=' + before : ''), { signal: controller.signal })
+      if (!response.ok) throw new Error(await responseError(response, 'Не удалось загрузить ссылки.'))
+      const payload = await response.json() as LinksPage
       if (controller.signal.aborted) return
-      setItems(current => before ? [...current.filter(item => !page.items.some(next => next.id === item.id)), ...page.items] : page.items)
-      setNextBefore(page.nextBefore)
+      setItems(current => before
+        ? [...current.filter(item => !payload.items.some(next => next.id === item.id)), ...payload.items]
+        : payload.items)
+      setNextBefore(payload.nextBefore)
       setError('')
     } catch (cause) {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Нет соединения с сервером.')
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Не удалось загрузить ссылки.')
     } finally {
       if (!controller.signal.aborted) {
         setLoading(false)
@@ -83,94 +114,181 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
     }
   }, [])
 
-  useEffect(() => {
-    void fetchLinks()
-    return () => requestRef.current?.abort()
-  }, [fetchLinks])
+  useEffect(() => { void fetchLinks() }, [fetchLinks])
 
   const addLink = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (busy) return
-    const value = url.trim()
+    if (saving || deleting) return
+    const raw = url.trim()
+    const normalized = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw
     try {
-      const parsed = new URL(value)
-      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error()
+      const parsed = new URL(normalized)
+      if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname.includes('.')) throw new Error()
     } catch {
-      setError('Вставь ссылку, которая начинается с https:// или http://.')
+      setError('Укажи адрес сайта, например example.com.')
       return
     }
-    setBusy(true)
+    setSaving(true)
     setError('')
     setNotice('')
     try {
       const response = await sessionFetch('/api/saved-links', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: value }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: normalized }),
       })
       if (!response.ok) throw new Error(await responseError(response, 'Не удалось сохранить ссылку.'))
       setUrl('')
-      setNotice('Ссылка сохранена. Обработка запустится отдельно.')
+      setNotice('Ссылка добавлена.')
       await fetchLinks()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось сохранить ссылку.')
     } finally {
-      setBusy(false)
+      setSaving(false)
     }
   }
 
-  const act = async (id: number, action: 'delete' | 'retry' | 'refresh') => {
-    if (busyId !== null) return
-    setBusyId(id)
+  const performSingleDelete = async (id: number) => {
+    setDeleting(true)
     setError('')
     setNotice('')
     try {
-      const response = await sessionFetch('/api/saved-links/' + id + (action === 'delete' ? '' : '/' + action), {
-        method: action === 'delete' ? 'DELETE' : 'POST',
-      })
-      if (!response.ok) throw new Error(await responseError(response, 'Не удалось выполнить действие.'))
-      setDeleteTarget(null)
-      setNotice(action === 'delete' ? 'Ссылка удалена.' : 'Ссылка поставлена в очередь на повторную обработку.')
+      const response = await sessionFetch('/api/saved-links/' + id, { method: 'DELETE' })
+      if (!response.ok) throw new Error(await responseError(response, 'Не удалось удалить ссылку.'))
+      setNotice('Ссылка удалена.')
       await fetchLinks()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Не удалось выполнить действие.')
+      setError(cause instanceof Error ? cause.message : 'Не удалось удалить ссылку.')
     } finally {
-      setBusyId(null)
+      setDeleting(false)
+    }
+  }
+
+  const armDelete = (id: number) => {
+    if (deleting || saving || selectedIds.length) return
+    if (pendingDeleteRef.current?.id === id) {
+      cancelDelete()
+      return
+    }
+    cancelDelete()
+    const timer = window.setTimeout(() => {
+      if (pendingDeleteRef.current?.id !== id) return
+      pendingDeleteRef.current = null
+      setPendingDeleteId(null)
+      void performSingleDelete(id)
+    }, DELETE_DELAY_MS)
+    pendingDeleteRef.current = { id, timer }
+    setPendingDeleteId(id)
+    setError('')
+    setNotice('')
+  }
+
+  const toggleSelection = (id: number) => {
+    setSelectedIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
+  }
+
+  const holdStart = (link: SavedLink, event: PointerEvent<HTMLElement>) => {
+    if (selectedIds.length || deleting || event.button !== 0 || !event.isPrimary) return
+    const target = event.target as HTMLElement
+    if (target.closest('button, a, input')) return
+    cancelHold()
+    const timer = window.setTimeout(() => {
+      if (holdRef.current?.id !== link.id || holdRef.current.pointerId !== event.pointerId) return
+      holdRef.current = null
+      cancelDelete()
+      suppressCardClickRef.current = link.id
+      setSelectedIds([link.id])
+    }, HOLD_DELAY_MS)
+    holdRef.current = { id: link.id, pointerId: event.pointerId, x: event.clientX, y: event.clientY, timer }
+  }
+
+  const holdMove = (event: PointerEvent<HTMLElement>) => {
+    const held = holdRef.current
+    if (held?.pointerId === event.pointerId && Math.hypot(event.clientX - held.x, event.clientY - held.y) > 10) cancelHold()
+  }
+
+  const cardClick = (link: SavedLink, event: MouseEvent<HTMLElement>) => {
+    if (suppressCardClickRef.current === link.id) {
+      suppressCardClickRef.current = null
+      return
+    }
+    if (!selectedIds.length || (event.target as HTMLElement).closest('button, a')) return
+    toggleSelection(link.id)
+  }
+
+  const cardKeyDown = (link: SavedLink, event: KeyboardEvent<HTMLElement>) => {
+    if (!selectedIds.length || event.target !== event.currentTarget) return
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      toggleSelection(link.id)
+    }
+  }
+
+  const bulkDelete = async () => {
+    if (!selectedIds.length || deleting) return
+    const ids = [...selectedIds]
+    setDeleting(true)
+    setError('')
+    try {
+      const response = await sessionFetch('/api/saved-links/bulk-delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      if (!response.ok) throw new Error(await responseError(response, 'Не удалось удалить выбранные ссылки.'))
+      setBulkConfirmOpen(false)
+      setSelectedIds([])
+      setNotice('Выбранные ссылки удалены.')
+      await fetchLinks()
+    } catch (cause) {
+      setBulkConfirmOpen(false)
+      setError(cause instanceof Error ? cause.message : 'Не удалось удалить выбранные ссылки.')
+    } finally {
+      setDeleting(false)
     }
   }
 
   return (
     <section className="saved-links-page" aria-label="Мои ссылки">
       <header className="saved-links-header">
-        <div>
-          <span className="saved-links-eyebrow">Личная подборка</span>
-          <h1>Мои ссылки</h1>
-          <p>Статьи и подборки игр в одном месте</p>
-        </div>
-        <span className="saved-links-header__symbol"><Icon name="link" size={24} /></span>
+        <h1>Мои ссылки</h1>
+        <p>Сохранённые ссылки из других источников</p>
       </header>
 
       <form className="saved-links-add" onSubmit={event => void addLink(event)}>
         <label htmlFor="saved-links-url">Добавить ссылку</label>
         <div className="saved-links-add__row">
-          <input id="saved-links-url" type="url" inputMode="url" autoComplete="url"
+          <input id="saved-links-url" type="text" inputMode="url" autoComplete="url"
             value={url} onChange={event => setUrl(event.target.value)}
-            placeholder="https://example.com/подборка" maxLength={2048} required />
-          <motion.button type="submit" disabled={busy || !url.trim()}
+            placeholder="example.com" maxLength={2048} required />
+          <motion.button type="submit" disabled={saving || deleting || !url.trim()}
             whileTap={reduceMotion ? undefined : { scale: .94 }}
             aria-label="Сохранить ссылку">
-            <Icon name={busy ? 'clock' : 'plus'} size={21} />
+            <Icon name={saving ? 'clock' : 'plus'} size={21} />
           </motion.button>
         </div>
-        <span className="saved-links-add__hint">Сохраняем URL сейчас; игры определяются позже. Исходный материал не загружается при добавлении.</span>
       </form>
 
       {error && <div className="saved-links-message saved-links-message--error" role="alert">{error}</div>}
       {notice && <div className="saved-links-message" role="status">{notice}</div>}
 
       <div className="saved-links-subheading">
-        <h2>Сохранённое <span>{items.length}{nextBefore ? '+' : ''}</span></h2>
-        <button type="button" onClick={() => void fetchLinks()} disabled={loading || loadingMore || busy || busyId !== null}
-          aria-label="Обновить список ссылок">Обновить</button>
+        <div>
+          <h2>Сохранённое <span>{items.length}{nextBefore ? '+' : ''}</span></h2>
+          {selectedIds.length > 0 && <p className="saved-links-selection-count">Выбрано: {selectedIds.length}</p>}
+        </div>
+        {selectedIds.length > 0 && (
+          <div className="saved-links-bulk-actions">
+            <button type="button" aria-label="Отменить выбор ссылок" title="Отменить выбор"
+              onClick={() => setSelectedIds([])} disabled={deleting}>
+              <Icon name="close" size={19} />
+            </button>
+            <button type="button" aria-label={'Удалить выбранные ссылки: ' + selectedIds.length}
+              title="Удалить выбранные ссылки" className="saved-links-bulk-trash"
+              onClick={() => setBulkConfirmOpen(true)} disabled={deleting}>
+              <Icon name="trash" size={20} />
+            </button>
+          </div>
+        )}
       </div>
 
       {loading && <div className="saved-links-empty" role="status">Загружаем ссылки…</div>}
@@ -178,79 +296,120 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
         <div className="saved-links-empty">
           <Icon name="bookmark" size={34} />
           <strong>Пока нет ссылок</strong>
-          <p>Добавь статью, обзор или подборку. Когда обработка завершится, здесь появятся найденные игры.</p>
+          <p>Добавь статью, обзор или подборку — всё будет под рукой.</p>
         </div>
       )}
 
       <div className="saved-links-list">
         {!loading && items.map((link, index) => (
-          <motion.article key={link.id} className="saved-link-card"
+          <motion.article
+            key={link.id}
+            data-saved-link-id={link.id}
+            className={'saved-link-card' + (selectedIds.includes(link.id) ? ' saved-link-card--selected' : selectedIds.length ? ' saved-link-card--selection-mode' : '')}
+            role={selectedIds.length ? 'button' : undefined}
+            tabIndex={selectedIds.length ? 0 : undefined}
+            aria-pressed={selectedIds.length ? selectedIds.includes(link.id) : undefined}
+            aria-label={selectedIds.length ? (link.title || displayHost(link.url)) + ', ' + (selectedIds.includes(link.id) ? 'выбрано' : 'не выбрано') : undefined}
+            onPointerDown={event => holdStart(link, event)}
+            onPointerMove={holdMove}
+            onPointerUp={cancelHold}
+            onPointerCancel={cancelHold}
+            onPointerLeave={cancelHold}
+            onContextMenu={event => {
+              if (deleting) return
+              event.preventDefault()
+              cancelHold()
+              cancelDelete()
+              if (!selectedIds.length) setSelectedIds([link.id])
+              else toggleSelection(link.id)
+            }}
+            onClick={event => cardClick(link, event)}
+            onKeyDown={event => cardKeyDown(link, event)}
             initial={reduceMotion ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: .24, delay: Math.min(index, 7) * .04 }}>
+            transition={{ duration: .24, delay: Math.min(index, 7) * .04 }}
+          >
             <div className="saved-link-card__top">
-              <span className={'saved-link-card__status saved-link-card__status--' + link.status}>
-                {stateMeta[link.status].label}
-              </span>
               <time dateTime={link.createdAt}>{readableDate(link.createdAt)}</time>
             </div>
             <h3>{link.title || displayHost(link.url)}</h3>
             <p className="saved-link-card__host">{displayHost(link.url)}</p>
-            <div className="saved-link-card__games">
-              {link.games.length > 0 ? (
-                <>
-                  <span className="saved-link-card__section-name">Найденные игры · {link.gamesCount}</span>
-                  <div className="saved-link-card__game-list">
-                    {link.games.map(game => (
-                      <button type="button" key={game.id} className="saved-link-card__game"
-                        onClick={() => onOpenGame(game.id)} aria-label={'Открыть игру ' + game.title}>
-                        {game.coverUrl ? <img src={game.coverUrl} alt="" loading="lazy" /> : <Icon name="gamepad" size={16} />}
-                        <span>{game.title}</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p className="saved-link-card__progress">
-                  {link.status === 'ready'
-                    ? (link.gptNames?.length ? 'Игры в каталоге пока не найдены.' : 'В материале не найдено игр.')
-                    : link.status === 'failed' ? (link.error || stateMeta.failed.tip) : stateMeta[link.status].tip}
-                </p>
-              )}
-              {link.gptNames && link.gptNames.length > 0 && link.games.length === 0 && link.status === 'ready' && (
-                <p className="saved-link-card__names">{link.gptNames.slice(0, 6).join(' · ')}</p>
-              )}
-            </div>
-            {deleteTarget === link.id ? (
-              <div className="saved-link-card__delete-confirm">
-                <p>Удалить ссылку и найденные для неё игры? Сами игры и оценки в Rate APP останутся.</p>
-                <button type="button" onClick={() => setDeleteTarget(null)} disabled={busyId === link.id}>Отмена</button>
-                <button type="button" onClick={() => void act(link.id, 'delete')} disabled={busyId === link.id}>Удалить</button>
-              </div>
-            ) : (
-              <div className="saved-link-card__actions">
-                <a href={link.url} target="_blank" rel="noopener noreferrer" title="Открыть исходную ссылку">
-                  <Icon name="globe" size={17} /> Открыть
-                </a>
-                <button type="button" disabled={busyId !== null}
-                  onClick={() => void act(link.id, link.status === 'failed' ? 'retry' : 'refresh')}>
-                  <Icon name="arrow" size={16} /> {link.status === 'failed' ? 'Повторить' : 'Обновить'}
-                </button>
-                <button type="button" className="saved-link-card__delete" aria-label={'Удалить ссылку ' + (link.title || displayHost(link.url))}
-                  onClick={() => setDeleteTarget(link.id)} disabled={busyId !== null}>
-                  <Icon name="trash" size={18} />
-                </button>
+            {!!link.games?.length && !selectedIds.length && (
+              <div className="saved-link-card__game-list">
+                {link.games.map(game => (
+                  <button type="button" key={game.id} className="saved-link-card__game"
+                    onClick={() => onOpenGame(game.id)} aria-label={'Открыть игру ' + game.title}>
+                    {game.coverUrl ? <img src={game.coverUrl} alt="" loading="lazy" /> : <Icon name="gamepad" size={16} />}
+                    <span>{game.title}</span>
+                  </button>
+                ))}
               </div>
             )}
+            <div className="saved-link-card__actions">
+              {selectedIds.length ? (
+                <button type="button" className={'saved-link-card__selector' + (selectedIds.includes(link.id) ? ' saved-link-card__selector--checked' : '')}
+                  aria-label={selectedIds.includes(link.id) ? 'Снять выбор ссылки' : 'Выбрать ссылку'}
+                  aria-pressed={selectedIds.includes(link.id)}
+                  onClick={event => { event.stopPropagation(); toggleSelection(link.id) }}
+                  disabled={deleting}>
+                  {selectedIds.includes(link.id) && <Icon name="checkmark" size={17} />}
+                </button>
+              ) : (
+                <>
+                  <a href={link.url} target="_blank" rel="noopener noreferrer" title="Открыть ссылку">
+                    <Icon name="globe" size={17} /> Открыть
+                  </a>
+                  <button type="button"
+                    className={'saved-link-card__delete' + (pendingDeleteId === link.id ? ' saved-link-card__delete--pending' : '')}
+                    aria-label={(pendingDeleteId === link.id ? 'Отменить удаление ссылки ' : 'Удалить ссылку ') + (link.title || displayHost(link.url))}
+                    title={pendingDeleteId === link.id ? 'Отменить удаление' : 'Удалить ссылку'}
+                    onClick={event => { event.stopPropagation(); armDelete(link.id) }}
+                    disabled={deleting || saving}>
+                    {pendingDeleteId === link.id && (
+                      <svg className="saved-link-card__countdown" viewBox="0 0 32 32" aria-hidden="true">
+                        {COUNTDOWN_SEGMENTS.map(segment => (
+                          <motion.line key={segment} x1="16" y1="2.8" x2="16" y2="6.5"
+                            transform={'rotate(' + segment * 30 + ' 16 16)'}
+                            initial={{ opacity: 1 }} animate={{ opacity: .12 }}
+                            transition={{ delay: segment * (DELETE_DELAY_MS / COUNTDOWN_SEGMENTS.length / 1000), duration: .1 }} />
+                        ))}
+                      </svg>
+                    )}
+                    <Icon name="trash" size={18} />
+                  </button>
+                </>
+              )}
+            </div>
           </motion.article>
         ))}
       </div>
+
       {!loading && nextBefore != null && (
-        <button type="button" className="saved-links-more" disabled={loadingMore}
+        <button type="button" className="saved-links-more" disabled={loadingMore || deleting}
           onClick={() => void fetchLinks(nextBefore)}>
           {loadingMore ? 'Загружаем…' : 'Показать ещё'}
         </button>
       )}
+
+      {bulkConfirmOpen && createPortal((
+        <div className="saved-links-dialog-backdrop"
+          onMouseDown={event => {
+            if (!deleting && event.target === event.currentTarget) setBulkConfirmOpen(false)
+          }}>
+          <section className="saved-links-dialog" role="alertdialog" aria-modal="true"
+            aria-labelledby="saved-links-delete-title" aria-describedby="saved-links-delete-description">
+            <span className="saved-links-dialog__brand">RateApp</span>
+            <h2 id="saved-links-delete-title">Удалить выбранные ссылки ({selectedIds.length})?</h2>
+            <p id="saved-links-delete-description">Ссылки будут удалены без возможности восстановления.</p>
+            <div className="saved-links-dialog__actions">
+              <button ref={cancelDialogRef} type="button" disabled={deleting}
+                onClick={() => setBulkConfirmOpen(false)}>Отмена</button>
+              <button type="button" className="saved-links-dialog__delete" disabled={deleting}
+                onClick={() => void bulkDelete()}>{deleting ? 'Удаляем…' : 'Удалить'}</button>
+            </div>
+          </section>
+        </div>
+      ), document.body)}
     </section>
   )
 }
