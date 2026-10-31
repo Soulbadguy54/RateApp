@@ -464,7 +464,7 @@ def _parse_page_preview(body: bytes, headers: dict[str, str]) -> dict[str, str]:
     return parser.result()
 
 
-_YOUTUBE_ID_PATTERN = re.compile(r"[a-zA-Z0-9_-]{11}\\Z")
+_YOUTUBE_ID_PATTERN = re.compile(r"[a-zA-Z0-9_-]{11}\Z")
 
 
 def _youtube_video_id(url: str) -> str | None:
@@ -515,8 +515,8 @@ def _verified_thumbnail(media_url: str) -> tuple[bytes, str] | None:
     )
     mime = image_headers.get("content-type", "").split(";", 1)[0].strip().lower()
     valid = (
-        mime == "image/jpeg" and image.startswith(b"\\xff\\xd8\\xff")
-        or mime == "image/png" and image.startswith(b"\\x89PNG\\r\\n\\x1a\\n")
+        mime == "image/jpeg" and image.startswith(b"\xff\xd8\xff")
+        or mime == "image/png" and image.startswith(b"\x89PNG\r\n\x1a\n")
         or mime == "image/webp" and image.startswith(b"RIFF") and image[8:12] == b"WEBP"
     )
     if not valid or len(image) < 20:
