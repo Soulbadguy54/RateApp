@@ -173,9 +173,11 @@
 .profile-crop-hint { margin: 10px 0 0; color: var(--muted); font-size: 10px; text-align: center; }
 .profile-zoom-control {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  column-gap: 14px;
+  row-gap: 8px;
   margin: 10px 0 0;
   font-size: 11px;
   color: var(--muted);
