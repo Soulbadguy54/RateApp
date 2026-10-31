@@ -57,7 +57,7 @@ test('profile keeps nickname, avatar and tint inside one sticky glass panel', as
   await header.getByRole('button', { name: 'Сохранить оформление профиля' }).click()
   await expect(header.getByRole('button', { name: 'Редактировать оформление профиля' })).toBeVisible()
   await expect(header.getByRole('radio')).toHaveCount(0)
-  await expect(page.locator('.bottom-nav__avatar img')).toHaveAttribute('src', '/api/profile/avatar?v=1')
+  await expect(page.locator('.bottom-nav__avatar img')).toHaveAttribute('src', '/api/profile/avatar?u=416&v=1')
   await expect(header).toHaveCSS('backdrop-filter', /blur\(12px\)/)
   // The remaining account content scrolls beneath the same header.
   await expect(page.getByText('Резервное копирование')).toBeVisible()

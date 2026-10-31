@@ -65,5 +65,5 @@ def read_avatar(request: Request) -> Response:
             raise HTTPException(status_code=404, detail="Аватар не задан.")
         image = user.avatar_data
     return Response(image, media_type="image/png",
-                    headers={"Cache-Control": "private, max-age=3600",
+                    headers={"Cache-Control": "private, no-store",
                              "X-Content-Type-Options": "nosniff"})

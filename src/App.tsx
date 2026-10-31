@@ -3741,7 +3741,7 @@ function App() {
                 {item.id === 'profile' ? (
                   <span className="bottom-nav__avatar" aria-hidden="true">
                     {(authUser.avatarVersion ?? 0) > 0
-                      ? <img src={'/api/profile/avatar?v=' + authUser.avatarVersion} alt="" draggable={false} />
+                      ? <img src={'/api/profile/avatar?u=' + authUser.id + '&v=' + authUser.avatarVersion} alt="" draggable={false} />
                       : authUser.nickname.slice(0, 1).toUpperCase()}
                   </span>
                 ) : (

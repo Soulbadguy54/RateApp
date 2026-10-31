@@ -22,7 +22,7 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 /** Authenticated image is cached only under a versioned, owner-scoped URL. */
 export function profileAvatarUrl(user: AuthUser): string | null {
   return (user.avatarVersion ?? 0) > 0
-    ? '/api/profile/avatar?v=' + user.avatarVersion
+    ? '/api/profile/avatar?u=' + user.id + '&v=' + user.avatarVersion
     : null
 }
 
