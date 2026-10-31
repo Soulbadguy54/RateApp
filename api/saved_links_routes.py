@@ -6,7 +6,7 @@ from datetime import timedelta
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
@@ -21,6 +21,10 @@ MAX_NEW_LINKS_PER_DAY = 15
 class LinkCreate(BaseModel):
     url: str = Field(min_length=10, max_length=2048)
     title: str | None = Field(default=None, max_length=200)
+
+
+class LinksBulkDelete(BaseModel):
+    ids: list[StrictInt] = Field(min_length=1, max_length=MAX_LINKS_PER_USER)
 
 
 def canonical_url(raw: str) -> str:
@@ -172,6 +176,30 @@ def get_saved_link(link_id: int, request: Request) -> dict[str, object]:
         user = _current_user(request, session)
         link = _get_user_link(session, user.id, link_id)
         return _link_payload(link, _game_map(session, [link]))
+
+
+@router.post("/api/saved-links/bulk-delete")
+def bulk_delete_saved_links(payload: LinksBulkDelete, request: Request) -> dict[str, int]:
+    """Atomically remove only the caller's links, or remove none.
+
+    Deleting rows cascades their names/IDs but never catalog games or ratings.
+    """
+    ids = payload.ids
+    if any(item <= 0 for item in ids) or len(ids) != len(set(ids)):
+        raise HTTPException(422, detail="Нужны уникальные положительные ID ссылок.")
+    with _session() as session:
+        user = _current_user(request, session)
+        rows = session.scalars(
+            select(SavedLink).where(
+                SavedLink.user_id == user.id, SavedLink.id.in_(ids),
+            ).with_for_update()
+        ).all()
+        if len(rows) != len(ids):
+            raise HTTPException(404, detail="Одна или несколько ссылок не найдены.")
+        for row in rows:
+            session.delete(row)
+        session.commit()
+        return {"deleted": len(rows)}
 
 
 @router.delete("/api/saved-links/{link_id}", status_code=204)
