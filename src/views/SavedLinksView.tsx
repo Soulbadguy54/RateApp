@@ -364,7 +364,13 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
           <input ref={addInputRef} type="text" inputMode="url" autoComplete="url"
             value={url} onChange={event => setUrl(event.target.value)}
             placeholder="Введите ссылку" aria-label="Введите ссылку"
-            enterKeyHint="done" maxLength={2048} required
+            enterKeyHint="go" maxLength={2048} required
+            onKeyDown={event => {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                event.preventDefault()
+                event.currentTarget.form?.requestSubmit()
+              }
+            }}
             disabled={!addOpen || saving} />
         </form>
       </motion.div>
