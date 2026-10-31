@@ -4167,10 +4167,11 @@ body:has(.auth-shell) .install-prompt { display: none; }
 }
 .game-database-heading__row {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex-wrap: nowrap;
-  align-items: flex-start;
-  gap: 0;
+  align-items: baseline;
+  min-width: 0;
+  gap: clamp(7px, 2.4vw, 12px);
 }
 .game-database-powered,
 .saved-links-header p {
@@ -4184,6 +4185,15 @@ body:has(.auth-shell) .install-prompt { display: none; }
 .game-database-powered strong {
   font-size: inherit;
   letter-spacing: .04em;
+}
+/* Database source attribution shares ONE line with "База игр" on phones. */
+.game-database-heading__row h1 { flex: 0 0 auto; white-space: nowrap; }
+.game-database-heading__row .game-database-powered {
+  min-width: 0;
+  margin: 0;
+  font-size: clamp(9px, 2.6vw, 11px);
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 /* My Games: the existing sticky stack is ONE continuous glass surface.
