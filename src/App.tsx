@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import GameCard, { Cover } from './components/GameCard'
+import CarouselArrows from './components/CarouselArrows'
 import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
 import BottomNavGameSlot from './components/BottomNavGameSlot'
@@ -391,6 +392,7 @@ function App() {
   const collectionUpdatesRef = useRef(new Map<number, CollectionUpdate>())
   const [gameDetailsById, setGameDetailsById] = useState<Record<number, GameDetailExtras>>({})
   const [similarGamesById, setSimilarGamesById] = useState<Record<number, Game[]>>({})
+  const [similarCoversReadyById, setSimilarCoversReadyById] = useState<Record<number, boolean>>({})
   const similarLoadingRef = useRef(new Set<number>())
   const [wishlistToastGameId, setWishlistToastGameId] = useState<number | null>(null)
   const wishlistToastTimerRef = useRef<number | null>(null)
@@ -1972,6 +1974,29 @@ function App() {
     return () => controller.abort()
   }, [authUser, selectedGameId, similarGamesById, rememberCatalogResults])
 
+  // Reserve a stable shelf from the first render, then reveal its covers together
+  // once images are warmed (or after a short upper bound if CDN is slow).
+  useEffect(() => {
+    if (!selectedGameId) return
+    const id = selectedGameId
+    const cards = similarGamesById[id]
+    if (!cards || similarCoversReadyById[id]) return
+    let cancelled = false
+    const preloads = cards.filter(game => game.coverUrl).map(game => new Promise<void>(resolve => {
+      const img = new Image()
+      img.onload = () => resolve()
+      img.onerror = () => resolve()
+      img.src = game.coverUrl!
+      if (img.complete) resolve()
+    }))
+    let timeout: number | undefined
+    const deadline = new Promise<void>(resolve => { timeout = window.setTimeout(resolve, 2200) })
+    void Promise.race([Promise.all(preloads), deadline]).then(() => {
+      if (!cancelled) setSimilarCoversReadyById(current => ({ ...current, [id]: true }))
+    })
+    return () => { cancelled = true; if (timeout) window.clearTimeout(timeout) }
+  }, [selectedGameId, similarGamesById, similarCoversReadyById])
+
   const selectedEntry = selectedGameId ? entryMap.get(selectedGameId) : undefined
   const selectedGame = selectedGameId ? catalogGameById.get(selectedGameId!) : undefined
 
@@ -1985,7 +2010,10 @@ function App() {
   }
 
   const wishlistQuickAdd = async (game: Game) => {
-    if (entryMap.get(game.id)?.collectionIds.includes(WISHLIST_COLLECTION_ID)) return
+    if (entryMap.get(game.id)?.collectionIds.includes(WISHLIST_COLLECTION_ID)) {
+      showWishlistToast(game.id)
+      return
+    }
     try {
       const response = await sessionFetch('/api/library/' + game.id + '/wishlist', { method: 'PUT' })
       if (!response.ok) throw new Error('Wishlist save failed')
@@ -2058,7 +2086,9 @@ function App() {
               aria-expanded={collectionPickerOpen}
               aria-controls="game-collection-picker"
               onPointerDown={event => {
-                if (event.button !== 0 || !event.isPrimary) return
+                // On touchscreens use Touch Events instead: native long-press
+                // context menus often cancel Pointer Events before our timeout.
+                if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return
                 cancelWishlistHold()
                 suppressWishlistClickRef.current = 0
                 const timer = window.setTimeout(() => {
@@ -2067,7 +2097,7 @@ function App() {
                   suppressWishlistClickRef.current = Date.now()
                   setCollectionPickerOpen(false)
                   void wishlistQuickAdd(selectedGame)
-                }, 530)
+                }, 470)
                 wishlistHoldRef.current = {
                   pointerId: event.pointerId, x: event.clientX, y: event.clientY, timer,
                 }
@@ -2077,10 +2107,38 @@ function App() {
                 if (hold?.pointerId === event.pointerId &&
                     Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 10) cancelWishlistHold()
               }}
-              onPointerUp={cancelWishlistHold}
-              onPointerCancel={cancelWishlistHold}
+              onPointerUp={event => { if (event.pointerType !== 'touch') cancelWishlistHold() }}
+              onPointerCancel={event => { if (event.pointerType !== 'touch') cancelWishlistHold() }}
               onPointerLeave={event => { if (event.pointerType === 'mouse') cancelWishlistHold() }}
-              onContextMenu={event => { event.preventDefault(); cancelWishlistHold() }}
+              onTouchStart={event => {
+                if (event.touches.length !== 1) return
+                cancelWishlistHold()
+                suppressWishlistClickRef.current = 0
+                const touch = event.touches[0]
+                const pointerId = touch.identifier + 10000
+                const timer = window.setTimeout(() => {
+                  if (wishlistHoldRef.current?.pointerId !== pointerId) return
+                  wishlistHoldRef.current = null
+                  suppressWishlistClickRef.current = Date.now()
+                  setCollectionPickerOpen(false)
+                  void wishlistQuickAdd(selectedGame)
+                }, 470)
+                wishlistHoldRef.current = {
+                  pointerId, x: touch.clientX, y: touch.clientY, timer,
+                }
+              }}
+              onTouchMove={event => {
+                const hold = wishlistHoldRef.current
+                if (!hold) return
+                const touch = Array.from(event.touches).find(
+                  item => item.identifier + 10000 === hold.pointerId)
+                if (!touch || Math.hypot(touch.clientX - hold.x, touch.clientY - hold.y) > 10) {
+                  cancelWishlistHold()
+                }
+              }}
+              onTouchEnd={cancelWishlistHold}
+              onTouchCancel={cancelWishlistHold}
+              onContextMenu={event => { event.preventDefault() }}
               onClick={() => {
                 if (suppressWishlistClickRef.current &&
                     Date.now() - suppressWishlistClickRef.current < 1300) {
@@ -2131,11 +2189,15 @@ function App() {
           </div>
         </div>
 
+        <AnimatePresence initial={false}>
         {collectionPickerOpen && (
-          <section className="detail-collection-picker" id="game-collection-picker" aria-label="Управление коллекциями">
+          <motion.section className="detail-collection-picker" id="game-collection-picker" aria-label="Управление коллекциями"
+            initial={shouldReduceMotion ? false : { opacity: 0, height: 0, y: -9 }}
+            animate={{ opacity: 1, height: 'auto', y: 0 }}
+            exit={shouldReduceMotion ? undefined : { opacity: 0, height: 0, y: -9 }}
+            transition={{ duration: shouldReduceMotion ? 0 : .28, ease: 'easeOut' }}>
             <div className="detail-collection-picker__heading">
               <h2>Коллекции</h2>
-              <span>+ — добавить, ✓ — убрать из коллекции</span>
             </div>
             <div className="detail-collection-picker__grid">
               <LayoutGroup id={`collection-picker-${selectedGame.id}`}>
@@ -2164,7 +2226,7 @@ function App() {
                       aria-label={`Открыть коллекцию «${collection.title}»`}
                     >
                       <div className="collection-card__mosaic">
-                        {collectionGames.slice(0, 4).map((game) => <Cover game={game} compact key={game.id} />)}
+                        {collectionGames.slice(0, 4).map((game) => <Cover game={game} compact smoothLoad key={game.id} />)}
                         {collectionGames.length === 0 && <div className="collection-card__empty">ПУСТО</div>}
                       </div>
                       <div className="collection-card__footer">
@@ -2190,8 +2252,9 @@ function App() {
               })}
               </LayoutGroup>
             </div>
-          </section>
+          </motion.section>
         )}
+        </AnimatePresence>
 
         <section className="detail-hero">
           <div className={selectedGame.coverUrl ? 'detail-hero__cover detail-hero__cover--image' : 'detail-hero__cover'}>
@@ -2313,25 +2376,37 @@ function App() {
 
         <section className="info-card detail-similar" aria-label="Похожие игры">
           <span className="eyebrow detail-section-eyebrow">ПОХОЖИЕ</span>
-          {similarGamesById[selectedGame.id] === undefined && (
-            <p className="detail-similar__empty">Подбираем похожие игры…</p>
+          {(!similarGamesById[selectedGame.id] ||
+              (similarGamesById[selectedGame.id].length > 0 && !similarCoversReadyById[selectedGame.id])) && (
+            <div className="detail-similar__loading-track" role="status" aria-label="Загружаются обложки похожих игр">
+              {Array.from({ length: 4 }, (_, i) => (
+                <div className="detail-similar__skeleton-item" key={i}>
+                  <div className="detail-similar__skeleton-cover" />
+                  <div className="detail-similar__skeleton-title" />
+                </div>
+              ))}
+            </div>
           )}
           {similarGamesById[selectedGame.id]?.length === 0 && (
             <p className="detail-similar__empty">Похожих игр пока нет в каталоге.</p>
           )}
-          {(similarGamesById[selectedGame.id]?.length ?? 0) > 0 && (
-            <div className="detail-similar__track" role="list" aria-label="Карусель похожих игр">
-              {similarGamesById[selectedGame.id].map(game => (
-                <div key={game.id} role="listitem" className="detail-similar__item">
-                  <button type="button" className="detail-similar__game"
-                    aria-label={'Открыть похожую игру ' + game.title}
-                    onClick={() => openGame(game.id)}>
-                    <div className="detail-similar__cover"><Cover game={game} compact /></div>
-                    <span>{game.title}</span>
-                  </button>
-                </div>
-              ))}
-            </div>
+          {(similarGamesById[selectedGame.id]?.length ?? 0) > 0 &&
+            similarCoversReadyById[selectedGame.id] && (
+            <motion.div initial={shouldReduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }} transition={{ duration: shouldReduceMotion ? 0 : .35 }}>
+              <CarouselArrows className="detail-similar__track" label="Карусель похожих игр">
+                {similarGamesById[selectedGame.id].map(game => (
+                  <div key={game.id} role="listitem" className="detail-similar__item">
+                    <button type="button" className="detail-similar__game"
+                      aria-label={'Открыть похожую игру ' + game.title}
+                      onClick={() => openGame(game.id)}>
+                      <div className="detail-similar__cover"><Cover game={game} compact smoothLoad /></div>
+                      <span>{game.title}</span>
+                    </button>
+                  </div>
+                ))}
+              </CarouselArrows>
+            </motion.div>
           )}
         </section>
 

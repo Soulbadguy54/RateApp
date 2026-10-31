@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import { forwardRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { isPlaythrough } from '../collectionModel'
@@ -18,12 +18,15 @@ export function Cover({
   compact = false,
   thumbnail = false,
   priority = false,
+  smoothLoad = false,
 }: {
   game: Game
   compact?: boolean
   thumbnail?: boolean
   priority?: boolean
+  smoothLoad?: boolean
 }) {
+  const [readyUrl, setReadyUrl] = useState<string | null>(null)
   const imageUrl = thumbnail
     ? game.coverUrl?.replace('/t_cover_big_2x/', '/t_cover_small/')
     : game.coverUrl
@@ -32,8 +35,11 @@ export function Cover({
     '--cover-accent-2': game.accent2,
   } as CSSProperties
 
+  const imageReady = !smoothLoad || (imageUrl && readyUrl === imageUrl)
   return (
-    <div className={compact ? 'cover cover--compact' : 'cover'} style={style}>
+    <div className={'cover' + (compact ? ' cover--compact' : '') +
+      (smoothLoad ? ' cover--smooth' : '') + (imageReady ? ' cover--image-ready' : '')}
+      style={style}>
       {imageUrl && (
         <img
           className="cover__image"
@@ -42,6 +48,8 @@ export function Cover({
           loading={priority ? 'eager' : 'lazy'}
           fetchPriority={priority ? 'high' : undefined}
           decoding="async"
+          onLoad={smoothLoad ? () => setReadyUrl(imageUrl) : undefined}
+          onError={smoothLoad ? () => setReadyUrl(imageUrl) : undefined}
         />
       )}
       {!game.coverUrl && <div className="cover__orb cover__orb--one" />}

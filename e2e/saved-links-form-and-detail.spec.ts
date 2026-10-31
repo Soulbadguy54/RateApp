@@ -42,7 +42,9 @@ test('My Links: top-right plus, keyboard submit, newest first and reload cache',
   await expect(page.locator('.saved-link-card')).toHaveCount(2)
   await expect(page.locator('.saved-link-card').first()).toContainText('Новый обзор')
   await expect(page.getByText('Ссылка добавлена.')).toHaveCount(0)
-  await expect(page.getByPlaceholder('Введите ссылку')).not.toBeVisible()
+  await expect(page.getByPlaceholder('Введите ссылку')).toBeVisible()
+  await expect(page.getByPlaceholder('Введите ссылку')).toHaveValue('')
+  await expect(page.getByRole('button', { name: 'Закрыть ввод ссылки' })).toBeVisible()
   await page.reload()
   await expect(page.locator('.saved-link-card').first()).toContainText('Новый обзор')
   await expect(page.locator('.saved-link-card')).toHaveCount(2)
@@ -93,12 +95,27 @@ test('Game detail from links: IGDB ID, similar covers, and wishlist hold toast',
   if (await dismissInstall.isVisible()) await dismissInstall.click()
   await expect(page.getByRole('button', { name: 'Открыть похожую игру Disco Elysium' })).toBeVisible()
   const collection = page.getByRole('button', { name: 'Коллекции', exact: true }).first()
-  const rect = await collection.boundingBox()
-  if (!rect) throw new Error('Collection detail button not found')
-  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2)
-  await page.mouse.down()
-  await page.waitForTimeout(610)
-  await page.mouse.up()
+  // Mobile touch events must survive native contextmenu/pointercancel.
+  // Simulate touch input with ordinary DOM Events: Safari WebKit's Touch
+  // constructor is not constructible in automated browser contexts.
+  await collection.evaluate(el => {
+    const touch = { identifier: 39, clientX: 45, clientY: 45, target: el }
+    const event = new Event('touchstart', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'touches', { value: [touch] })
+    Object.defineProperty(event, 'targetTouches', { value: [touch] })
+    Object.defineProperty(event, 'changedTouches', { value: [touch] })
+    el.dispatchEvent(event)
+    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  })
+  await page.waitForTimeout(540)
+  await collection.evaluate(el => {
+    const touch = { identifier: 39, clientX: 45, clientY: 45, target: el }
+    const event = new Event('touchend', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'touches', { value: [] })
+    Object.defineProperty(event, 'targetTouches', { value: [] })
+    Object.defineProperty(event, 'changedTouches', { value: [touch] })
+    el.dispatchEvent(event)
+  })
   await expect(page.getByText('Добавлено в «Хочу пройти»')).toBeVisible()
   expect(added).toBe(1)
   await expect(page.locator('.detail-collection-picker')).toHaveCount(0)
