@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FormEvent, KeyboardEvent, PointerEvent } from 'react'
+import type { FormEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import Icon from '../components/Icon'
 import { sessionFetch } from '../sessionFetch'
@@ -206,7 +206,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
     if (held?.pointerId === event.pointerId && Math.hypot(event.clientX - held.x, event.clientY - held.y) > 10) cancelHold()
   }
 
-  const cardClick = (link: SavedLink, event: React.MouseEvent<HTMLElement>) => {
+  const cardClick = (link: SavedLink, event: MouseEvent<HTMLElement>) => {
     if (suppressCardClickRef.current === link.id) {
       suppressCardClickRef.current = null
       return
