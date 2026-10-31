@@ -243,3 +243,33 @@
   background: rgba(253, 116, 125, .12);
   color: #ffabae;
 }
+
+.saved-link-card__state-line {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.saved-link-card__retry {
+  padding: 3px 7px;
+  border: 1px solid rgba(140,242,125,.35);
+  border-radius: 7px;
+  color: #aaf1a6;
+  background: rgba(140,242,125,.085);
+  font-size: 10px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.saved-link-card__retry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.saved-link-card__state-error {
+  display: block;
+  margin-top: 3px;
+  color: #ed9a9e;
+  font-size: 10px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
