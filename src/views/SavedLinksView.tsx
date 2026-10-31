@@ -41,6 +41,29 @@ function displayHost(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
 
+/** A lightweight UI guard; the server remains the canonical URL validator. */
+function normalizedLinkInput(value: string): string | null {
+  const raw = value.trim()
+  if (!raw || /[\\\\\s\u0000-\u001f]/.test(raw)) return null
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && !/^https?:\/\//i.test(raw)) return null
+  const normalized = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw
+  try {
+    const parsed = new URL(normalized)
+    const host = parsed.hostname.toLowerCase().replace(/\.$/, '')
+    const labels = host.split('.')
+    if (!['http:', 'https:'].includes(parsed.protocol) ||
+        parsed.username || parsed.password ||
+        labels.length < 2 ||
+        labels.some(part => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(part)) ||
+        !/^[a-z]{2,63}$/.test(labels[labels.length - 1]) ||
+        (parsed.port !== '' && parsed.port !== (parsed.protocol === 'https:' ? '443' : '80')) ||
+        normalized.length > 2048) return null
+    return normalized
+  } catch {
+    return null
+  }
+}
+
 function readableDate(date: string) {
   const parsed = new Date(date)
   return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -65,6 +88,8 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
   const [items, setItems] = useState<SavedLink[]>(() => initialCacheRef.current?.items ?? [])
   const [nextBefore, setNextBefore] = useState<number | null>(initialCacheRef.current?.nextBefore ?? null)
   const [url, setUrl] = useState('')
+  const validLink = normalizedLinkInput(url)
+  const invalidLink = url.trim().length > 0 && validLink === null
   const [addOpen, setAddOpen] = useState(false)
   const [freshlyAddedId, setFreshlyAddedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(!initialCacheRef.current)
@@ -201,13 +226,9 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
   const addLink = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (saving || deleting) return
-    const raw = url.trim()
-    const normalized = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw
-    try {
-      const parsed = new URL(normalized)
-      if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname.includes('.')) throw new Error()
-    } catch {
-      setError('Укажи адрес сайта, например example.com.')
+    const normalized = normalizedLinkInput(url)
+    if (!normalized) {
+      setError('Некорректная ссылка. Например: example.com')
       return
     }
     setSaving(true)
@@ -362,10 +383,12 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
         initial={false} animate={{ height: addOpen ? 'auto' : 0, opacity: addOpen ? 1 : 0 }}
         transition={{ duration: reduceMotion ? 0 : .25, ease: 'easeOut' }}
         style={{ overflow: 'hidden', visibility: addOpen ? 'visible' : 'hidden' }}>
-        <form className="search-wrap saved-links-add" onSubmit={event => void addLink(event)}>
+        <form className={'search-wrap saved-links-add' + (invalidLink ? ' saved-links-add--invalid' : '')}
+          onSubmit={event => void addLink(event)}>
           <Icon name="link" size={20} />
           <input ref={addInputRef} type="text" inputMode="url" autoComplete="url"
-            value={url} onChange={event => setUrl(event.target.value)}
+            value={url} onChange={event => { setUrl(event.target.value); if (error) setError('') }}
+            aria-invalid={invalidLink}
             placeholder="Введите ссылку" aria-label="Введите ссылку"
             enterKeyHint="go" maxLength={2048} required
             onKeyDown={event => {
@@ -375,11 +398,13 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
               }
             }}
             disabled={!addOpen || saving} />
-          <button className="text-field-submit" type="submit"
-            aria-label="Добавить введённую ссылку"
-            disabled={!addOpen || saving || !url.trim()}>
-            <Icon name="arrow" size={18} />
-          </button>
+          {validLink && (
+            <button className="text-field-submit" type="submit"
+              aria-label="Добавить введённую ссылку"
+              disabled={!addOpen || saving}>
+              <Icon name="arrow" size={18} />
+            </button>
+          )}
         </form>
       </motion.div>
       </header>
