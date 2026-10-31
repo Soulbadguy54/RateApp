@@ -549,3 +549,12 @@ Steam-placeholder в профиле берёт существующий лока
 Ревью и реализация: [docs/RESPONSIVE_AUDIT_2026-11-01.md](RESPONSIVE_AUDIT_2026-11-01.md), код `src/styles.css`, `src/views/ProfileView.css`/`.tsx`, `src/views/DiscoverView.css`, `src/collectionCards.css`. Телефоны 320–480 CSS px — приоритет; планшетный/desktop режим не переделывался. Bounded `clamp()` для общего header (54–68px), nav (62–74px), полей, профильного аватара (124–176px), облаков и коллекционных мозаик; сохранены safe areas, минимальные tap-зоны, 100dvh scrolling, фиксированные размеры управляющих SVG и независимая анимация Steam.
 
 `ProfileView.tsx` использует `ResizeObserver` для фактического diametра crop при перемещении, масштабировании и сохранении 256px PNG; прежнее жёсткое значение 142px — только fallback до измерения. Стабильная относительная граница игр/Steam вокруг круглого аватара. Добавлен `e2e/responsive-layout.spec.ts` с 6 размерами × Android Chromium/iPhone WebKit, проверкой 6 корней и resize crop; полные E2E и staging **ещё не подтверждены**. Никаких изменений API/БД; PR на `develop`, production требует отдельной приёмки и release gate.
+
+
+## 1 ноября 2026 — папки настроек профиля и подпись IGDB (PR #134, develop/staging)
+
+В профиле под единой glass-шапкой новый локальный tablist: по умолчанию notifications, альтернативная security. Вкладки имеют иконки, активная визуально соединена с панелью; Motion shared layout + slide/fade, reduced-motion и клавиатурные Arrow/Home/End. Внутри Push убраны только дублирующие заголовки «УВЕДОМЛЕНИЯ» и «Релизы игр» — рабочая настройка Web Push и предупреждения оставлены.
+
+В security **ровно три строки**: Email, PIN-код, резервное копирование с кнопками «Импорт» (disabled) и «Экспорт» (прежний /api/export). Не утверждать, что импорт реализован или экспорт теперь полноценный backup. Logout временно удалён из интерфейса, серверный endpoint не менялся. Для смартфонов высотой до 700 CSS px профильная hero-область ограниченно сжимается, ошибки Push и режим edit сохраняют возможность прокрутки. «База игр» и «powered by IGDB» идут одной строкой, поиск — ниже.
+
+Проверки описаны в e2e/profile-settings-tabs.spec.ts, обновлены существующие profile/header E2E. На момент PR реальные прогоны и staging-деплой не подтверждены, production не менялся. Frontend-only + E2E, без изменения API и БД.
