@@ -358,7 +358,7 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
       <motion.div id="saved-links-add-field" className="saved-links-add-panel"
         initial={false} animate={{ height: addOpen ? 'auto' : 0, opacity: addOpen ? 1 : 0 }}
         transition={{ duration: reduceMotion ? 0 : .25, ease: 'easeOut' }}
-        style={{ overflow: 'hidden' }}>
+        style={{ overflow: 'hidden', visibility: addOpen ? 'visible' : 'hidden' }}>
         <form className="search-wrap saved-links-add" onSubmit={event => void addLink(event)}>
           <Icon name="link" size={20} />
           <input ref={addInputRef} type="text" inputMode="url" autoComplete="url"
