@@ -267,6 +267,17 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
     }
   }
 
+  const retryFailedLink = async (id: number) => {
+    setError('')
+    try {
+      const response = await sessionFetch('/api/saved-links/' + id + '/retry', { method: 'POST' })
+      if (!response.ok) throw new Error(await responseError(response, 'Не удалось поставить ссылку на повторную проверку.'))
+      await fetchLinks()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не удалось повторить проверку.')
+    }
+  }
+
   const performSingleDelete = async (id: number) => {
     setDeleting(true)
     setError('')
@@ -506,12 +517,24 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
                 <p className="saved-link-card__host">{previews[link.id]?.description || displayHost(link.url)}</p>
                 <time dateTime={link.createdAt}>{readableDate(link.createdAt)}</time>
                 {link.status !== 'ready' && link.status && (
-                  <span className={'saved-link-card__state saved-link-card__state--' + link.status}
-                    role="status" title={link.status === 'failed' ? link.error || 'Не удалось обработать ссылку' : undefined}>
-                    {link.status === 'failed' ? 'Не удалось проверить'
-                      : link.status === 'processing' ? 'Ищем игры…' : 'Ожидает проверки'}
+                  <span className="saved-link-card__state-line">
+                    <span className={'saved-link-card__state saved-link-card__state--' + link.status}
+                      role="status" title={link.error || undefined}>
+                      {link.status === 'failed' ? 'Не удалось проверить'
+                        : link.status === 'processing' ? 'Ищем игры…' : 'Ожидает проверки'}
+                    </span>
+                    {link.status === 'failed' && selectedIds.length === 0 && (
+                      <button type="button" className="saved-link-card__retry"
+                        aria-label={'Повторить проверку ссылки ' + link.id}
+                        onClick={event => { event.stopPropagation(); void retryFailedLink(link.id) }}
+                        onPointerDown={event => event.stopPropagation()}>
+                        Повторить
+                      </button>
+                    )}
                   </span>
                 )}
+                {link.status === 'failed' && link.error &&
+                  <small className="saved-link-card__state-error">{link.error}</small>}
               </div>
               <div className="saved-link-card__actions">
                 {selectedIds.length ? (
