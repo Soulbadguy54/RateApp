@@ -353,7 +353,11 @@ function App() {
   const libraryCollapseProgress = useMotionValue(0)
   const libraryMeasuredControlsHeight = useMotionValue(0)
   const libraryControlClipHeight = useTransform(
-    () => libraryMeasuredControlsHeight.get() * (1 - libraryCollapseProgress.get()),
+    () => {
+      // Allow a restrained spring rebound, never an invalid negative CSS height.
+      const progress = Math.max(-.035, Math.min(1.035, libraryCollapseProgress.get()))
+      return Math.max(0, libraryMeasuredControlsHeight.get() * (1 - progress))
+    },
   )
   const libraryControlClipOpacity = useTransform(
     () => Math.max(0, 1 - libraryCollapseProgress.get() * 1.18),
@@ -2497,7 +2501,7 @@ function App() {
             initial={shouldReduceMotion ? false : { height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={shouldReduceMotion ? undefined : { height: 0, opacity: 0 }}
-            transition={{ duration: .2, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: shouldReduceMotion ? 0 : .25, ease: 'easeOut' }}
           >
             <div className="search-wrap library-search">
               <Icon name="search" size={19} />
@@ -2719,12 +2723,11 @@ function App() {
               setLibraryControlsCollapsed(false)
             }
 
-            const controls = animate(libraryCollapseProgress, expanding ? 0 : 1, {
-              type: 'spring',
-              stiffness: 210,
-              damping: 30,
-              mass: .9,
-            })
+            const controls = animate(libraryCollapseProgress, expanding ? 0 : 1,
+              shouldReduceMotion
+                ? { duration: 0 }
+                : { type: 'spring', stiffness: 250, damping: 21, mass: .82 },
+            )
             libraryToggleAnimationRef.current = controls
 
             void controls.then(() => {
@@ -2802,6 +2805,7 @@ function App() {
                     entry={entry}
                     onOpen={() => openGame(game.id)}
                     animationIndex={index}
+                    onContextMenu={(event) => event.preventDefault()}
                   />
                 ))}
               </AnimatePresence>
@@ -3020,11 +3024,6 @@ function App() {
               <Icon name="x" size={15} />
             </button>
           )}
-          <button type="button" className="text-field-submit" aria-label="Подтвердить поиск"
-            disabled={addQuery.trim().length < 3 || addSearchLoading}
-            onClick={() => addSearchInputRef.current?.blur()}>
-            <Icon name="arrow" size={18} />
-          </button>
           </div>
         </div>
           </div>

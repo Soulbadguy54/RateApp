@@ -64,7 +64,10 @@ test('game nav: tap priority, hold-and-drag bubble, swipe-only pinning, history 
   expect(glass).toContain('blur(12px)')
   const liquid = page.locator('.bottom-nav__liquid-path')
   await expect(liquid).toHaveCSS('fill', 'rgba(16, 24, 41, 0.5)')
-  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('background-color', 'rgba(12, 18, 31, 0.34)')
+  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('backdrop-filter', /blur\(12px\)/)
+  // Opening a pinned shortcut is NOT a selection: highlight only on hover.
+  await expect(page.locator('.bottom-nav__bubble-highlight')).toHaveCount(0)
   // The path grows from a droplet into the whole two-cell panel.
   await expect.poll(
     async () => liquid.evaluate(el => (el as SVGGraphicsElement).getBBox().width),
@@ -92,12 +95,17 @@ test('game nav: tap priority, hold-and-drag bubble, swipe-only pinning, history 
   expect(iconSizes).toEqual([['22px', '22px'], ['22px', '22px']])
   const tint = await slot.locator('.bottom-nav__active-surface')
     .evaluate(el => getComputedStyle(el).backgroundColor)
-  const bubbleTint = await page.locator('.bottom-nav__bubble-highlight')
-    .evaluate(el => getComputedStyle(el).backgroundColor)
-  expect(bubbleTint).toBe(tint)
   const target = await discovery.boundingBox()
   if (!target) throw new Error('Discovery bubble target missing')
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 })
+  await expect(discovery).toHaveAttribute('data-highlighted', 'true')
+  const bubbleTint = await page.locator('.bottom-nav__bubble-highlight')
+    .evaluate(el => getComputedStyle(el).backgroundColor)
+  expect(bubbleTint).toBe(tint)
+  // Withdrawing the finger clears the temporary highlight without selection.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await expect(page.locator('.bottom-nav__bubble-highlight')).toHaveCount(0)
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2)
   await expect(discovery).toHaveAttribute('data-highlighted', 'true')
   await page.mouse.up()
   await expect(slot).toContainText('Для тебя')

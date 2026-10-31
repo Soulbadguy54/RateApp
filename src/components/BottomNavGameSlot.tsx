@@ -392,7 +392,6 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate, group 
                   className="bottom-nav__item bottom-nav__bubble-choice"
                   {...(group === 'games' ? { 'data-game-nav-choice': choice.id } : { 'data-collection-nav-choice': choice.id })}
                   data-highlighted={hovered === choice.id}
-                  aria-pressed={pinned === choice.id}
                   onPointerEnter={() => { if (!pressRef.current) setHovered(choice.id) }}
                   onPointerLeave={() => { if (!pressRef.current) setHovered(null) }}
                   onClick={() => {
@@ -407,7 +406,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate, group 
                     }
                   }}
                 >
-                  {(hovered ?? pinned) === choice.id && (
+                  {hovered === choice.id && (
                     // The highlight doesn't perform a second shared-layout
                     // animation while the SVG is collapsing.
                     <span className="bottom-nav__active-surface bottom-nav__bubble-highlight" />
