@@ -3048,10 +3048,7 @@ function App() {
         {addSearchHasMore && !addSearchError && <div ref={addSearchSentinelRef} className="game-database-sentinel" aria-hidden="true" />}
 
         {addSearchLoading && (
-          <div className="game-database-loading" role="status">
-            <span className="game-database-loading__spinner" aria-hidden="true" />
-            {addSearchSource === 'igdb' ? 'Подгружаем игры из IGDB…' : 'Ищем в базе игр…'}
-          </div>
+          <ContentLoading compact tone="violet" text="Ищем игры…" />
         )}
 
         {addSearchError && (
