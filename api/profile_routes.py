@@ -14,12 +14,12 @@ from typing import Literal
 from api.security import _current_user, _session, _user_payload
 
 router = APIRouter()
-ALLOWED_TINTS = ("default", "violet", "rose", "blue", "teal", "amber")
+ALLOWED_TINTS = ("default", "violet", "rose", "blue", "teal", "amber", "coral")
 MAX_AVATAR_BYTES = 340_000
 
 
 class AppearancePayload(BaseModel):
-    tint: Literal["default", "violet", "rose", "blue", "teal", "amber"]
+    tint: Literal["default", "violet", "rose", "blue", "teal", "amber", "coral"]
     # Omitted keeps current avatar; null removes it; value replaces it.
     avatarData: str | None = Field(default=None, max_length=470_000)
     updateAvatar: bool = False
