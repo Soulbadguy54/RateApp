@@ -917,7 +917,7 @@ function App() {
 
   useEffect(() => {
     if (
-      activeTab !== 'library' ||
+      (activeTab !== 'library' && profileCloudPickerSlot === null) ||
       !librarySearchOpen ||
       !focusLibrarySearchOnOpen.current
     ) return
@@ -928,7 +928,7 @@ function App() {
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [activeTab, librarySearchOpen])
+  }, [activeTab, librarySearchOpen, profileCloudPickerSlot])
 
   useEffect(() => {
     // The App renders a loading/auth shell before the library mounts.
@@ -2518,17 +2518,16 @@ function App() {
       <header className="topbar library-topbar">
         {cloudPicker && <button type="button" className="icon-button library-cloud-picker__back"
           aria-label="Назад в профиль" onClick={closeProfileCloudPicker}><Icon name="back" size={20} /></button>}
-        <motion.button
-          layout
-          className="library-title"
-          onClick={() => { if (!cloudPicker) resetTab('library') }}
-          aria-label="Обновить страницу «Мои игры»"
-          title="Сбросить и обновить страницу"
-          whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
-          transition={{ type: 'spring', stiffness: 480, damping: 34 }}
-        >
-          Мои игры
-        </motion.button>
+        {cloudPicker ? <h1 className="library-title">Мои игры</h1> : (
+          <motion.button layout className="library-title"
+            onClick={() => resetTab('library')}
+            aria-label="Обновить страницу «Мои игры»"
+            title="Сбросить и обновить страницу"
+            whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
+            transition={{ type: 'spring', stiffness: 480, damping: 34 }}>
+            Мои игры
+          </motion.button>
+        )}
 
         <motion.div className="topbar-actions" layout>
           <motion.button
