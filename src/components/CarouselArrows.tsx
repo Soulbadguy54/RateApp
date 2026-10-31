@@ -85,44 +85,29 @@ export default function CarouselArrows({
     }
     const current = g.samples[g.samples.length - 1]
     const first = g.samples[0]
-    // Release velocity is computed over the last ~120 ms, not from the
-    // last noisy touch event. Fast flings can cross the whole remaining shelf.
+    // Use ~120 ms release samples. A flick can pass several covers but
+    // should not automatically fly to the end of every carousel.
     const speed = -.83 * (current.x - first.x) /
       Math.max(16, current.time - first.time)
     const max = Math.max(0, el.scrollWidth - el.clientWidth)
-    let velocity = Math.max(-3.8, Math.min(3.8, speed * 1.65))
+    let velocity = Math.max(-2.2, Math.min(2.2, speed * 1.15))
     if (Math.abs(speed) < .16) {
       el.style.scrollSnapType = ''
       return
     }
     let last = performance.now()
-    let elapsed = 0
     let frames = 0
-    // A decisive flick should continue to the far end; a measured gesture
-    // settles naturally with friction so users can inspect nearby cards.
-    const rush = Math.abs(speed) >= 1.05
-    const startLeft = el.scrollLeft
-    const destination = speed > 0 ? max : 0
-    const duration = Math.min(1300, 780 + Math.abs(destination - startLeft) * .27)
     const tick = (now: number) => {
-      const dt = Math.min(40, now - last)
+      const dt = Math.max(0, Math.min(40, now - last))
       last = now
-      elapsed += dt
-      let target: number
-      if (rush) {
-        const fraction = Math.min(1, elapsed / duration)
-        const eased = 1 - Math.pow(1 - fraction, 3)
-        target = startLeft + (destination - startLeft) * eased
-      } else {
-        velocity *= Math.pow(.979, dt / 16)
-        target = el.scrollLeft + velocity * dt
-      }
+      velocity *= Math.pow(.952, dt / 16)
+      const target = el.scrollLeft + velocity * dt
       const clamped = Math.max(0, Math.min(max, target))
       el.scrollLeft = clamped
-      const edge = target !== clamped || (rush && elapsed >= duration)
-      if (edge || ++frames > 150 || (!rush && Math.abs(velocity) < .035)) {
-        if (target !== clamped && !reduceMotion) {
-          const offset = Math.min(17, Math.abs(target - clamped) + 5)
+      const edge = target !== clamped
+      if (edge || ++frames > 130 || Math.abs(velocity) < .04) {
+        if (edge && !reduceMotion) {
+          const offset = Math.min(12, Math.abs(target - clamped) + 4)
           el.animate([{ transform: 'translateX(0px)' },
             { transform: 'translateX(' + (target < 0 ? offset : -offset) + 'px)' },
             { transform: 'translateX(0px)' }],

@@ -3511,7 +3511,7 @@ function App() {
   }
 
   const renderProfile = () => (
-    <Suspense fallback={<ContentLoading tone="green" text="Открываем профиль…" />}>
+    <Suspense fallback={<div className="viewport-loading"><ContentLoading tone="green" text="Открываем профиль…" /></div>}>
     <ProfileView
       user={authUser!}
       onOpenWishlist={() => navigateTo({
@@ -3591,7 +3591,20 @@ function App() {
                 {activeTab === 'library' && renderLibrary()}
                 {activeTab === 'add' && renderAdd()}
                 {activeTab === 'discovery' && (
-                  <Suspense fallback={<ContentLoading tone="violet" text="Подбираем игры…" />}>
+                  <Suspense fallback={
+                    <section className="discover-screen" aria-label="Персональные рекомендации игр">
+                      <header className="discover-topbar">
+                        <h1 className="discover-topbar__title">Для тебя</h1>
+                        <button type="button" className="discover-icon-button discover-icon-button--info"
+                          aria-label="Обучение загружается" disabled>i</button>
+                      </header>
+                      <div className="discover-stage">
+                        <div className="discover-state">
+                          <ContentLoading tone="violet" text="Подбираем игры…" />
+                        </div>
+                      </div>
+                    </section>
+                  }>
                     <DiscoverView
                       nickname={authUser.nickname}
                       onAddPlaythrough={(game) => {
@@ -3615,7 +3628,7 @@ function App() {
                 )}
                 {activeTab === 'collections' && renderCollections()}
                 {activeTab === 'links' && (
-                  <Suspense fallback={<ContentLoading tone="green" text="Открываем ссылки…" />}>
+                  <Suspense fallback={<div className="viewport-loading"><ContentLoading tone="green" text="Открываем ссылки…" /></div>}>
                     <SavedLinksView onOpenGame={openGame} cacheNamespace={String(authUser.id)} />
                   </Suspense>
                 )}
