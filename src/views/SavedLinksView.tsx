@@ -19,14 +19,6 @@ type LinksPage = { items: SavedLink[]; nextBefore: number | null }
 const DELETE_DELAY_MS = 4000
 const HOLD_DELAY_MS = 480
 
-function isInstagramPost(url: string) {
-  try {
-    const parsed = new URL(url)
-    return /^(?:www\.|m\.)?instagram\.com$/i.test(parsed.hostname) &&
-      /^\/(?:p|reel|reels)\/[a-zA-Z0-9_-]+\/?$/.test(parsed.pathname)
-  } catch { return false }
-}
-
 function displayHost(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
@@ -130,7 +122,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
   useEffect(() => {
     let cancelled = false
     const candidates = items.slice(0, 8).filter(item =>
-      (!item.title || isInstagramPost(item.url)) && !previewAttemptedRef.current.has(item.id))
+      !previewAttemptedRef.current.has(item.id))
     for (const item of candidates) previewAttemptedRef.current.add(item.id)
     const load = async () => {
       for (const item of candidates) {
@@ -392,21 +384,14 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
           >
             <div className="saved-link-card__body">
               <div className="saved-link-card__thumbnail" aria-hidden="true">
-                {isInstagramPost(link.url)
-                  ? <>
-                      <Icon name="link" size={23} />
-                      <img className="saved-link-card__instagram-cover"
-                        src={'/api/saved-links/' + link.id + '/thumbnail'} alt=""
-                        loading="lazy" referrerPolicy="no-referrer"
-                        onError={event => { event.currentTarget.style.display = 'none' }} />
-                    </>
-                  : link.games?.[0]?.coverUrl
-                    ? <img src={link.games[0].coverUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
-                    : <Icon name="link" size={23} />}
+                <Icon name="link" size={23} />
+                <img className="saved-link-card__preview-image"
+                  src={'/api/saved-links/' + link.id + '/thumbnail'} alt=""
+                  loading="lazy" referrerPolicy="no-referrer"
+                  onError={event => { event.currentTarget.style.display = 'none' }} />
               </div>
               <div className="saved-link-card__copy">
-                <h3>{previews[link.id]?.title ||
-                  (isInstagramPost(link.url) ? 'Видео Instagram' : link.title || displayHost(link.url))}</h3>
+                <h3>{previews[link.id]?.title || link.title || displayHost(link.url)}</h3>
                 <p className="saved-link-card__host">{previews[link.id]?.description || displayHost(link.url)}</p>
                 <time dateTime={link.createdAt}>{readableDate(link.createdAt)}</time>
               </div>
