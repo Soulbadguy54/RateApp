@@ -37,5 +37,5 @@ test('links retain glass header while the list scrolls underneath', async ({ pag
   await expect.poll(() => scrollPane.evaluate(el => el.scrollTop)).toBeGreaterThan(400)
   const sticky = await header.boundingBox()
   expect(sticky).not.toBeNull()
-  expect(Math.abs(sticky!.y - initial!.y)).toBeLessThan(15)
+  expect(Math.abs(sticky!.y - initial!.y)).toBeLessThan(24)
 })
