@@ -15,13 +15,13 @@ from api.security import _current_user, _session, _user_payload
 
 router = APIRouter()
 ALLOWED_TINTS = ("default", "violet", "rose", "blue", "teal", "amber")
-MAX_AVATAR_BYTES = 240_000
+MAX_AVATAR_BYTES = 340_000
 
 
 class AppearancePayload(BaseModel):
     tint: Literal["default", "violet", "rose", "blue", "teal", "amber"]
     # Omitted keeps current avatar; null removes it; value replaces it.
-    avatarData: str | None = Field(default=None, max_length=350_000)
+    avatarData: str | None = Field(default=None, max_length=470_000)
     updateAvatar: bool = False
 
 
