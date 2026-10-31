@@ -63,6 +63,9 @@ export default function ProfileView({
   const [offset, setOffset] = useState<Point>({ x: 0, y: 0 })
   const inputRef = useRef<HTMLInputElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
+  const cropRef = useRef<HTMLDivElement>(null)
+  const [viewSize, setViewSize] = useState(VIEW_SIZE)
+  const previousViewSizeRef = useRef(VIEW_SIZE)
   const pointsRef = useRef(new Map<number, Point>())
   const gestureRef = useRef<{ start: Point; moved: boolean; pinched: boolean } | null>(null)
   const reducedMotion = useReducedMotion()
@@ -72,13 +75,35 @@ export default function ProfileView({
   }, [photo])
   useEffect(() => { if (!editing) setTint(profileTintOption(user.profileTint).id) }, [user.profileTint, editing])
 
-  const cover = natural.x && natural.y ? Math.max(VIEW_SIZE / natural.x, VIEW_SIZE / natural.y) : 1
+  // Cropping coordinates must follow the actual CSS diameter; otherwise a
+  // responsive avatar previews one crop but saves a different 256px image.
+  useEffect(() => {
+    const node = cropRef.current
+    if (!node) return
+    const measure = () => setViewSize(node.getBoundingClientRect().width || VIEW_SIZE)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [editing, photo])
+
+  const cover = natural.x && natural.y ? Math.max(viewSize / natural.x, viewSize / natural.y) : 1
   const clampOffset = (value: Point, nextZoom: number): Point => ({
-    x: Math.max(-Math.max(0, (natural.x * cover * nextZoom - VIEW_SIZE) / 2),
-      Math.min(Math.max(0, (natural.x * cover * nextZoom - VIEW_SIZE) / 2), value.x)),
-    y: Math.max(-Math.max(0, (natural.y * cover * nextZoom - VIEW_SIZE) / 2),
-      Math.min(Math.max(0, (natural.y * cover * nextZoom - VIEW_SIZE) / 2), value.y)),
+    x: Math.max(-Math.max(0, (natural.x * cover * nextZoom - viewSize) / 2),
+      Math.min(Math.max(0, (natural.x * cover * nextZoom - viewSize) / 2), value.x)),
+    y: Math.max(-Math.max(0, (natural.y * cover * nextZoom - viewSize) / 2),
+      Math.min(Math.max(0, (natural.y * cover * nextZoom - viewSize) / 2), value.y)),
   })
+  // Preserve the same relative focal point across viewport rotation/resizing.
+  // Clamp after scaling, so a previously dragged image never exposes blank crop.
+  useEffect(() => {
+    const scale = viewSize / previousViewSizeRef.current
+    previousViewSizeRef.current = viewSize
+    if (!natural.x || !natural.y || scale === 1) return
+    setOffset(current => clampOffset({ x: current.x * scale, y: current.y * scale }, zoom))
+  }, [viewSize, natural.x, natural.y, zoom])
+
   const changeZoom = (value: number) => {
     const next = Math.max(1, Math.min(3.2, value))
     setZoom(next)
@@ -141,7 +166,7 @@ export default function ProfileView({
     canvas.width = canvas.height = 256
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
-    const ratio = 256 / VIEW_SIZE
+    const ratio = 256 / viewSize
     const width = natural.x * cover * zoom * ratio
     const height = natural.y * cover * zoom * ratio
     ctx.drawImage(image, 128 - width / 2 + offset.x * ratio,
@@ -226,7 +251,7 @@ export default function ProfileView({
           </div>
           <div className="profile-glass-header__avatar-row">
             {editing && photo ? (
-              <div className="profile-avatar-crop" role="button" tabIndex={0}
+              <div ref={cropRef} className="profile-avatar-crop" role="button" tabIndex={0}
                 aria-label="Кадрировать аватар или нажать для выбора другой фотографии"
                 onPointerDown={onPointerDown} onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
