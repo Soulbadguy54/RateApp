@@ -72,7 +72,17 @@ test('links retain glass header while the list scrolls underneath', async ({ pag
   const catalogTitle = page.locator('.game-database-heading h1')
   await expect(catalogTitle).toBeVisible()
   await expect(catalogTitle).toHaveCSS('font-size', geometry.titleSize)
-  await expect(page.locator('.game-database-powered')).toHaveCSS('margin-top', '4px')
+  await expect(page.locator('.game-database-powered')).toHaveCSS('margin-top', '0px')
+  const poweredRow = await page.locator('.game-database-heading__row').evaluate(row => {
+    const title = row.querySelector('h1')!.getBoundingClientRect()
+    const caption = row.querySelector('.game-database-powered')!.getBoundingClientRect()
+    return { titleY: (title.top + title.bottom) / 2, captionY: (caption.top + caption.bottom) / 2,
+      titleRight: title.right, captionLeft: caption.left, rowHeight: row.getBoundingClientRect().height,
+      titleHeight: title.height }
+  })
+  expect(Math.abs(poweredRow.titleY - poweredRow.captionY)).toBeLessThan(13)
+  expect(poweredRow.titleRight).toBeLessThan(poweredRow.captionLeft)
+  expect(poweredRow.rowHeight).toBeLessThan(poweredRow.titleHeight + 4)
   await expect(page.getByPlaceholder('Введи первые три символа')).toBeVisible()
   await expect(page.locator('.game-database-heading .game-database-search')).toHaveCount(1)
   await expect(page.getByRole('button', { name: 'Подтвердить поиск' })).toHaveCount(0)

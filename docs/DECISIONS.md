@@ -486,3 +486,12 @@ Profile root объединяет H1 @nickname с крупным круглым 
 **Решение.** Контейнеры и декоративные блоки получают ограниченные `clamp(min, viewport-relative, max)`, сетки — `minmax(0,1fr)`; safe area учитывается из `env()`. Шапка 54–68px, nav 62–74px, аватар профиля 124–176px, облака 44–60px. Crop pointer offsets и PNG должны использовать измеренный `ResizeObserver` диаметр, не литерал в JS. Иконки, минимальная зона нажатия, 52px поля и 12px offset Discovery намеренно остаются стабильными. Таблетный/desktop layout за пределами этого решения.
 
 **Контроль.** `e2e/responsive-layout.spec.ts` перебирает 6 phone viewports в Android Chromium и iPhone WebKit, проверяет центрирование, разнесение облаков и отсутствие page-level horizontal overflow на 6 корнях; отдельно проверяет resize crop. Реальное исполнение CI/hardware smoke — условие приёмки, не утверждение этого ADR. Подробности: [аудит](RESPONSIVE_AUDIT_2026-11-01.md), [PR #133](https://github.com/Soulbadguy54/RateApp/pull/133).
+
+
+## ADR-071 · Настройки профиля через folder tabs вместо стека карточек (01.11.2026, принято для develop, PR #134)
+
+**Контекст.** При высоком стеклянном hero отдельные карточки уведомлений, экспорта и аккаунта требовали лишней прокрутки. Подпись Powered by IGDB ушла на вторую строку под главным названием.
+
+**Решение.** Две локальные вкладки notifications (default) и security с bell/shield, единая glass-папка, визуально примыкающий активный ярлык, Motion shared-layout+fade/slide с reduced-motion; ARIA tablist/tab/tabpanel и Arrow/Home/End. Внутри Push оставить описание, switch и диагностику без дублирующих названий. Security — только Email, PIN, Backup; ограниченные высоты строк, email ellipsis, экспорт с прежнего /api/export, импорт и изменение email/PIN disabled. Logout пока скрыт из UI, auth endpoint/сессии остаются неизменными. На коротких экранах уменьшить декоративный hero, но не обрезать сообщения об ошибках или редактор аватара ради обязательного no-scroll. Вкладка не добавляет Browser History entries.
+
+Подпись powered by IGDB возвращена на одну baseline-строку с «База игр» (не часть H1). E2E проверяет compact smartphone, клавиатуру и семантическое содержимое. [PR #134](https://github.com/Soulbadguy54/RateApp/pull/134).

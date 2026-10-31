@@ -94,8 +94,11 @@ test('profile keeps nickname, avatar and tint inside one sticky glass panel', as
   await expect(header.getByRole('heading', { name: '@appearance_qa' })).toHaveCSS('color', 'rgb(140, 242, 125)')
   await expect(navLabel).toHaveCSS('color', 'rgb(140, 242, 125)')
   await expect(header).toHaveCSS('backdrop-filter', /blur\(12px\)/)
-  // The remaining account content scrolls beneath the same header.
+  // The compact security content is a separate folder tab, not a long stack.
+  await expect(page.getByRole('tab', { name: 'Уведомления' })).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('tab', { name: 'Безопасность' }).click()
   await expect(page.getByText('Резервное копирование')).toBeVisible()
+  await expect(page.locator('.profile-security__row')).toHaveCount(3)
 })
 
 

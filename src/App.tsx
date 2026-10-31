@@ -28,7 +28,7 @@ import { sessionFetch, subscribeSessionExpiry, getSessionExpiredSnapshot, resetS
 import './views/DiscoverView.css'
 import LoadingScreen from './LoadingScreen'
 import ContentLoading from './components/ContentLoading'
-import { PushOnboarding, clearPushStateCache, disconnectPushForLogout, preloadPushState } from './PushSettings'
+import { PushOnboarding, clearPushStateCache, preloadPushState } from './PushSettings'
 import {
   games,
   type Game,
@@ -3605,15 +3605,6 @@ function App() {
       onOpenWishlist={() => navigateTo({
         tab: 'collections', gameId: null, collectionId: WISHLIST_COLLECTION_ID, formGameId: null,
       })}
-      onLogout={async () => {
-        try { await disconnectPushForLogout() } catch { /* Log out regardless of push API availability. */ }
-        await sessionFetch('/api/auth/logout', { method: 'POST' })
-        clearPushStateCache(authUser?.nickname ?? '')
-        setAuthUser(null)
-        setEntries([])
-        setCollections([])
-        navigateTo({ tab: 'library', gameId: null, collectionId: null, formGameId: null }, { replace: true })
-      }}
     />
     </Suspense>
   )

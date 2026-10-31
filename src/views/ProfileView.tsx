@@ -39,7 +39,7 @@ type Point = { x: number; y: number }
     The same transformation is baked into a small 256px PNG on Save. */
 export default function ProfileView({
   user, savedClouds, editClouds, cloudDraftIds,
-  onStartCloudEditing, onChooseCloud, onOpenGame, onOpenWishlist, onLogout, onSaved,
+  onStartCloudEditing, onChooseCloud, onOpenGame, onOpenWishlist, onSaved,
 }: {
   user: AuthUser
   savedClouds: ProfileCloud[]
@@ -49,10 +49,11 @@ export default function ProfileView({
   onChooseCloud: (slot: number) => void
   onOpenGame: (gameId: number) => void
   onOpenWishlist: () => void
-  onLogout: () => Promise<void>
   onSaved: (user: AuthUser) => void
 }) {
-  const [loggingOut, setLoggingOut] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'notifications' | 'security'>('notifications')
+  const notificationsTabRef = useRef<HTMLButtonElement>(null)
+  const securityTabRef = useRef<HTMLButtonElement>(null)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -198,11 +199,6 @@ export default function ProfileView({
       setError(cause instanceof Error ? cause.message : 'Ошибка сохранения оформления.')
     } finally { setSaving(false) }
   }
-  const exit = async () => {
-    if (loggingOut) return
-    setLoggingOut(true)
-    try { await onLogout() } finally { setLoggingOut(false) }
-  }
   const chosenTint = profileTintOption(tint)
   const clouds = editing ? editClouds : savedClouds
 
@@ -309,29 +305,102 @@ export default function ProfileView({
           )}
         </AnimatePresence>
       </header>
-      <PushSettings user={user.nickname} onOpenWishlist={onOpenWishlist} />
-      <section className="info-card account-card">
-        <h2>Резервное копирование</h2>
-        <p className="privacy-note">Сохрани свои прохождения, оценки, отзывы и коллекции в одном JSON-файле. Только твои данные.</p>
-        <a className="account-export-link" href="/api/export" download="rateapp-export.json">
-          <Icon name="download" size={17} /> Скачать данные
-        </a>
-      </section>
-      <section className="info-card account-card">
-        <span className="eyebrow">АККАУНТ</span>
-        <h2>Вход и восстановление</h2>
-        <div className="account-row">
-          <span><Icon name="mail" size={18} /><span><small>Email</small>{user.email}</span></span>
-          <button type="button" disabled title="Изменение email пока недоступно">Изменить</button>
+
+      <section className="profile-settings" aria-label="Настройки профиля"
+        style={{ '--profile-accent-color': chosenTint.color, '--profile-tint-rgb': chosenTint.rgb } as CSSProperties}>
+        <div className="profile-settings__tabs" role="tablist" aria-label="Разделы настроек">
+          {([
+            { id: 'notifications' as const, label: 'Уведомления', icon: 'bell' as const, ref: notificationsTabRef },
+            { id: 'security' as const, label: 'Безопасность', icon: 'shield' as const, ref: securityTabRef },
+          ]).map(tab => (
+            <button key={tab.id} ref={tab.ref} type="button" role="tab"
+              id={'profile-settings-tab-' + tab.id}
+              aria-controls={'profile-settings-panel-' + tab.id}
+              aria-selected={settingsTab === tab.id}
+              tabIndex={settingsTab === tab.id ? 0 : -1}
+              className={'profile-settings__tab' + (settingsTab === tab.id ? ' profile-settings__tab--active' : '')}
+              onClick={() => setSettingsTab(tab.id)}
+              onKeyDown={event => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' &&
+                    event.key !== 'Home' && event.key !== 'End') return
+                event.preventDefault()
+                const next = event.key === 'Home' ? 'notifications'
+                  : event.key === 'End' ? 'security'
+                  : settingsTab === 'notifications' ? 'security' : 'notifications'
+                setSettingsTab(next)
+                const targetTab = next === 'notifications' ? notificationsTabRef : securityTabRef
+                targetTab.current?.focus()
+              }}>
+              {settingsTab === tab.id && (
+                <motion.span className="profile-settings__tab-active" layoutId="profile-settings-active"
+                  transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 38 }}
+                  aria-hidden="true" />
+              )}
+              <span className="profile-settings__tab-label">
+                <Icon name={tab.icon} size={18} />
+                <span>{tab.label}</span>
+              </span>
+            </button>
+          ))}
         </div>
-        <div className="account-row">
-          <span><Icon name="lock" size={18} /><span><small>PIN-код</small>••••••</span></span>
-          <button type="button" disabled title="Изменение PIN пока недоступно">Изменить</button>
+        <div className="profile-settings__folder">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div key={settingsTab}
+              id={'profile-settings-panel-' + settingsTab}
+              role="tabpanel"
+              tabIndex={0}
+              aria-labelledby={'profile-settings-tab-' + settingsTab}
+              className="profile-settings__panel"
+              initial={reducedMotion ? false : { opacity: 0, x: settingsTab === 'security' ? 12 : -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={reducedMotion ? undefined : { opacity: 0, x: settingsTab === 'security' ? -12 : 12 }}
+              transition={{ duration: reducedMotion ? 0 : .22, ease: [0.22, 1, 0.36, 1] }}>
+              {settingsTab === 'notifications' ? (
+                <PushSettings user={user.nickname} onOpenWishlist={onOpenWishlist} />
+              ) : (
+                <div className="profile-security">
+                  <div className="profile-security__row">
+                    <div className="profile-security__identity">
+                      <Icon name="mail" size={18} />
+                      <span className="profile-security__details">
+                        <strong>Email</strong>
+                        <span className="profile-security__value" title={user.email}>{user.email}</span>
+                      </span>
+                    </div>
+                    <button type="button" className="profile-security__disabled-action" disabled
+                      title="Изменение email пока недоступно">Изменить</button>
+                  </div>
+                  <div className="profile-security__row">
+                    <div className="profile-security__identity">
+                      <Icon name="lock" size={18} />
+                      <span className="profile-security__details">
+                        <strong>PIN-код</strong>
+                        <span className="profile-security__value">••••••</span>
+                      </span>
+                    </div>
+                    <button type="button" className="profile-security__disabled-action" disabled
+                      title="Изменение PIN-кода пока недоступно">Изменить</button>
+                  </div>
+                  <div className="profile-security__row profile-security__row--backup">
+                    <div className="profile-security__identity">
+                      <Icon name="download" size={18} />
+                      <span className="profile-security__details"><strong>Резервное копирование</strong></span>
+                    </div>
+                    <div className="profile-security__backup-actions">
+                      <button type="button" disabled title="Импорт пока не реализован">
+                        <Icon name="upload" size={15} /> Импорт
+                      </button>
+                      <a href="/api/export" download="rateapp-export.json"
+                        title="Экспорт текущего JSON-файла аккаунта">
+                        <Icon name="download" size={15} /> Экспорт
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
-        <p className="privacy-note">Email и настройки входа видны только вам. Данные аккаунта защищены настройками входа.</p>
-        <button className="logout-button" disabled={loggingOut} onClick={() => { void exit() }}>
-          {loggingOut ? 'Выходим…' : 'Выйти из аккаунта'}
-        </button>
       </section>
       <p className="app-build-version">Версия приложения: {__RATEAPP_BUILD__}</p>
     </>
