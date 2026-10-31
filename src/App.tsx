@@ -3539,7 +3539,7 @@ function App() {
   const nav: { id: Tab; label: string; icon: IconName }[] = [
     { id: 'library', label: 'Мои игры', icon: 'gamepad' },
     { id: 'add', label: 'База игр', icon: 'library' },
-    { id: 'collections', label: 'Коллекции', icon: 'layers' },
+    { id: 'collections', label: 'Коллекции', icon: 'heart' },
     { id: 'profile', label: 'Профиль', icon: 'user' },
   ]
 
