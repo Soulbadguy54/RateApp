@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import CarouselArrows from '../components/CarouselArrows'
+import ContentLoading from '../components/ContentLoading'
 import { createPortal } from 'react-dom'
 import Icon from '../components/Icon'
 import { sessionFetch } from '../sessionFetch'
@@ -396,7 +397,7 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
         </div>
       )}
 
-      {loading && <div className="saved-links-empty" role="status">Загружаем ссылки…</div>}
+      {loading && <ContentLoading tone="green" text="Открываем ссылки…" />}
       {!loading && !items.length && (
         <div className="saved-links-empty">
           <Icon name="bookmark" size={34} />
