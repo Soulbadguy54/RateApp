@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
+import { createPortal } from 'react-dom'
 import Icon from '../components/Icon'
 import { sessionFetch } from '../sessionFetch'
 import './SavedLinksView.css'
@@ -390,7 +391,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
         </button>
       )}
 
-      {bulkConfirmOpen && (
+      {bulkConfirmOpen && createPortal((
         <div className="saved-links-dialog-backdrop"
           onMouseDown={event => {
             if (!deleting && event.target === event.currentTarget) setBulkConfirmOpen(false)
@@ -408,7 +409,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
             </div>
           </section>
         </div>
-      )}
+      ), document.body)}
     </section>
   )
 }
