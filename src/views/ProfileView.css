@@ -190,6 +190,10 @@
   filter: grayscale(1);
   pointer-events: none;
   user-select: none;
+  /* Passive Steam integration is still a floating cloud, not a static icon.
+     Offset phase avoids synchronous movement with the three game clouds. */
+  animation: profile-steam-cloud-drift 8.3s ease-in-out -3.1s infinite alternate;
+  will-change: transform;
 }
 .profile-steam-cloud img {
   position: relative;
@@ -215,8 +219,14 @@
   50% { transform: translate3d(2px, -1px, 0) rotate(-1deg); }
   to { transform: translate3d(-1px, 1px, 0) rotate(2deg); }
 }
+@keyframes profile-steam-cloud-drift {
+  from { transform: translate3d(2px, -2px, 0) rotate(2deg); }
+  50% { transform: translate3d(-3px, 3px, 0) rotate(-2deg); }
+  to { transform: translate3d(2px, -1px, 0) rotate(1deg); }
+}
 @media (prefers-reduced-motion: reduce) {
-  .profile-top-game { animation: none !important; will-change: auto; }
+  .profile-top-game,
+  .profile-steam-cloud { animation: none !important; will-change: auto; }
 }
 .profile-picture {
   display: grid;
