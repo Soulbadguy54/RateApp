@@ -49,17 +49,25 @@ test('my links: quiet layout, delayed cancellation, long-press bulk delete and n
   await expect(page.locator('.saved-link-card')).toContainText('example.com')
   const trash = page.getByRole('button', { name: /Удалить ссылку/ })
   await trash.click()
-  await expect(page.locator('.saved-link-card__countdown line')).toHaveCount(12)
+  const radial = page.locator('.saved-link-card__radial-timer')
+  await expect(radial).toBeVisible()
+  // Verify the actual conic film animates instead of ticking numbered segments.
+  const sweep0 = await radial.evaluate(element =>
+    getComputedStyle(element).getPropertyValue('--link-delete-angle').trim())
+  await page.waitForTimeout(800)
+  const sweep1 = await radial.evaluate(element =>
+    getComputedStyle(element).getPropertyValue('--link-delete-angle').trim())
+  expect(sweep1).not.toBe(sweep0)
   await expect(page.getByRole('button', { name: /Отменить удаление ссылки/ })).toBeVisible()
   await page.waitForTimeout(750)
   await page.getByRole('button', { name: /Отменить удаление ссылки/ }).click()
-  await expect(page.locator('.saved-link-card__countdown')).toHaveCount(0)
+  await expect(page.locator('.saved-link-card__radial-timer')).toHaveCount(0)
   await page.waitForTimeout(4050)
   expect(singleDeletes).toHaveLength(0)
   await expect(page.locator('.saved-link-card')).toHaveCount(1)
 
   await page.getByRole('button', { name: /Удалить ссылку/ }).click()
-  await expect(page.locator('.saved-link-card__countdown')).toBeVisible()
+  await expect(page.locator('.saved-link-card__radial-timer')).toBeVisible()
   // The deletion happens only when the time has elapsed; not on first tap.
   expect(singleDeletes).toHaveLength(0)
   await expect(page.locator('.saved-link-card')).toHaveCount(0, { timeout: 9000 })
@@ -75,6 +83,9 @@ test('my links: quiet layout, delayed cancellation, long-press bulk delete and n
   await page.mouse.down()
   await page.waitForTimeout(530)
   await page.mouse.up()
+  await expect(page.getByText('Выбрано: 1')).toBeVisible()
+  // iOS emits contextmenu after the hold timeout. It must NOT deselect.
+  await firstTitle.dispatchEvent('contextmenu', { bubbles: true })
   await expect(page.getByText('Выбрано: 1')).toBeVisible()
   await expect(page.locator('.saved-link-card__selector')).toHaveCount(2)
   await expect(page.locator('.saved-link-card__selector--checked')).toHaveCount(1)
