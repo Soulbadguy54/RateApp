@@ -11,6 +11,9 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from typing import Literal
 
+from sqlalchemy import select
+from api.models import UserGame
+
 from api.security import _current_user, _session, _user_payload
 
 router = APIRouter()
@@ -23,6 +26,8 @@ class AppearancePayload(BaseModel):
     # Omitted keeps current avatar; null removes it; value replaces it.
     avatarData: str | None = Field(default=None, max_length=470_000)
     updateAvatar: bool = False
+    # Omission keeps the saved manual picks; nullable slots use automatic top games.
+    cloudGameIds: list[int | None] | None = Field(default=None, min_length=3, max_length=3)
 
 
 def _avatar_bytes(encoded: str) -> bytes:
@@ -48,6 +53,22 @@ def save_appearance(payload: AppearancePayload, request: Request) -> dict[str, o
     avatar = _avatar_bytes(payload.avatarData) if payload.updateAvatar and payload.avatarData else None
     with _session() as session:
         user = _current_user(request, session)
+        if "cloudGameIds" in payload.model_fields_set:
+            slots = payload.cloudGameIds
+            if slots is None:
+                raise HTTPException(status_code=422, detail="Ожидаются три слота облаков.")
+            chosen = [game_id for game_id in slots if game_id is not None]
+            if any(game_id <= 0 for game_id in chosen) or len(set(chosen)) != len(chosen):
+                raise HTTPException(status_code=422, detail="Игры в облаках должны быть разными.")
+            if chosen:
+                owned = set(session.scalars(select(UserGame.game_id).where(
+                    UserGame.user_id == user.id,
+                    UserGame.game_id.in_(chosen),
+                    UserGame.status.in_(("completed", "playing", "dropped")),
+                )).all())
+                if owned != set(chosen):
+                    raise HTTPException(status_code=422, detail="Выбери игру из «Моих игр».")
+            user.profile_cloud_game_ids = slots
         user.profile_tint = payload.tint
         if payload.updateAvatar:
             user.avatar_data = avatar

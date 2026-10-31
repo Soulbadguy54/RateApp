@@ -7,6 +7,7 @@ export type AuthUser = {
   nickname: string
   profileTint?: string
   avatarVersion?: number
+  profileCloudGameIds?: (number | null)[]
   createdAt: string
   public: boolean
 }

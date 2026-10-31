@@ -56,6 +56,7 @@ def _user_payload(user: User) -> dict[str, object]:
         "nickname": user.nickname,
         "profileTint": user.profile_tint,
         "avatarVersion": user.avatar_version,
+        "profileCloudGameIds": user.profile_cloud_game_ids,
         "createdAt": user.created_at.isoformat(),
         "public": True,
     }

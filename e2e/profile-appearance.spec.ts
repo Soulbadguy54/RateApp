@@ -137,7 +137,96 @@ test('floating cloud cards only use personal completed/dropped scores and open t
   await expect(cards.nth(1)).toHaveAttribute('aria-label', 'Drift, личная оценка 9.7 из 10')
   await expect(cards.nth(2)).toHaveAttribute('aria-label', 'Aster, личная оценка 9.5 из 10')
   await expect(page.locator('.profile-top-game__score')).toHaveText(['9.8', '9.7', '9.5'])
-  await expect(page.locator('.profile-glass-header__hero--ranked')).toBeVisible()
+  await expect(page.locator('.profile-glass-header__hero')).toBeVisible()
+  await expect(page.locator('.profile-top-game__score svg')).toHaveCount(0)
+  const steam = page.getByRole('img', { name: 'Steam — интеграция пока не подключена' })
+  await expect(steam).toBeVisible()
+  await expect(page.getByRole('button', { name: /Steam/ })).toHaveCount(0)
+  const avatarCenter = await page.locator('.profile-glass-header__avatar-row').boundingBox()
+  const hero = await page.locator('.profile-glass-header__hero').boundingBox()
+  expect(avatarCenter && hero).toBeTruthy()
+  expect(Math.abs(avatarCenter!.x + avatarCenter!.width / 2 - hero!.x - hero!.width / 2)).toBeLessThan(2)
   await cards.first().click()
   await expect(page).toHaveURL(/game=102/)
+})
+
+
+test('profile cloud picker stays scoped: pin any My Games entry, save, cancel and return to normal library', async ({ page }) => {
+  const game = (id: number, title: string) => ({
+    id, title, genres: [], year: 2025, releaseDate: '2025-01-01',
+    developer: 'Example', platforms: ['PC'], igdbRating: 90,
+    communityRating: 7, communityRatings: 10,
+    accent: '#77ccff', accent2: '#34355d', glyph: title.slice(0, 2).toUpperCase(),
+  })
+  const gs = [game(501, 'Top Alpha'), game(502, 'Top Beta'),
+    game(503, 'My Playing'), game(504, 'Other Pick')]
+  const ratings: (number | null)[] = [9.8, 9.3, null, 8.1]
+  const library = gs.map((g, i) => ({
+    gameId: g.id, game: g, status: i === 2 ? 'playing' : 'completed',
+    score: ratings[i], completedAt: '2026-10-01', platform: 'PC',
+    atmosphereScore: 9, storyScore: 9, technologyScore: 9, gameplayScore: 9,
+    review: '', addedAt: '2026-10-01', collectionIds: [],
+  }))
+  let pins: (number | null)[] = [null, null, null]
+  let saves = 0
+  const user = () => ({
+    id: 418, email: 'cloud-picker@example.test', nickname: 'cloud_picker',
+    profileTint: 'default', avatarVersion: 0, profileCloudGameIds: pins,
+    createdAt: '2026-10-01T00:00:00Z',
+  })
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/profile/appearance' && route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as { cloudGameIds: (number | null)[] }
+      pins = body.cloudGameIds
+      saves++
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(user()) })
+    }
+    const body = path === '/api/bootstrap' ? { user: user(), library, collections: [] } : {}
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+  })
+  await page.goto('/?tab=profile')
+  const edit = page.getByRole('button', { name: 'Редактировать оформление профиля' })
+  const save = page.getByRole('button', { name: 'Сохранить оформление профиля' })
+  await expect(page.locator('.profile-top-game')).toHaveCount(3)
+  await edit.click()
+  await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click()
+  const picker = page.locator('.library-cloud-picker')
+  await expect(picker).toBeVisible()
+  await expect(picker.getByRole('heading', { name: 'Мои игры' })).toBeVisible()
+  await expect(picker.getByText('Выбери игру')).toBeVisible()
+  await expect(picker.getByRole('button', { name: 'Добавить игру' })).toHaveCount(0)
+  // Cancel picker with arrow. Profile remains in edit mode; no slot changed.
+  await picker.getByRole('button', { name: 'Назад в профиль' }).click()
+  await expect(save).toBeVisible()
+  await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click()
+  await picker.getByRole('button', { name: 'Открыть поиск' }).click()
+  await picker.getByRole('textbox', { name: 'Поиск в библиотеке' }).fill('My Playing')
+  await expect(picker.locator('.game-card')).toHaveCount(1)
+  await picker.locator('.game-card').click()
+  await expect(save).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Изменить игру в облаке 2' })).toBeVisible()
+  await save.click()
+  await expect(page.locator('.profile-top-game')).toHaveCount(3)
+  await expect(page.locator('.profile-top-game').nth(1)).toHaveAttribute('aria-label', 'My Playing')
+  await expect(page.locator('.profile-top-game__score')).toHaveText(['9.8', '9.3'])
+  expect(pins).toEqual([null, 503, null])
+  expect(saves).toBe(1)
+  // Hard reload: persisted pin wins, even when it has no personal rating.
+  await page.reload()
+  await expect(page.locator('.profile-top-game').nth(1)).toHaveAttribute('aria-label', 'My Playing')
+  // Preview another choice, leave profile without confirming: server keeps old pin.
+  await page.getByRole('button', { name: 'Редактировать оформление профиля' }).click()
+  await page.getByRole('button', { name: 'Изменить игру в облаке 1' }).click()
+  await picker.locator('.game-card').filter({ hasText: 'Other Pick' }).click()
+  await page.locator('.bottom-nav__item').filter({ hasText: 'Мои игры' }).click()
+  await expect(page.locator('.library-cloud-picker')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Добавить игру' })).toBeVisible()
+  await expect(page.locator('.game-card')).toHaveCount(4)
+  await page.locator('.game-card').filter({ hasText: 'Other Pick' }).click()
+  await expect(page).toHaveURL(/game=504/)
+  expect(saves).toBe(1)
+  await page.locator('.bottom-nav__item--profile').click()
+  await expect(page.locator('.profile-top-game').nth(1)).toHaveAttribute('aria-label', 'My Playing')
+  await expect(page.locator('.profile-top-game').nth(0)).toHaveAttribute('aria-label', /Top Alpha/)
 })

@@ -6,7 +6,7 @@ import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
 import BottomNavGameSlot from './components/BottomNavGameSlot'
 import { profileTintOption } from './profilePalette'
-import { profileTopGames } from './profileTopGames'
+import { profileTopGames, resolveProfileClouds } from './profileTopGames'
 import RatingWheel, { closestHalfPoint } from './components/RatingWheel'
 import { CollectionIcon, CollectionAppearanceEditor } from './components/CollectionAppearance'
 import {
@@ -341,6 +341,57 @@ function App() {
       window.removeEventListener('pageshow', onPageShow)
     }
   }, [])
+  // A picker from profile reuses library controls without turning library into a tab.
+  // These controls are snapshotted and restored; only the three-slot draft changes.
+  const [profileCloudPickerSlot, setProfileCloudPickerSlot] = useState<number | null>(null)
+  const [profileCloudDraft, setProfileCloudDraft] = useState<(number | null)[]>([null, null, null])
+  const cloudPickerSnapshotRef = useRef<null | {
+    query: string; statusFilters: LibraryStatus[]; genreFilter: string;
+    platformFilter: string; sortMode: SortMode; filtersOpen: boolean;
+    librarySearchOpen: boolean; collapse: number; collapsed: boolean;
+  }>(null)
+  const closeProfileCloudPicker = () => {
+    const snap = cloudPickerSnapshotRef.current
+    cloudPickerSnapshotRef.current = null
+    setProfileCloudPickerSlot(null)
+    if (!snap) return
+    setQuery(snap.query)
+    setStatusFilters(snap.statusFilters)
+    setGenreFilter(snap.genreFilter)
+    setPlatformFilter(snap.platformFilter)
+    setSortMode(snap.sortMode)
+    setFiltersOpen(snap.filtersOpen)
+    setLibrarySearchOpen(snap.librarySearchOpen)
+    libraryCollapseProgress.set(snap.collapse)
+    setLibraryControlsCollapsed(snap.collapsed)
+    librarySearchInputRef.current?.blur()
+  }
+  const beginProfileCloudPicker = (slot: number) => {
+    if (slot < 0 || slot > 2 || cloudPickerSnapshotRef.current) return
+    cloudPickerSnapshotRef.current = {
+      query, statusFilters: [...statusFilters], genreFilter, platformFilter,
+      sortMode, filtersOpen, librarySearchOpen,
+      collapse: libraryCollapseProgress.get(), collapsed: libraryControlsCollapsed,
+    }
+    setQuery('')
+    setStatusFilters([])
+    setGenreFilter('all')
+    setPlatformFilter('all')
+    setSortMode('activity')
+    setFiltersOpen(false)
+    setLibrarySearchOpen(false)
+    libraryCollapseProgress.set(0)
+    setLibraryControlsCollapsed(false)
+    setProfileCloudPickerSlot(slot)
+  }
+  const selectProfileCloudGame = (gameId: number) => {
+    const slot = profileCloudPickerSlot
+    if (slot === null || !entries.some(entry =>
+      entry.gameId === gameId && ['completed', 'playing', 'dropped'].includes(entry.status))) return
+    setProfileCloudDraft(current => current.map((id, index) =>
+      index === slot ? gameId : id === gameId ? null : id))
+    closeProfileCloudPicker()
+  }
   const [librarySearchOpen, setLibrarySearchOpen] = useState(false)
   const librarySearchInputRef = useRef<HTMLInputElement>(null)
   const focusLibrarySearchOnOpen = useRef(false)
@@ -470,7 +521,8 @@ function App() {
   transientBackRef.current = Boolean(
     selectedCollectionIds.length || selectedCollectionGameIds.length ||
     bulkRemoveGamesPrompt || bulkDeleteCollectionPrompt || deleteCollectionPrompt ||
-    deleteGamePrompt || collectionPickerOpen || filtersOpen || librarySearchOpen
+    deleteGamePrompt || collectionPickerOpen || filtersOpen || librarySearchOpen ||
+    profileCloudPickerSlot !== null
   )
   const currentViewRef = useRef<AppView>(firstViewRef.current)
   const [exitPromptVisible, setExitPromptVisible] = useState(false)
@@ -704,6 +756,7 @@ function App() {
           setLibrarySearchOpen(false)
           cancelCollectionHold()
           cancelCollectionGameHold()
+          if (cloudPickerSnapshotRef.current) closeProfileCloudPicker()
         }
         clearExitPrompt()
         const root = isRootScreen(active)
@@ -864,7 +917,7 @@ function App() {
 
   useEffect(() => {
     if (
-      activeTab !== 'library' ||
+      (activeTab !== 'library' && profileCloudPickerSlot === null) ||
       !librarySearchOpen ||
       !focusLibrarySearchOnOpen.current
     ) return
@@ -875,7 +928,7 @@ function App() {
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [activeTab, librarySearchOpen])
+  }, [activeTab, librarySearchOpen, profileCloudPickerSlot])
 
   useEffect(() => {
     // The App renders a loading/auth shell before the library mounts.
@@ -1047,6 +1100,14 @@ function App() {
   const topRatedProfileGames = useMemo(
     () => profileTopGames(entries, catalogGameById),
     [entries, catalogGameById],
+  )
+  const savedProfileClouds = useMemo(
+    () => resolveProfileClouds(topRatedProfileGames, authUser?.profileCloudGameIds ?? [], catalogGameById, entries),
+    [topRatedProfileGames, authUser?.profileCloudGameIds, catalogGameById, entries],
+  )
+  const draftProfileClouds = useMemo(
+    () => resolveProfileClouds(topRatedProfileGames, profileCloudDraft, catalogGameById, entries),
+    [topRatedProfileGames, profileCloudDraft, catalogGameById, entries],
   )
 
   const entryMap = useMemo(
@@ -1368,6 +1429,7 @@ function App() {
   }
 
   const openTab = (tab: Tab) => {
+    if (cloudPickerSnapshotRef.current) closeProfileCloudPicker()
     // A bottom-nav selection starts a new navigation chain. Replace the old
     // location instead of adding it as a step in the destination tab's Back.
     navigateTo({ tab, gameId: null, collectionId: null, formGameId: null }, { replace: true })
@@ -1376,6 +1438,7 @@ function App() {
   // Re-selecting the active bottom tab, or tapping the My Games title,
   // starts that tab from scratch without logging out or reloading the PWA.
   const resetTab = (tab: Tab) => {
+    if (cloudPickerSnapshotRef.current) closeProfileCloudPicker()
     const view: AppView = { tab, gameId: null, collectionId: null, formGameId: null }
     // Resetting an active tab from a nested screen must also establish a root
     // exit boundary. Disarm any earlier exit prompt when reselecting a tab.
@@ -2443,8 +2506,8 @@ function App() {
     )
   }
 
-  const renderLibrary = () => (
-    <LayoutGroup id="library-motion">
+  const renderLibrary = (cloudPicker = false) => (
+    <LayoutGroup id={cloudPicker ? 'profile-cloud-picker-library' : 'library-motion'}>
       <div
         className={
           libraryControlsCollapsed
@@ -2453,17 +2516,18 @@ function App() {
         }
       >
       <header className="topbar library-topbar">
-        <motion.button
-          layout
-          className="library-title"
-          onClick={() => resetTab('library')}
-          aria-label="Обновить страницу «Мои игры»"
-          title="Сбросить и обновить страницу"
-          whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
-          transition={{ type: 'spring', stiffness: 480, damping: 34 }}
-        >
-          Мои игры
-        </motion.button>
+        {cloudPicker && <button type="button" className="icon-button library-cloud-picker__back"
+          aria-label="Назад в профиль" onClick={closeProfileCloudPicker}><Icon name="back" size={20} /></button>}
+        {cloudPicker ? <h1 className="library-title">Мои игры</h1> : (
+          <motion.button layout className="library-title"
+            onClick={() => resetTab('library')}
+            aria-label="Обновить страницу «Мои игры»"
+            title="Сбросить и обновить страницу"
+            whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
+            transition={{ type: 'spring', stiffness: 480, damping: 34 }}>
+            Мои игры
+          </motion.button>
+        )}
 
         <motion.div className="topbar-actions" layout>
           <motion.button
@@ -2486,7 +2550,7 @@ function App() {
           >
             <Icon name="search" size={19} />
           </motion.button>
-          <motion.button
+          {!cloudPicker && <motion.button
             layout
             className="round-add"
             onClick={() => openTab('add')}
@@ -2495,7 +2559,7 @@ function App() {
             transition={{ type: 'spring', stiffness: 520, damping: 30 }}
           >
             <Icon name="plus" size={20} />
-          </motion.button>
+          </motion.button>}
         </motion.div>
       </header>
 
@@ -2558,11 +2622,14 @@ function App() {
 
       <motion.section
         className="library-overview"
-        aria-label="Сводка библиотеки"
+        aria-label={cloudPicker ? 'Выбери игру' : 'Сводка библиотеки'}
         initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: .24 }}
       >
+        {cloudPicker ? (
+          <div className="library-cloud-picker__prompt">Выбери игру</div>
+        ) : (<>
         <motion.div
           className="library-overview-card library-overview-card--games"
           initial={shouldReduceMotion ? false : { opacity: 0, x: -10 }}
@@ -2587,6 +2654,7 @@ function App() {
             <strong>{averageLibraryScore != null ? averageLibraryScore.toFixed(1) : '—'}</strong>
           </span>
         </motion.div>
+        </>)}
       </motion.section>
 
       <motion.section
@@ -2809,7 +2877,7 @@ function App() {
                     key={game.id}
                     game={game}
                     entry={entry}
-                    onOpen={() => openGame(game.id)}
+                    onOpen={() => cloudPicker ? selectProfileCloudGame(game.id) : openGame(game.id)}
                     animationIndex={index}
                     onContextMenu={(event) => event.preventDefault()}
                   />
@@ -2826,8 +2894,8 @@ function App() {
               transition={{ duration: .18 }}
             >
               <strong>Здесь пока пусто</strong>
-              <p>Смени фильтр или добавь новую игру в библиотеку.</p>
-              <button onClick={() => openTab('add')}>Добавить игру</button>
+              <p>{cloudPicker ? 'Измени фильтр, чтобы выбрать игру для облака.' : 'Смени фильтр или добавь новую игру в библиотеку.'}</p>
+              {!cloudPicker && <button onClick={() => openTab('add')}>Добавить игру</button>}
             </motion.div>
           )}
         </AnimatePresence>
@@ -3526,7 +3594,12 @@ function App() {
     <Suspense fallback={<div className="viewport-loading"><ContentLoading tone="green" text="Открываем профиль…" /></div>}>
     <ProfileView
       user={authUser!}
-      topGames={topRatedProfileGames}
+      savedClouds={savedProfileClouds}
+      editClouds={draftProfileClouds}
+      cloudDraftIds={profileCloudDraft}
+      onStartCloudEditing={() => setProfileCloudDraft(
+        Array.from({ length: 3 }, (_, index) => authUser?.profileCloudGameIds?.[index] ?? null))}
+      onChooseCloud={beginProfileCloudPicker}
       onOpenGame={openGame}
       onSaved={(updated) => setAuthUser(updated)}
       onOpenWishlist={() => navigateTo({
@@ -3647,7 +3720,16 @@ function App() {
                     <SavedLinksView onOpenGame={openGame} cacheNamespace={String(authUser.id)} />
                   </Suspense>
                 )}
-                {activeTab === 'profile' && renderProfile()}
+                {activeTab === 'profile' && (
+                  <>
+                    <div hidden={profileCloudPickerSlot !== null}>{renderProfile()}</div>
+                    {profileCloudPickerSlot !== null && (
+                      <div className="library-cloud-picker" aria-label="Выбор игры для облака">
+                        {renderLibrary(true)}
+                      </div>
+                    )}
+                  </>
+                )}
               </>
             )}
           </motion.div>
