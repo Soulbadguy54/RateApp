@@ -31,5 +31,5 @@ test('Discovery uses violet spinner above a friendly message; Links uses green',
   const violet = page.locator('.discover-state .content-loading--violet')
   await expect(violet).toBeVisible()
   await expect(violet).toContainText('Подбираем игры')
-  await expect(violet.locator('.content-loading__spinner')).toHaveCSS('border-top-color', 'rgb(184, 150, 250)')
+  await expect(violet.locator('.content-loading__spinner')).toHaveCSS('border-top-color', 'rgb(223, 182, 255)')
 })
