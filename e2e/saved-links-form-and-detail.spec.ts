@@ -95,12 +95,23 @@ test('Game detail from links: IGDB ID, similar covers, and wishlist hold toast',
   if (await dismissInstall.isVisible()) await dismissInstall.click()
   await expect(page.getByRole('button', { name: 'Открыть похожую игру Disco Elysium' })).toBeVisible()
   const collection = page.getByRole('button', { name: 'Коллекции', exact: true }).first()
-  const rect = await collection.boundingBox()
-  if (!rect) throw new Error('Collection detail button not found')
-  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2)
-  await page.mouse.down()
-  await page.waitForTimeout(610)
-  await page.mouse.up()
+  // Mobile touch events must survive native contextmenu/pointercancel.
+  await collection.evaluate(el => {
+    const touch = new Touch({ identifier: 39, target: el, clientX: 45, clientY: 45 })
+    el.dispatchEvent(new TouchEvent('touchstart', {
+      bubbles: true, cancelable: true,
+      touches: [touch], targetTouches: [touch], changedTouches: [touch],
+    }))
+    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  })
+  await page.waitForTimeout(540)
+  await collection.evaluate(el => {
+    const touch = new Touch({ identifier: 39, target: el, clientX: 45, clientY: 45 })
+    el.dispatchEvent(new TouchEvent('touchend', {
+      bubbles: true, cancelable: true,
+      touches: [], targetTouches: [], changedTouches: [touch],
+    }))
+  })
   await expect(page.getByText('Добавлено в «Хочу пройти»')).toBeVisible()
   expect(added).toBe(1)
   await expect(page.locator('.detail-collection-picker')).toHaveCount(0)
