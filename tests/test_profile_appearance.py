@@ -1,5 +1,6 @@
 """Profile avatar/tint tests. Run against migrated isolated PostgreSQL."""
 import base64
+from datetime import date
 import secrets
 import struct
 import unittest
@@ -86,7 +87,10 @@ class ProfileAppearanceTests(unittest.TestCase):
             self.assertNotEqual(local_ids, public_ids)
             session.add_all([
                 UserGame(user_id=owner.id, game_id=first.id, status="playing"),
-                UserGame(user_id=owner.id, game_id=second.id, status="completed", score=9.5),
+                UserGame(user_id=owner.id, game_id=second.id, status="completed",
+                         platform="PC", completed_at=date(2026, 10, 31), score=9.5,
+                         atmosphere_score=9.5, story_score=9.5,
+                         technology_score=9.5, gameplay_score=9.5),
             ])
             session.commit()
 
