@@ -32,6 +32,7 @@ export type IconName =
   | 'clock'
   | 'video'
   | 'download'
+  | 'alert-triangle'
   | 'chevron-left'
   | 'chevron-right'
 
@@ -81,6 +82,7 @@ export default function Icon({ name, size = 22 }: { name: IconName; size?: numbe
     video: <><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="m10 9 5 3-5 3V9Z"/></>,
     'chevron-left': <path d="m15 6-6 6 6 6"/>,
     'chevron-right': <path d="m9 6 6 6-6 6"/>,
+    'alert-triangle': <><path d="M10.2 4.3a2.1 2.1 0 0 1 3.6 0l8 14a2.1 2.1 0 0 1-1.8 3.2H4a2.1 2.1 0 0 1-1.8-3.2l8-14Z"/><path d="M12 9v5m0 3h.01"/></>,
     download: <><path d="M12 3v12m-5-5 5 5 5-5"/><path d="M4 17v3h16v-3"/></>,
   }
 
