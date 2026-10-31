@@ -110,7 +110,7 @@
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  z-index: -1;
+  z-index: 0;
   background: conic-gradient(from -90deg,
     rgba(255, 113, 113, .36) 0deg var(--link-delete-angle),
     transparent var(--link-delete-angle) 360deg);
