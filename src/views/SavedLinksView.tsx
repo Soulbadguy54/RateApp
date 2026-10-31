@@ -51,11 +51,13 @@ function normalizedLinkInput(value: string): string | null {
     const parsed = new URL(normalized)
     const host = parsed.hostname.toLowerCase().replace(/\.$/, '')
     const labels = host.split('.')
+    const tld = labels[labels.length - 1]
     if (!['http:', 'https:'].includes(parsed.protocol) ||
         parsed.username || parsed.password ||
         labels.length < 2 ||
         labels.some(part => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(part)) ||
-        !/^[a-z]{2,63}$/.test(labels[labels.length - 1]) ||
+        !(/^[a-z]{2,63}$/.test(tld) || /^xn--[a-z0-9-]{2,59}$/.test(tld)) ||
+        ['local', 'localhost', 'internal', 'test', 'invalid', 'onion'].includes(tld) ||
         (parsed.port !== '' && parsed.port !== (parsed.protocol === 'https:' ? '443' : '80')) ||
         normalized.length > 2048) return null
     return normalized
