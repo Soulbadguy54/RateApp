@@ -442,6 +442,12 @@ function App() {
     document.addEventListener('keydown', onKeyboardEnter)
     return () => document.removeEventListener('keydown', onKeyboardEnter)
   }, [])
+  const transientBackRef = useRef(false)
+  transientBackRef.current = Boolean(
+    selectedCollectionIds.length || selectedCollectionGameIds.length ||
+    bulkRemoveGamesPrompt || bulkDeleteCollectionPrompt || deleteCollectionPrompt ||
+    deleteGamePrompt || collectionPickerOpen || filtersOpen || librarySearchOpen
+  )
   const currentViewRef = useRef<AppView>(firstViewRef.current)
   const [exitPromptVisible, setExitPromptVisible] = useState(false)
   const exitArmedUntilRef = useRef(0)
@@ -656,6 +662,36 @@ function App() {
         scrollY: 0, fromApp: false, appDepth: 0,
       }
       const active = currentViewRef.current
+      // Native Back (including Safari's edge gesture) first closes selection,
+      // dialogs, and overlays. Restore the consumed history step silently;
+      // only the next Back may reach the root exit confirmation.
+      const dismiss = new Event('rateapp:cancel-transient', { cancelable: true })
+      window.dispatchEvent(dismiss)
+      if (transientBackRef.current || dismiss.defaultPrevented) {
+        if (transientBackRef.current) {
+          setSelectedCollectionIds([])
+          setSelectedCollectionGameIds([])
+          setBulkRemoveGamesPrompt(null)
+          setBulkDeleteCollectionPrompt(null)
+          setDeleteCollectionPrompt(null)
+          setDeleteGamePrompt(null)
+          setCollectionPickerOpen(false)
+          setFiltersOpen(false)
+          setLibrarySearchOpen(false)
+          cancelCollectionHold()
+          cancelCollectionGameHold()
+        }
+        clearExitPrompt()
+        const root = isRootScreen(active)
+        const restored: AppHistoryEntry = {
+          rateAppView: true, view: active, scrollY: window.scrollY,
+          fromApp: true, appDepth: (entry.appDepth ?? 0) + 1,
+          exitGate: root,
+        }
+        window.history.pushState(restored, '', urlForAppView(active))
+        exitGateDepthRef.current = root ? restored.appDepth! : null
+        return
+      }
       // Only root-level app exits are guarded. Nested screens (including the
       // playthrough form) still use native history and ordinary Back.
       if (exitGateDepthRef.current !== null && isRootScreen(active) &&
