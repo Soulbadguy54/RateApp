@@ -7,6 +7,7 @@ import type { PanInfo, MotionStyle } from 'motion/react'
 import { Cover } from '../components/GameCard'
 import { WishlistHeart } from '../components/CollectionAppearance'
 import Icon from '../components/Icon'
+import ContentLoading from '../components/ContentLoading'
 import type { Game } from '../data'
 
 type DiscoveryAction = 'like' | 'dislike' | 'wishlist'
@@ -621,7 +622,7 @@ export default function DiscoverView({
       <div className="discover-stage" ref={stageRef} aria-live="polite"
         style={{ '--discover-min-peek': `${minimumPeek}px` } as CSSProperties}>
         {loading ? (
-          <div className="discover-state" role="status"><span className="discover-loader" />Подбираем игры…</div>
+          <div className="discover-state"><ContentLoading tone="violet" text="Подбираем игры…" /></div>
         ) : !game ? (
           <div className="discover-state">
             <span className="discover-state__icon">✦</span>
