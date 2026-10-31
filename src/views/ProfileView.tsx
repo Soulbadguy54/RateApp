@@ -5,17 +5,9 @@ import type { AuthUser } from '../AuthScreen'
 import PushSettings from '../PushSettings'
 import Icon from '../components/Icon'
 import { sessionFetch } from '../sessionFetch'
+import { PROFILE_TINTS, profileTintOption, type ProfileTint } from '../profilePalette'
 import './ProfileView.css'
 
-type Tint = 'default' | 'violet' | 'rose' | 'blue' | 'teal' | 'amber'
-const TINTS: { id: Tint; label: string; color: string; rgb: string }[] = [
-  { id: 'default', label: 'Без оттенка', color: 'transparent', rgb: '14,19,32' },
-  { id: 'violet', label: 'Фиолетовый', color: '#ad86ee', rgb: '155,105,230' },
-  { id: 'rose', label: 'Розовый', color: '#e384b5', rgb: '235,87,153' },
-  { id: 'blue', label: 'Синий', color: '#719be4', rgb: '75,129,225' },
-  { id: 'teal', label: 'Бирюзовый', color: '#60c9bd', rgb: '47,181,166' },
-  { id: 'amber', label: 'Янтарный', color: '#e4ad63', rgb: '221,171,57' },
-]
 const VIEW_SIZE = 142
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
@@ -53,7 +45,7 @@ export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }:
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [tint, setTint] = useState<Tint>((user.profileTint as Tint) || 'default')
+  const [tint, setTint] = useState<ProfileTint>(() => profileTintOption(user.profileTint).id)
   const [photo, setPhoto] = useState<string | null>(null)
   const [natural, setNatural] = useState<Point>({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
@@ -66,7 +58,7 @@ export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }:
   useEffect(() => {
     return () => { if (photo) URL.revokeObjectURL(photo) }
   }, [photo])
-  useEffect(() => { if (!editing) setTint((user.profileTint as Tint) || 'default') }, [user.profileTint, editing])
+  useEffect(() => { if (!editing) setTint(profileTintOption(user.profileTint).id) }, [user.profileTint, editing])
 
   const cover = natural.x && natural.y ? Math.max(VIEW_SIZE / natural.x, VIEW_SIZE / natural.y) : 1
   const clampOffset = (value: Point, nextZoom: number): Point => ({
@@ -160,12 +152,13 @@ export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }:
     setLoggingOut(true)
     try { await onLogout() } finally { setLoggingOut(false) }
   }
-  const chosenTint = TINTS.find(choice => choice.id === tint) ?? TINTS[0]
+  const chosenTint = profileTintOption(tint)
 
   return (
     <>
       <header className={'topbar profile-glass-header' + (editing ? ' profile-glass-header--editing' : '')}
-        style={{ '--profile-tint-rgb': chosenTint.rgb, '--profile-tint-alpha': tint === 'default' ? '0' : '.23' } as CSSProperties}>
+        style={{ '--profile-tint-rgb': chosenTint.rgb, '--profile-tint-alpha': tint === 'default' ? '0' : '.23',
+          '--profile-accent-color': chosenTint.color } as CSSProperties}>
         <div className="profile-glass-header__title-row">
           <h1>@{user.nickname}</h1>
           <motion.button type="button" className="round-add profile-glass-header__edit"
@@ -190,9 +183,12 @@ export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }:
           ) : <ProfileAvatar user={user} className="profile-glass-header__avatar" />}
           {editing && (
             <>
-              <button type="button" className="profile-glass-header__avatar-edit" aria-label="Выбрать аватар"
+              <button type="button"
+                className={'profile-glass-header__avatar-edit' + (photo ? ' profile-glass-header__avatar-edit--cropping' : '')}
+                aria-label="Выбрать аватар"
+                disabled={Boolean(photo)}
                 onClick={() => inputRef.current?.click()}>
-                <Icon name="edit" size={17} />
+                <Icon name="edit" size={72} />
               </button>
               <input ref={inputRef} type="file" accept="image/*" className="profile-file-input"
                 onChange={event => { onChoosePhoto(event.target.files?.[0]); event.currentTarget.value = '' }} />
@@ -211,14 +207,17 @@ export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }:
                   <span>Масштаб</span>
                   <input type="range" min={1} max={3.2} step={.05} value={zoom}
                     aria-label="Масштаб аватара" onChange={event => changeZoom(Number(event.target.value))} />
+                  <button type="button" className="profile-replace-photo" onClick={() => inputRef.current?.click()}>
+                    Другое фото
+                  </button>
                 </div>
               )}
               <div className="profile-color-picker" role="radiogroup" aria-label="Оттенок стекла профиля">
-                {TINTS.map(color => (
+                {PROFILE_TINTS.map(color => (
                   <button key={color.id} type="button" role="radio"
                     aria-label={color.label} aria-checked={tint === color.id}
                     className={'profile-color-picker__swatch' + (tint === color.id ? ' profile-color-picker__swatch--active' : '')}
-                    style={{ '--swatch': color.color } as CSSProperties}
+                    style={{ '--swatch': color.id === 'default' ? 'transparent' : color.color } as CSSProperties}
                     onClick={() => setTint(color.id)}>
                     {tint === color.id ? <Icon name="checkmark" size={16} /> : color.id === 'default' ? <Icon name="x" size={14} /> : null}
                   </button>
