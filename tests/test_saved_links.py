@@ -1,5 +1,8 @@
 """One-table URL ownership, GPT result persistence and date-based queue."""
 import secrets
+import io
+import os
+from contextlib import redirect_stdout, redirect_stderr
 import unittest
 from datetime import timedelta
 from unittest.mock import patch
@@ -11,7 +14,7 @@ from api.database import SessionLocal
 from api.index import app
 from api.models import Game, GameAlias, SavedLink, User
 from api.saved_links_routes import canonical_url
-from api.saved_links_worker import _find_top_game_id, claim_jobs, resolve_games, submit_result
+from api.saved_links_worker import _find_top_game_id, claim_jobs, resolve_games, submit_result, main as worker_main
 from api.security import _now
 
 
@@ -46,6 +49,27 @@ class SavedLinkTests(unittest.TestCase):
         })
         self.assertEqual(result.status_code, 201, result.text)
         return result.json()
+
+    def test_staging_cli_can_claim_only_qa_link_without_touching_any_other_link(self):
+        own = self.save("cli-isolated")
+        with patch.dict(os.environ, {"VERCEL_ENV": "staging", "SAFE_BROWSING_API_KEY": "test-only"}), patch(
+            "sys.argv", ["worker", "claim", "--limit", "1",
+                         "--only-id", str(own["id"]), "--expect-environment", "staging"],
+        ), redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()):
+            worker_main()
+        import json
+        data = json.loads(output.getvalue())
+        self.assertEqual(data["jobs"][0]["id"], own["id"])
+        with SessionLocal() as session:
+            self.assertEqual(session.get(SavedLink, own["id"]).attempts, 1)
+
+    def test_cli_rejects_targeted_processing_in_production(self):
+        with patch.dict(os.environ, {"VERCEL_ENV": "production"}), patch(
+            "sys.argv", ["worker", "claim", "--only-id", "1",
+                         "--expect-environment", "production"],
+        ), redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                worker_main()
 
     def test_exact_match_resolver_rejects_short_fuzzy_neighbor(self):
         """SOMA must not silently become Middle-earth: Shadow of Mordor."""

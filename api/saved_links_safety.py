@@ -20,7 +20,9 @@ import httpx
 
 from api.saved_links_routes import canonical_url
 
-MAX_RESPONSE_BYTES = 1_000_000
+# Keep a strict in-memory/network bound, but accommodate modern HTML pages.
+# Extracted text is still capped separately at 60k characters.
+MAX_RESPONSE_BYTES = 3_000_000
 MAX_TEXT_CHARS = 60_000
 MAX_REDIRECTS = 3
 MAX_SECONDS = 15

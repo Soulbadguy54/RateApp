@@ -14,6 +14,8 @@ type SavedLink = {
   url: string
   title: string | null
   createdAt: string
+  status?: 'pending' | 'processing' | 'ready' | 'failed'
+  error?: string | null
   games: SavedGame[]
 }
 type LinksPage = { items: SavedLink[]; nextBefore: number | null }
@@ -170,6 +172,16 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
 
   useEffect(() => { void fetchLinks() }, [fetchLinks])
 
+  // Background workers update saved links independently of this mounted view.
+  // Revalidate only while unresolved records exist, and when the tab returns.
+  useEffect(() => {
+    if (!items.some(link => link.status === 'pending' || link.status === 'processing')) return
+    const refresh = () => { if (document.visibilityState === 'visible') void fetchLinks() }
+    const timer = window.setInterval(refresh, 90_000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh) }
+  }, [items, fetchLinks])
+
   useEffect(() => {
     try {
       const previous = cachedLinks(cacheKey)
@@ -252,6 +264,17 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
       setError(cause instanceof Error ? cause.message : 'Не удалось сохранить ссылку.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const retryFailedLink = async (id: number) => {
+    setError('')
+    try {
+      const response = await sessionFetch('/api/saved-links/' + id + '/retry', { method: 'POST' })
+      if (!response.ok) throw new Error(await responseError(response, 'Не удалось поставить ссылку на повторную проверку.'))
+      await fetchLinks()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не удалось повторить проверку.')
     }
   }
 
@@ -493,6 +516,25 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
                 <h3>{previews[link.id]?.title || link.title || displayHost(link.url)}</h3>
                 <p className="saved-link-card__host">{previews[link.id]?.description || displayHost(link.url)}</p>
                 <time dateTime={link.createdAt}>{readableDate(link.createdAt)}</time>
+                {link.status !== 'ready' && link.status && (
+                  <span className="saved-link-card__state-line">
+                    <span className={'saved-link-card__state saved-link-card__state--' + link.status}
+                      role="status" title={link.error || undefined}>
+                      {link.status === 'failed' ? 'Не удалось проверить'
+                        : link.status === 'processing' ? 'Ищем игры…' : 'Ожидает проверки'}
+                    </span>
+                    {link.status === 'failed' && selectedIds.length === 0 && (
+                      <button type="button" className="saved-link-card__retry"
+                        aria-label={'Повторить проверку ссылки ' + link.id}
+                        onClick={event => { event.stopPropagation(); void retryFailedLink(link.id) }}
+                        onPointerDown={event => event.stopPropagation()}>
+                        Повторить
+                      </button>
+                    )}
+                  </span>
+                )}
+                {link.status === 'failed' && link.error &&
+                  <small className="saved-link-card__state-error">{link.error}</small>}
               </div>
               <div className="saved-link-card__actions">
                 {selectedIds.length ? (
