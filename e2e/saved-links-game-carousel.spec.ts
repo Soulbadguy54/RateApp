@@ -43,7 +43,7 @@ test('links show game cover carousel and navigate to ordinary game details', asy
   await expect(page.getByRole('heading', { name: 'Мои ссылки' })).toBeVisible()
   const source = page.locator('[data-saved-link-id="7"]')
   const withoutGames = page.locator('[data-saved-link-id="8"]')
-  await expect(source.getByText('Игры из ссылки')).toBeVisible()
+  await expect(source.locator('.saved-link-card__matched')).toBeVisible()
   await expect(source.locator('.saved-link-card__game-tile')).toHaveCount(2)
   await expect(withoutGames.locator('.saved-link-card__matched')).toHaveCount(0)
   await expect(source.getByRole('button', { name: 'Открыть игру SOMA' })).toBeVisible()
