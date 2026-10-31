@@ -4368,3 +4368,9 @@ body:has(.auth-shell) .install-prompt { display: none; }
   pointer-events: none;
   -webkit-user-drag: none;
 }
+
+/* Profile avatar is the one lower-nav icon drawn as text, not SVG. */
+.bottom-nav > .bottom-nav__item:not(.bottom-nav__item--active) .bottom-nav__avatar {
+  color: rgba(140, 242, 125, .78);
+  border-color: rgba(140, 242, 125, .24);
+}
