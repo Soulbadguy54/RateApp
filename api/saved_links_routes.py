@@ -170,6 +170,41 @@ def save_link(payload: LinkCreate, request: Request) -> dict[str, object]:
         return _link_payload(row, _game_map(session, [row]))
 
 
+@router.post("/api/saved-links/{link_id}/preview")
+def saved_link_preview(link_id: int, request: Request) -> dict[str, str | None]:
+    """Fetch only verified HTML metadata, never third-party images.
+
+    Saving a link does not fetch it. This optional, separate preview operation
+    uses the same Google Safe Browsing, redirect and pinned DNS/TLS reader as
+    the GPT source worker; no HTML is returned to the client.
+    """
+    from api.saved_links_safety import SourceSafetyError, preview_source
+
+    with _session() as session:
+        user = _current_user(request, session)
+        link = _get_user_link(session, user.id, link_id)
+        if link.title:
+            return {"title": link.title[:180], "description": None}
+        url = link.url
+    try:
+        preview = preview_source(url)
+    except (SourceSafetyError, ValueError):
+        # No page data or remote images are exposed when safety cannot be
+        # demonstrated. An untrusted URL is still stored for later handling.
+        return {"title": None, "description": None}
+    title = preview["title"][:180].strip()
+    if title:
+        with _session() as session:
+            user = _current_user(request, session)
+            link = session.scalar(select(SavedLink).where(
+                SavedLink.id == link_id, SavedLink.user_id == user.id,
+            ).with_for_update())
+            if link is not None and not link.title and link.url == url:
+                link.title = title
+                session.commit()
+    return {"title": title or None, "description": preview["description"] or None}
+
+
 @router.get("/api/saved-links/{link_id}")
 def get_saved_link(link_id: int, request: Request) -> dict[str, object]:
     with _session() as session:
