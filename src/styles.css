@@ -4097,3 +4097,5 @@ body:has(.auth-shell) .install-prompt { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .detail-page .detail-catalog-icon--collections { transition: none; }
 }
+
+.detail-similar__track { touch-action: pan-y; }
