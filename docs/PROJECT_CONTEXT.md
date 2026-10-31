@@ -432,3 +432,13 @@ SavedLinksView отображает кнопку plus в topbar и по нажа
 
 На деталях игры `Collection`-icon: onTouchStart и onTouchMove/End/Cancel отвечают за touch-hold, на мыши и pen остаются Pointer Events. Native contextmenu только запрещается, не отменяет таймер 470 мс. Обычный tap по-прежнему открывает picker, теперь анимированный через AnimatePresence; служебная подпись о плюсах/галочках удалена. Если игра уже в wishlist, длинное нажатие даёт toast без повторного PUT. Discovery h1 «Для тебя» слева, туториал i справа, Undo не сдвигает заголовок.
 
+
+## 31.10.2026 — исправления раннего metadata preview, таймера, каруселей, коллекций и Web Push (develop)
+
+SavedLinksView после POST мгновенно выводит карточку и параллельно запускает owner-only Safe Browsing защищённый POST /preview; прежний useEffect отменял последовательную очередь, когда GET обновлял items, но id уже оставался в previewAttempted, и заголовок зависал на hostname. Теперь preview запросы **не отменяются из-за обычного изменения items**, выполняются независимо и обновляют кешированные title/description при получении. Ошибки могут повторяться после обновления списка. Запасной URL до ответа не считается реальным title. DEL countdown 2000мс согласован с CSS двухсекундной conic-анимацией.
+
+CarouselArrows общ для ссылок и Similar: native mobile momentum и поддерживаемый браузером edge rubber-band (overscroll-behavior-x:auto, webkit-overflow-scrolling:touch); для мыши/стилуса — pointer drag, скорость → затухающая inertia в requestAnimationFrame и упругий переход при крае, с предотвращением случайного перехода по кнопке при drag. При prefers-reduced-motion JS momentum/elastic отключаются. Не перехватывать touch-инерцию JavaScript.
+
+Detail collection picker: Motion внешней оболочки анимирует только clipped height/opacity, реальный border/padding и LayoutGroup находятся во внутреннем статичном section; закрытие не рвётся из-за несворачиваемого padding. BottomNavGameSlot SVG path stroke теперь единообразно акцентный во всех фазах движения, нет серой базовой линии и второго specular stroke в фазе схлопывания.
+
+PushSettings различает пять состояний: push unsupported, серверный disabled, permission default, permission denied, runtime error. Серверный push_ready false = неисправная/отсутствующая Web Push конфигурация; браузерное разрешение не решит. При config.enabled=true и default показывать красный outline button, по клику вызывающий уже существующий enablePush с немедленным Notification.requestPermission в user activation. При denied честно сказать открыть настройки (сам браузер не покажет повторный prompt). Не включать разрешение автоматически без нажатия. 
