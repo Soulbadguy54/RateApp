@@ -89,6 +89,8 @@ test('Game detail from links: IGDB ID, similar covers, and wishlist hold toast',
   await page.getByRole('button', { name: 'Открыть игру SOMA' }).click()
   await expect(page).toHaveURL(/game=9727/)
   await expect(page.getByRole('heading', { name: 'SOMA' })).toBeVisible()
+  const dismissInstall = page.getByRole('button', { name: 'Закрыть предложение установки' })
+  if (await dismissInstall.isVisible()) await dismissInstall.click()
   await expect(page.getByRole('button', { name: 'Открыть похожую игру Disco Elysium' })).toBeVisible()
   const collection = page.getByRole('button', { name: 'Коллекции', exact: true }).first()
   const rect = await collection.boundingBox()
