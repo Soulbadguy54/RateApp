@@ -35,8 +35,9 @@ import {
 
 const ProfileView = lazy(() => import('./views/ProfileView'))
 const DiscoverView = lazy(() => import('./views/DiscoverView'))
+const SavedLinksView = lazy(() => import('./views/SavedLinksView'))
 
-type Tab = 'library' | 'add' | 'collections' | 'profile' | 'discovery'
+type Tab = 'library' | 'add' | 'collections' | 'profile' | 'discovery' | 'links'
 
 type AppView = {
   tab: Tab
@@ -64,7 +65,7 @@ type AppHistoryEntry = {
   }
 }
 
-const validTabs: Tab[] = ['library', 'add', 'collections', 'profile', 'discovery']
+const validTabs: Tab[] = ['library', 'add', 'collections', 'profile', 'discovery', 'links']
 const EXIT_CONFIRM_WINDOW_MS = 1800
 
 function isRootScreen(view: AppView): boolean {
@@ -3374,6 +3375,11 @@ function App() {
                   </Suspense>
                 )}
                 {activeTab === 'collections' && renderCollections()}
+                {activeTab === 'links' && (
+                  <Suspense fallback={<div className="game-database-loading">Загружаем ссылки…</div>}>
+                    <SavedLinksView onOpenGame={openGame} />
+                  </Suspense>
+                )}
                 {activeTab === 'profile' && renderProfile()}
               </>
             )}
@@ -3440,11 +3446,14 @@ function App() {
         </div>
       )}
       <nav className="bottom-nav" aria-label="Основная навигация">
-          {nav.map((item) => item.id === 'add' ? (
+          {nav.map((item) => item.id === 'add' || item.id === 'collections' ? (
             <BottomNavGameSlot
-              key="add"
+              key={item.id}
+              group={item.id === 'collections' ? 'collections' : 'games'}
               nickname={authUser.nickname}
-              active={activeTab === 'add' || activeTab === 'discovery'}
+              active={item.id === 'collections'
+                ? activeTab === 'collections' || activeTab === 'links'
+                : activeTab === 'add' || activeTab === 'discovery'}
               onNavigate={(tab) => {
                 if (activeTab === tab) resetTab(tab)
                 else openTab(tab)

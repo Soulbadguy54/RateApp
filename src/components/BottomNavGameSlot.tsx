@@ -5,11 +5,16 @@ import { AnimatePresence, animate, motion, useMotionValue, usePresence, useReduc
 import Icon, { type IconName } from './Icon'
 import './BottomNavGameSlot.css'
 
-export type GameNavTab = 'add' | 'discovery'
+export type GameNavTab = 'add' | 'discovery' | 'collections' | 'links'
+export type NavSlotGroup = 'games' | 'collections'
 
-const options: { id: GameNavTab; label: string; icon: IconName }[] = [
+const gameOptions: { id: GameNavTab; label: string; icon: IconName }[] = [
   { id: 'add', label: 'База игр', icon: 'library' },
   { id: 'discovery', label: 'Для тебя', icon: 'sparkles' },
+]
+const collectionOptions: { id: GameNavTab; label: string; icon: IconName }[] = [
+  { id: 'collections', label: 'Коллекции', icon: 'layers' },
+  { id: 'links', label: 'Мои ссылки', icon: 'link' },
 ]
 
 const HOLD_MS = 390
@@ -45,7 +50,7 @@ const LIQUID_VANISH_PROGRESS = -.36
  * choices faded/remounted independently while the SVG was still collapsing.
  * Keep them mounted together until the final invisible drop frame.
  */
-function LiquidMorph({ reduceMotion, children }: { reduceMotion: boolean; children: ReactNode }) {
+function LiquidMorph({ reduceMotion, children, ariaLabel }: { reduceMotion: boolean; children: ReactNode; ariaLabel: string }) {
   const [isPresent, safeToRemove] = usePresence()
   const progress = useMotionValue(reduceMotion ? 1 : 0)
   const shape = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .46, 1], [
@@ -101,7 +106,7 @@ function LiquidMorph({ reduceMotion, children }: { reduceMotion: boolean; childr
       <motion.div
         className="bottom-nav__bubble"
         role="group"
-        aria-label="Выбрать раздел базы игр"
+        aria-label={ariaLabel}
         aria-hidden={!isPresent}
         style={{ opacity: choicesOpacity, pointerEvents: isPresent ? 'auto' : 'none' }}
       >
@@ -111,11 +116,14 @@ function LiquidMorph({ reduceMotion, children }: { reduceMotion: boolean; childr
   )
 }
 
-function readPinned(nickname: string): GameNavTab {
+function readPinned(nickname: string, group: NavSlotGroup): GameNavTab {
+  const fallback = group === 'games' ? 'add' : 'collections'
+  const alternate = group === 'games' ? 'discovery' : 'links'
   try {
-    return localStorage.getItem(STORAGE_PREFIX + nickname) === 'discovery' ? 'discovery' : 'add'
+    const prefix = group === 'games' ? STORAGE_PREFIX : 'rateapp-collection-nav-slot-v1:'
+    return localStorage.getItem(prefix + nickname) === alternate ? alternate : fallback
   } catch {
-    return 'add'
+    return fallback
   }
 }
 
@@ -132,11 +140,14 @@ type Props = {
   nickname: string
   active: boolean
   onNavigate: (tab: GameNavTab) => void
+  group?: NavSlotGroup
 }
 
-export default function BottomNavGameSlot({ nickname, active, onNavigate }: Props) {
+export default function BottomNavGameSlot({ nickname, active, onNavigate, group = 'games' }: Props) {
+  const options = group === 'games' ? gameOptions : collectionOptions
+  const [first, second] = options
   const reduceMotion = useReducedMotion()
-  const [pinned, setPinned] = useState<GameNavTab>(() => readPinned(nickname))
+  const [pinned, setPinned] = useState<GameNavTab>(() => readPinned(nickname, group))
   const [menuOpen, setMenuOpen] = useState(false)
   const [hovered, setHovered] = useState<GameNavTab | null>(null)
   const [navItemSize, setNavItemSize] = useState({ width: 92, height: 44 })
@@ -171,11 +182,11 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const option = options.find(item => item.id === pinned) ?? options[0]
 
   useEffect(() => {
-    const next = readPinned(nickname)
+    const next = readPinned(nickname, group)
     pinnedRef.current = next
     setPinned(next)
     ignoreGestureClickRef.current = false
-  }, [nickname])
+  }, [nickname, group])
 
   useEffect(() => () => {
     if (pressRef.current) window.clearTimeout(pressRef.current.timer)
@@ -185,7 +196,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const pin = (tab: GameNavTab) => {
     pinnedRef.current = tab
     setPinned(tab)
-    try { localStorage.setItem(STORAGE_PREFIX + nickname, tab) } catch { /* storage disabled */ }
+    try { localStorage.setItem((group === 'games' ? STORAGE_PREFIX : 'rateapp-collection-nav-slot-v1:') + nickname, tab) } catch { /* storage disabled */ }
   }
 
   const dismiss = () => {
@@ -200,14 +211,15 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   }
 
   const findChoice = (x: number, y: number): GameNavTab | null => {
-    const candidate = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-game-nav-choice]')
-    const id = candidate?.dataset.gameNavChoice
-    if (id === 'add' || id === 'discovery') return id
+    const choiceAttribute = group === 'games' ? 'data-game-nav-choice' : 'data-collection-nav-choice'
+    const candidate = document.elementFromPoint(x, y)?.closest<HTMLElement>(`[${choiceAttribute}]`)
+    const id = candidate?.getAttribute(choiceAttribute)
+    if (id === first.id || id === second.id) return id
     // During liquid expansion the visual bubble starts as a tiny droplet.
     // Resolve against its full layout box so a fast drag/release still works.
     const bounds = bubbleAnchorRef.current?.getBoundingClientRect()
     if (bounds && x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom) {
-      return x < bounds.left + bounds.width / 2 ? 'add' : 'discovery'
+      return x < bounds.left + bounds.width / 2 ? first.id : second.id
     }
     return null
   }
@@ -288,7 +300,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
     ) {
       suppressGestureClick()
       // A swipe changes the persistent shortcut, not the page underneath it.
-      pin(pinnedRef.current === 'add' ? 'discovery' : 'add')
+      pin(pinnedRef.current === first.id ? second.id : first.id)
     } else if (Math.abs(dy) > SWIPE_MAX_VERTICAL_PX) {
       suppressGestureClick()
     }
@@ -303,12 +315,12 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault()
-      pin(pinnedRef.current === 'add' ? 'discovery' : 'add')
+      pin(pinnedRef.current === first.id ? second.id : first.id)
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
       setMenuOpen(true)
       window.requestAnimationFrame(() => {
-        document.querySelector<HTMLButtonElement>('[data-game-nav-choice="add"]')?.focus()
+        bubbleAnchorRef.current?.querySelector<HTMLButtonElement>('[data-game-nav-choice], [data-collection-nav-choice]')?.focus()
       })
     } else if (event.key === 'Escape') {
       event.preventDefault()
@@ -317,11 +329,11 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
   }
 
   return (
-    <div className="bottom-nav__slot">
+    <div className={group === 'games' ? "bottom-nav__slot" : "bottom-nav__slot bottom-nav__slot--collections"} data-nav-slot={group}>
       <motion.button
         ref={buttonRef}
         type="button"
-        className={active ? 'bottom-nav__item bottom-nav__item--active bottom-nav__item--switchable' : 'bottom-nav__item bottom-nav__item--switchable'}
+        className={'bottom-nav__item ' + (group === 'games' ? 'bottom-nav__item--switchable' : 'bottom-nav__item--collection-switchable') + (active ? ' bottom-nav__item--active' : '')}
         aria-label={option.label}
         aria-description="Свайп влево или вправо меняет ярлык. Удержание открывает выбор раздела."
         aria-haspopup="true"
@@ -372,13 +384,13 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate }: Prop
       >
         <AnimatePresence initial={false}>
           {menuOpen && (
-            <LiquidMorph key="liquid" reduceMotion={Boolean(reduceMotion)}>
+            <LiquidMorph key="liquid" reduceMotion={Boolean(reduceMotion)} ariaLabel={group === 'games' ? "Выбрать раздел базы игр" : "Выбрать Коллекции или Мои ссылки"}>
               {options.map(choice => (
                 <button
                   key={choice.id}
                   type="button"
                   className="bottom-nav__item bottom-nav__bubble-choice"
-                  data-game-nav-choice={choice.id}
+                  {...(group === 'games' ? { 'data-game-nav-choice': choice.id } : { 'data-collection-nav-choice': choice.id })}
                   data-highlighted={hovered === choice.id}
                   aria-pressed={pinned === choice.id}
                   onPointerEnter={() => { if (!pressRef.current) setHovered(choice.id) }}
