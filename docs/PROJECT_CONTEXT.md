@@ -500,3 +500,10 @@ ProfileView теперь объединяет H1 @nickname, большую ав�
 Existing ChatGPT automation для staging включена ежечасно и немедленный запуск запрошен; prompt ограничен одной ссылкой, одним guarded prepare, необязательными ≤2 search + ≤3 open текста после safety gate, без media анализа и произвольных команд. Первое выполнение claim id16 succeeded, prepare failed: Gateway upstream_unavailable, submit skipped. GPT результат в DB не сохранён. Gateway schedule для отдельного resolver id gsc_01M621B35V00EHJ896JJMPVMHN остаётся pending confirmation, владелец должен подтвердить его в Gateway. CLI worker пишет только безопасные JSON diagnostics без URL/leaseToken/текста, а ChatGPT Automation хранит run history.
 
 Аватар приватен даже при переключении между аккаунтами в одном браузере: /api/profile/avatar отдаёт Cache-Control: private, no-store; UI добавляет id текущего аккаунта и avatarVersion в параметрах URL, но серверный owner-scope остаётся основан на cookie, а не на параметре.
+
+
+## 1 ноября 2026 — цветовая идентичность профиля (develop/staging)
+
+В палитре семь вариантов: default, violet, rose, blue, teal, amber, coral. Coral #ee8a72 добавлен как шестой настраиваемый оттенок; отдельный зелёный кружок не нужен, так как default убирает tint overlay со стекла и использует обычный зелёный --accent для @nickname и навигационной кнопки профиля. Черновой выбор цвета сразу виден в H1, сохранённый цвет появляется на подписи профиля, рамке аватара и active bubble нижнего меню после POST. Остальные вкладки не затронуты. src/profilePalette.ts — единый источник цветов и RGB для header/nav; whitelist API расширен, миграция не требуется.
+
+Контурный карандаш 72px расположен в центре круглой аватарки в edit режиме без отдельной зелёной капсулы. При выборе фотографии он полупрозрачен и пропускает touch-жесты кадрирования; повторный file chooser — в той же панели через «Другое фото». Для семи swatches размер и gap адаптивны под узкие экраны. Стандартные просмотр, pinch, сохранение галочкой сохраняются.
