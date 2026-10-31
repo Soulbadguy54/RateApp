@@ -92,11 +92,13 @@
   align-items: stretch;
   gap: 3px;
   padding: 7px;
-  /* The SVG is the actual background; an opaque rectangular background
-     here would completely hide the growing liquid shape. */
+  /* The SVG supplies the liquid silhouette; the nearly transparent blurred
+     content layer fades in late in the morph and makes choices readable. */
   border: 0;
   border-radius: 21px;
-  background: transparent;
+  background: rgba(12, 18, 31, .34);
+  -webkit-backdrop-filter: var(--header-glass-filter);
+  backdrop-filter: var(--header-glass-filter);
   pointer-events: auto;
 }
 
@@ -115,7 +117,7 @@
   border: 0;
   border-radius: 13px;
   background: transparent;
-  color: #a3aaba;
+  color: rgba(var(--igdb-accent-rgb), .78);
   font-size: 8px;
   font-weight: 700;
   line-height: 1.2;
@@ -123,14 +125,9 @@
   touch-action: none;
 }
 
-.bottom-nav__bubble-choice[aria-pressed="true"] {
-  color: #f6f7f9;
-}
-
 .bottom-nav__bubble-choice[data-highlighted="true"] {
-  color: #f6f7f9;
+  color: var(--igdb-accent);
 }
-.bottom-nav__bubble-choice[aria-pressed="true"] svg,
 .bottom-nav__bubble-choice[data-highlighted="true"] svg {
   color: var(--igdb-accent);
 }
@@ -179,8 +176,11 @@
   border-color: rgba(140,242,125,.12);
   background: rgba(140,242,125,.075);
 }
+.bottom-nav__slot--collections .bottom-nav__bubble-choice.bottom-nav__item {
+  color: rgba(140, 242, 125, .78);
+}
 .bottom-nav__slot--collections .bottom-nav__item--collection-switchable.bottom-nav__item--active svg,
-.bottom-nav__slot--collections .bottom-nav__bubble-choice[aria-pressed="true"] svg,
+.bottom-nav__slot--collections .bottom-nav__bubble-choice[data-highlighted="true"],
 .bottom-nav__slot--collections .bottom-nav__bubble-choice[data-highlighted="true"] svg {
   color: var(--accent);
 }
