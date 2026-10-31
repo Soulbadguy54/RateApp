@@ -390,6 +390,20 @@ function App() {
   const viewportPageRef = useRef<HTMLElement | null>(null)
   const collectionUpdatesRef = useRef(new Map<number, CollectionUpdate>())
   const [gameDetailsById, setGameDetailsById] = useState<Record<number, GameDetailExtras>>({})
+  const [similarGamesById, setSimilarGamesById] = useState<Record<number, Game[]>>({})
+  const similarLoadingRef = useRef(new Set<number>())
+  const [wishlistToastGameId, setWishlistToastGameId] = useState<number | null>(null)
+  const wishlistToastTimerRef = useRef<number | null>(null)
+  const wishlistHoldRef = useRef<{ pointerId: number; x: number; y: number; timer: number } | null>(null)
+  const suppressWishlistClickRef = useRef(false)
+  const cancelWishlistHold = () => {
+    if (wishlistHoldRef.current) window.clearTimeout(wishlistHoldRef.current.timer)
+    wishlistHoldRef.current = null
+  }
+  useEffect(() => () => {
+    if (wishlistHoldRef.current) window.clearTimeout(wishlistHoldRef.current.timer)
+    if (wishlistToastTimerRef.current) window.clearTimeout(wishlistToastTimerRef.current)
+  }, [])
   const [loadingGameDetailsId, setLoadingGameDetailsId] = useState<number | null>(null)
   const [failedGameDetailsId, setFailedGameDetailsId] = useState<number | null>(null)
   const dismissDeletePrompt = () => {
@@ -1936,8 +1950,51 @@ function App() {
     return () => controller.abort()
   }, [authUser, selectedGameId, gameDetailsById, failedGameDetailsId, rememberCatalogResults])
 
+  useEffect(() => {
+    if (!authUser || !selectedGameId || similarGamesById[selectedGameId] ||
+        similarLoadingRef.current.has(selectedGameId)) return
+    const id = selectedGameId
+    similarLoadingRef.current.add(id)
+    const controller = new AbortController()
+    void sessionFetch('/api/games/' + id + '/similar', { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error('Similar games unavailable')
+        const data = await response.json() as { items: Game[] }
+        if (controller.signal.aborted) return
+        const games = Array.isArray(data.items) ? data.items : []
+        rememberCatalogResults(games)
+        setSimilarGamesById(previous => ({ ...previous, [id]: games }))
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSimilarGamesById(previous => ({ ...previous, [id]: [] }))
+      })
+      .finally(() => similarLoadingRef.current.delete(id))
+    return () => controller.abort()
+  }, [authUser, selectedGameId, similarGamesById, rememberCatalogResults])
+
   const selectedEntry = selectedGameId ? entryMap.get(selectedGameId) : undefined
   const selectedGame = selectedGameId ? catalogGameById.get(selectedGameId!) : undefined
+
+  const showWishlistToast = (gameId: number) => {
+    if (wishlistToastTimerRef.current) window.clearTimeout(wishlistToastTimerRef.current)
+    setWishlistToastGameId(gameId)
+    wishlistToastTimerRef.current = window.setTimeout(() => {
+      setWishlistToastGameId(null)
+      wishlistToastTimerRef.current = null
+    }, 2200)
+  }
+
+  const wishlistQuickAdd = async (game: Game) => {
+    if (entryMap.get(game.id)?.collectionIds.includes(WISHLIST_COLLECTION_ID)) return
+    try {
+      const response = await sessionFetch('/api/library/' + game.id + '/wishlist', { method: 'PUT' })
+      if (!response.ok) throw new Error('Wishlist save failed')
+      setEntries(current => withCollectionMembership(current, game.id, WISHLIST_COLLECTION_ID, true))
+      showWishlistToast(game.id)
+    } catch {
+      window.alert('Не удалось добавить игру в «Хочу пройти».')
+    }
+  }
 
   const renderDetail = () => {
     if (!selectedGame) {
@@ -2000,7 +2057,37 @@ function App() {
               title="Управление коллекциями"
               aria-expanded={collectionPickerOpen}
               aria-controls="game-collection-picker"
-              onClick={() => setCollectionPickerOpen((open) => !open)}
+              onPointerDown={event => {
+                if (event.button !== 0 || !event.isPrimary) return
+                cancelWishlistHold()
+                suppressWishlistClickRef.current = false
+                const timer = window.setTimeout(() => {
+                  if (wishlistHoldRef.current?.pointerId !== event.pointerId) return
+                  wishlistHoldRef.current = null
+                  suppressWishlistClickRef.current = true
+                  setCollectionPickerOpen(false)
+                  void wishlistQuickAdd(selectedGame)
+                }, 530)
+                wishlistHoldRef.current = {
+                  pointerId: event.pointerId, x: event.clientX, y: event.clientY, timer,
+                }
+              }}
+              onPointerMove={event => {
+                const hold = wishlistHoldRef.current
+                if (hold?.pointerId === event.pointerId &&
+                    Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 10) cancelWishlistHold()
+              }}
+              onPointerUp={cancelWishlistHold}
+              onPointerCancel={cancelWishlistHold}
+              onPointerLeave={event => { if (event.pointerType === 'mouse') cancelWishlistHold() }}
+              onContextMenu={event => { event.preventDefault(); cancelWishlistHold() }}
+              onClick={() => {
+                if (suppressWishlistClickRef.current) {
+                  suppressWishlistClickRef.current = false
+                  return
+                }
+                setCollectionPickerOpen(open => !open)
+              }}
             >
               <span className="detail-catalog-icon__symbol detail-catalog-icon__symbol--layers" aria-hidden="true">
                 <Icon name="layers" size={19} />
@@ -2222,7 +2309,42 @@ function App() {
           </div>
         </section>
 
+        <section className="info-card detail-similar" aria-label="Похожие игры">
+          <span className="eyebrow detail-section-eyebrow">ПОХОЖИЕ</span>
+          {similarGamesById[selectedGame.id] === undefined && (
+            <p className="detail-similar__empty">Подбираем похожие игры…</p>
+          )}
+          {similarGamesById[selectedGame.id]?.length === 0 && (
+            <p className="detail-similar__empty">Похожих игр пока нет в каталоге.</p>
+          )}
+          {(similarGamesById[selectedGame.id]?.length ?? 0) > 0 && (
+            <div className="detail-similar__track" role="list" aria-label="Карусель похожих игр">
+              {similarGamesById[selectedGame.id].map(game => (
+                <div key={game.id} role="listitem" className="detail-similar__item">
+                  <button type="button" className="detail-similar__game"
+                    aria-label={'Открыть похожую игру ' + game.title}
+                    onClick={() => openGame(game.id)}>
+                    <div className="detail-similar__cover"><Cover game={game} compact /></div>
+                    <span>{game.title}</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
+        <AnimatePresence>
+          {wishlistToastGameId === selectedGame.id && (
+            <motion.div key={selectedGame.id} className="detail-wishlist-toast" role="status"
+              initial={{ opacity: 0, y: 35, scale: .87 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -85, scale: .93 }}
+              transition={{ duration: .45, ease: 'easeOut' }}>
+              <Icon name="heart" size={21} />
+              Добавлено в «Хочу пройти»
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     )
   }
@@ -3413,7 +3535,7 @@ function App() {
                 {activeTab === 'collections' && renderCollections()}
                 {activeTab === 'links' && (
                   <Suspense fallback={<div className="game-database-loading">Загружаем ссылки…</div>}>
-                    <SavedLinksView onOpenGame={openGame} />
+                    <SavedLinksView onOpenGame={openGame} cacheNamespace={String(authUser.id)} />
                   </Suspense>
                 )}
                 {activeTab === 'profile' && renderProfile()}
