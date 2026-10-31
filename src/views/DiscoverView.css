@@ -22,7 +22,12 @@
 .discover-topbar{
   display:flex;align-items:center;gap:9px;flex:0 0 calc(54px + var(--safe-top));
   margin:0;padding:var(--safe-top) max(12px,var(--safe-right)) 0 max(12px,var(--safe-left));
-  background:var(--bg);z-index:11;
+  background:var(--header-glass-background);z-index:11;
+  border-bottom:1px solid var(--header-glass-stroke);
+  border-radius:0 0 18px 18px;
+  -webkit-backdrop-filter:blur(30px) saturate(140%);
+  backdrop-filter:blur(30px) saturate(140%);
+  box-shadow:var(--header-glass-shadow);
 }
 .discover-icon-button{display:grid;place-items:center;flex:0 0 auto;width:42px;height:42px;border:1px solid var(--line-strong);border-radius:13px;background:linear-gradient(145deg,#242936,#11141c);color:#fff}
 .discover-icon-button--info{margin-left:auto;font:italic 700 19px Georgia,serif}
