@@ -5,7 +5,7 @@ import type { AuthUser } from '../AuthScreen'
 import PushSettings from '../PushSettings'
 import Icon from '../components/Icon'
 import { Cover } from '../components/GameCard'
-import type { ProfileTopGame } from '../profileTopGames'
+import type { ProfileCloud } from '../profileTopGames'
 import { sessionFetch } from '../sessionFetch'
 import { PROFILE_TINTS, profileTintOption, type ProfileTint } from '../profilePalette'
 import './ProfileView.css'
@@ -37,9 +37,16 @@ type Point = { x: number; y: number }
 
 /** A mobile-first gesture cropper: one finger pans, two fingers pinch.
     The same transformation is baked into a small 256px PNG on Save. */
-export default function ProfileView({ user, topGames, onOpenGame, onOpenWishlist, onLogout, onSaved }: {
+export default function ProfileView({
+  user, savedClouds, editClouds, cloudDraftIds,
+  onStartCloudEditing, onChooseCloud, onOpenGame, onOpenWishlist, onLogout, onSaved,
+}: {
   user: AuthUser
-  topGames: ProfileTopGame[]
+  savedClouds: ProfileCloud[]
+  editClouds: ProfileCloud[]
+  cloudDraftIds: (number | null)[]
+  onStartCloudEditing: () => void
+  onChooseCloud: (slot: number) => void
   onOpenGame: (gameId: number) => void
   onOpenWishlist: () => void
   onLogout: () => Promise<void>
@@ -150,7 +157,8 @@ export default function ProfileView({ user, topGames, onOpenGame, onOpenWishlist
     try {
       const response = await sessionFetch('/api/profile/appearance', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tint, updateAvatar: Boolean(photo), ...(photo ? { avatarData: baked } : {}) }),
+        body: JSON.stringify({ tint, cloudGameIds: cloudDraftIds,
+          updateAvatar: Boolean(photo), ...(photo ? { avatarData: baked } : {}) }),
       })
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { detail?: string } | null
@@ -170,6 +178,7 @@ export default function ProfileView({ user, topGames, onOpenGame, onOpenWishlist
     try { await onLogout() } finally { setLoggingOut(false) }
   }
   const chosenTint = profileTintOption(tint)
+  const clouds = editing ? editClouds : savedClouds
 
   return (
     <>
@@ -181,31 +190,44 @@ export default function ProfileView({ user, topGames, onOpenGame, onOpenWishlist
           <motion.button type="button" className="round-add profile-glass-header__edit"
             aria-label={editing ? 'Сохранить оформление профиля' : 'Редактировать оформление профиля'}
             disabled={saving}
-            onClick={() => editing ? void save() : (setEditing(true), setError(''))}
+            onClick={() => editing ? void save() : (onStartCloudEditing(), setEditing(true), setError(''))}
             whileTap={reducedMotion ? undefined : { scale: .94 }}>
             <Icon name={editing ? 'checkmark' : 'edit'} size={21} />
           </motion.button>
         </div>
-        <div className={'profile-glass-header__hero' + (topGames.length ? ' profile-glass-header__hero--ranked' : '')}>
-          {topGames.length > 0 && (
-            <ol className={'profile-top-games profile-top-games--count-' + topGames.length}
-              aria-label="Игры с самыми высокими личными оценками">
-              {topGames.map(({ game, score }, index) => (
-                <li className="profile-top-games__item" key={game.id}>
-                  <button type="button" className="profile-top-game"
-                    title={game.title}
-                    aria-label={game.title + ', личная оценка ' + score.toFixed(1) + ' из 10'}
-                    onClick={() => onOpenGame(game.id)}
+        <div className="profile-glass-header__hero">
+          {(editing || clouds.some(Boolean)) && (
+            <ol className="profile-top-games" aria-label="Игры в облаках профиля">
+              {clouds.map((cloud, index) => (
+                (editing || cloud) && <li className="profile-top-games__item" key={index}>
+                  <button type="button"
+                    className={'profile-top-game' + (editing ? ' profile-top-game--editing' : '')}
+                    title={cloud?.game.title ?? 'Выбрать игру'}
+                    aria-label={editing
+                      ? 'Изменить игру в облаке ' + (index + 1)
+                      : cloud!.game.title + (cloud!.score != null ? ', личная оценка ' + cloud!.score.toFixed(1) + ' из 10' : '')}
+                    onClick={() => editing ? onChooseCloud(index) : cloud && onOpenGame(cloud.game.id)}
                     style={{ '--cloud-delay': (-index * 2.13) + 's' } as CSSProperties}>
-                    <span className="profile-top-game__cover"><Cover game={game} thumbnail /></span>
-                    <span className="profile-top-game__score" aria-hidden="true">
-                      <Icon name="star" size={10} />{score.toFixed(1)}
+                    <span className="profile-top-game__cover">
+                      {cloud ? <Cover game={cloud.game} thumbnail /> : <Icon name="gamepad" size={20} />}
                     </span>
+                    {cloud?.score != null && (
+                      <span className="profile-top-game__score" aria-hidden="true">{cloud.score.toFixed(1)}</span>
+                    )}
+                    {editing && <span className="profile-top-game__edit" aria-hidden="true"><Icon name="edit" size={15} /></span>}
                   </button>
                 </li>
               ))}
             </ol>
           )}
+          <div className="profile-steam-cloud" role="img" aria-label="Steam — интеграция пока не подключена">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="16.5" cy="7.5" r="5.4" />
+              <circle cx="16.5" cy="7.5" r="2.6" />
+              <path d="m4 12 7.4 3.1 3.2-3.3M3 17l5.8 2.5 3-2.7-1.1-3.2" />
+              <circle cx="8.3" cy="17" r="3.8" />
+            </svg>
+          </div>
           <div className="profile-glass-header__avatar-row">
             {editing && photo ? (
               <div className="profile-avatar-crop" role="button" tabIndex={0}
