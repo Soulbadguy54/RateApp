@@ -2999,7 +2999,6 @@ function App() {
               if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
                 event.preventDefault()
                 event.currentTarget.blur()
-                if (addQuery.trim().length >= 3 && !addSearchLoading) retrySearch()
               }
             }}
             enterKeyHint="search"
@@ -3022,10 +3021,7 @@ function App() {
           )}
           <button type="button" className="text-field-submit" aria-label="Подтвердить поиск"
             disabled={addQuery.trim().length < 3 || addSearchLoading}
-            onClick={() => {
-              addSearchInputRef.current?.blur()
-              retrySearch()
-            }}>
+            onClick={() => addSearchInputRef.current?.blur()}>
             <Icon name="arrow" size={18} />
           </button>
         </div>
