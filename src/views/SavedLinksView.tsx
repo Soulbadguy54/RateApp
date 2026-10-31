@@ -14,6 +14,8 @@ type SavedLink = {
   url: string
   title: string | null
   createdAt: string
+  status?: 'pending' | 'processing' | 'ready' | 'failed'
+  error?: string | null
   games: SavedGame[]
 }
 type LinksPage = { items: SavedLink[]; nextBefore: number | null }
@@ -169,6 +171,16 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
   }, [])
 
   useEffect(() => { void fetchLinks() }, [fetchLinks])
+
+  // Background workers update saved links independently of this mounted view.
+  // Revalidate only while unresolved records exist, and when the tab returns.
+  useEffect(() => {
+    if (!items.some(link => link.status === 'pending' || link.status === 'processing')) return
+    const refresh = () => { if (document.visibilityState === 'visible') void fetchLinks() }
+    const timer = window.setInterval(refresh, 90_000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh) }
+  }, [items, fetchLinks])
 
   useEffect(() => {
     try {
@@ -493,6 +505,13 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
                 <h3>{previews[link.id]?.title || link.title || displayHost(link.url)}</h3>
                 <p className="saved-link-card__host">{previews[link.id]?.description || displayHost(link.url)}</p>
                 <time dateTime={link.createdAt}>{readableDate(link.createdAt)}</time>
+                {link.status !== 'ready' && link.status && (
+                  <span className={'saved-link-card__state saved-link-card__state--' + link.status}
+                    role="status" title={link.status === 'failed' ? link.error || 'Не удалось обработать ссылку' : undefined}>
+                    {link.status === 'failed' ? 'Не удалось проверить'
+                      : link.status === 'processing' ? 'Ищем игры…' : 'Ожидает проверки'}
+                  </span>
+                )}
               </div>
               <div className="saved-link-card__actions">
                 {selectedIds.length ? (
