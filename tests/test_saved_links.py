@@ -9,9 +9,9 @@ from sqlalchemy import select
 
 from api.database import SessionLocal
 from api.index import app
-from api.models import Game, SavedLink, User
+from api.models import Game, GameAlias, SavedLink, User
 from api.saved_links_routes import canonical_url
-from api.saved_links_worker import claim_jobs, resolve_games, submit_result
+from api.saved_links_worker import _find_top_game_id, claim_jobs, resolve_games, submit_result
 from api.security import _now
 
 
@@ -46,6 +46,36 @@ class SavedLinkTests(unittest.TestCase):
         })
         self.assertEqual(result.status_code, 201, result.text)
         return result.json()
+
+    def test_exact_match_resolver_rejects_short_fuzzy_neighbor(self):
+        """SOMA must not silently become Middle-earth: Shadow of Mordor."""
+        with patch("api.games_routes._local_game_search", return_value={
+            "items": [{"id": self.igdb_id}],
+        }), patch("api.games_routes._ranked_igdb_search_rows", return_value=([
+            {"id": 101, "name": "SOMA", "alternative_names": []},
+            {"id": 3025, "name": "Middle-earth: Shadow of Mordor"},
+        ], False)), patch("api.games_routes._cache_igdb_games", return_value=[
+            {"id": 101},
+        ]) as cache:
+            self.assertEqual(_find_top_game_id("SOMA"), 101)
+            cache.assert_called_once()
+        with patch("api.games_routes._local_game_search", return_value={
+            "items": [{"id": self.igdb_id}],
+        }), patch("api.games_routes._ranked_igdb_search_rows", return_value=([
+            {"id": 3025, "name": "Middle-earth: Shadow of Mordor"},
+        ], False)), patch("api.games_routes._cache_igdb_games",
+                          side_effect=AssertionError("not an exact match")):
+            self.assertIsNone(_find_top_game_id("SOMA"))
+
+    def test_local_alias_punctuation_is_exact_match(self):
+        with SessionLocal() as session:
+            session.add(GameAlias(game_id=self.game_pk, name="Мор. Утопия"))
+            session.commit()
+        with patch("api.games_routes._local_game_search", return_value={
+            "items": [{"id": self.igdb_id}],
+        }), patch("api.games_routes._ranked_igdb_search_rows",
+                  side_effect=AssertionError("alias already matched")):
+            self.assertEqual(_find_top_game_id("Мор (Утопия)"), self.igdb_id)
 
     def test_url_and_owner_unique_and_null_distinct_from_empty(self):
         for url in ("file:///etc/passwd", "http://127.0.0.1/",
