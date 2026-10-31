@@ -3520,6 +3520,7 @@ function App() {
     <Suspense fallback={<div className="viewport-loading"><ContentLoading tone="green" text="Открываем профиль…" /></div>}>
     <ProfileView
       user={authUser!}
+      onSaved={(updated) => setAuthUser(updated)}
       onOpenWishlist={() => navigateTo({
         tab: 'collections', gameId: null, collectionId: WISHLIST_COLLECTION_ID, formGameId: null,
       })}
@@ -3739,7 +3740,9 @@ function App() {
               <span className="bottom-nav__content">
                 {item.id === 'profile' ? (
                   <span className="bottom-nav__avatar" aria-hidden="true">
-                    {authUser.nickname.slice(0, 1).toUpperCase()}
+                    {(authUser.avatarVersion ?? 0) > 0
+                      ? <img src={'/api/profile/avatar?v=' + authUser.avatarVersion} alt="" draggable={false} />
+                      : authUser.nickname.slice(0, 1).toUpperCase()}
                   </span>
                 ) : (
                   <Icon name={item.icon} />
