@@ -53,12 +53,12 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  height: 176px;
+  height: 192px;
   margin: 13px auto 0;
 }
 .profile-glass-header__avatar-row {
   position: absolute;
-  top: 17px;
+  top: 25px;
   left: 50%;
   transform: translateX(-50%);
   width: 142px;
@@ -71,7 +71,7 @@
   top: 0;
   left: 0;
   width: max(0px, calc(50% - 76px));
-  height: 176px;
+  height: 192px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -79,19 +79,19 @@
 }
 .profile-top-games__item {
   position: absolute;
-  width: 43px;
-  height: 49px;
+  width: 53px;
+  height: 58px;
   pointer-events: none;
 }
-.profile-top-games__item[data-slot="0"] { top: 0; left: max(0px, calc(100% - 52px)); }
-.profile-top-games__item[data-slot="1"] { top: 61px; left: 0; }
-.profile-top-games__item[data-slot="2"] { top: 122px; left: max(0px, calc(100% - 52px)); }
+.profile-top-games__item[data-slot="0"] { top: 0; left: max(0px, calc(100% - 58px)); }
+.profile-top-games__item[data-slot="1"] { top: 65px; left: 0; }
+.profile-top-games__item[data-slot="2"] { top: 130px; left: max(0px, calc(100% - 58px)); }
 .profile-top-game,
 .profile-steam-cloud {
   position: relative;
   display: grid;
-  width: 43px;
-  height: 49px;
+  width: 53px;
+  height: 58px;
   place-items: center;
   padding: 4px;
   border: 1px solid rgba(255,255,255,.21);
@@ -122,10 +122,10 @@
   pointer-events: none;
 }
 .profile-top-game::before, .profile-steam-cloud::before {
-  width: 15px; height: 15px; left: -5px; bottom: 6px;
+  width: 17px; height: 17px; left: -6px; bottom: 7px;
 }
 .profile-top-game::after, .profile-steam-cloud::after {
-  width: 13px; height: 13px; right: -4px; top: 4px;
+  width: 16px; height: 16px; right: -5px; top: 5px;
 }
 .profile-top-games__item:focus-within { z-index: 5; }
 .profile-top-game:focus-visible {
@@ -137,8 +137,8 @@
   display: grid;
   position: relative;
   z-index: 1;
-  width: 32px;
-  height: 40px;
+  width: 39px;
+  height: 49px;
   place-items: center;
   overflow: hidden;
   border-radius: 8px;
@@ -153,7 +153,7 @@
   position: absolute;
   z-index: 5;
   right: -6px;
-  bottom: -5px;
+  bottom: -6px;
   display: grid;
   min-width: 24px;
   height: 16px;
@@ -183,19 +183,22 @@
 .profile-top-game--editing .profile-top-game__score { z-index: 7; }
 .profile-steam-cloud {
   position: absolute;
-  top: 64px;
-  right: max(0px, calc((50% - 76px - 43px) / 2));
+  top: 67px;
+  right: max(0px, calc((50% - 76px - 53px) / 2));
   color: #a4a8b0;
   opacity: .55;
   filter: grayscale(1);
   pointer-events: none;
   user-select: none;
 }
-.profile-steam-cloud svg {
+.profile-steam-cloud img {
   position: relative;
   z-index: 1;
-  width: 29px;
-  height: 29px;
+  display: block;
+  width: 33px;
+  height: 33px;
+  opacity: .82;
+  filter: brightness(0) saturate(100%) invert(71%);
 }
 @keyframes profile-cloud-drift {
   from { transform: translate3d(-1px, 1px, 0) rotate(-3deg); }
