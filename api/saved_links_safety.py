@@ -318,8 +318,61 @@ def _read_text(body: bytes, headers: dict[str, str]) -> str:
     return html.unescape(text[:MAX_TEXT_CHARS])
 
 
-def prepare_source(url: str) -> dict[str, str | int]:
-    """Reputation-check each redirect hop before opening a pinned connection."""
+class _PagePreview(HTMLParser):
+    """Only text metadata. Never interpret HTML or fetch images."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.in_title = False
+        self.title_parts: list[str] = []
+        self.og_title = ""
+        self.description = ""
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == "title":
+            self.in_title = True
+        if tag != "meta":
+            return
+        name = str(attributes.get("property") or attributes.get("name") or "").lower()
+        value = " ".join(str(attributes.get("content") or "").split())
+        if name in ("og:title", "twitter:title") and not self.og_title:
+            self.og_title = value[:180]
+        if name in ("og:description", "description", "twitter:description") and not self.description:
+            self.description = value[:240]
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self.in_title = False
+
+    def handle_data(self, data):
+        if self.in_title and sum(map(len, self.title_parts)) < 200:
+            self.title_parts.append(data[:200])
+
+    def result(self):
+        title = " ".join((self.og_title or "".join(self.title_parts)).split())[:180]
+        description = " ".join(self.description.split())[:200]
+        return {"title": html.unescape(title), "description": html.unescape(description)}
+
+
+def preview_source(url: str) -> dict[str, str]:
+    """Bounded HTML metadata from the same Safe Browsing and pinned reader."""
+    body, headers = _safe_page_response(url)
+    content_type = headers["content-type"].split(";", 1)[0].strip().lower()
+    if content_type not in ("text/html", "application/xhtml+xml"):
+        return {"title": "", "description": ""}
+    charset = "utf-8"
+    if "charset=" in headers["content-type"].lower():
+        candidate = headers["content-type"].lower().split("charset=", 1)[1].split(";", 1)[0].strip(' "\'')
+        if candidate in ("utf-8", "windows-1251", "iso-8859-1"):
+            charset = candidate
+    page = _PagePreview()
+    page.feed(body.decode(charset, errors="replace")[:MAX_RESPONSE_BYTES])
+    return page.result()
+
+
+def _safe_page_response(url: str) -> tuple[bytes, dict[str, str]]:
+    """Shared fail-closed reputation and pinned fetch for preview and GPT."""
+
     try:
         current = canonical_url(url)
     except ValueError as exc:
@@ -335,8 +388,7 @@ def prepare_source(url: str) -> dict[str, str | int]:
         check_safe_browsing(current, timeout=min(5.0, deadline - time.monotonic()))
         status, headers, body = _fetch_once(current, deadline)
         if status == 200:
-            text = _read_text(body, headers)
-            return {"text": text, "characters": len(text), "contentType": headers["content-type"].split(";",1)[0]}
+            return body, headers
         if hop == MAX_REDIRECTS:
             raise SourceSafetyError("Слишком много перенаправлений.", terminal=True)
         destination = headers.get("location")
@@ -350,3 +402,12 @@ def prepare_source(url: str) -> dict[str, str | int]:
             raise SourceSafetyError("HTTPS не может перенаправлять на HTTP.", terminal=True)
         current = next_url
     raise SourceSafetyError("Ссылка не может быть обработана.")
+
+
+def prepare_source(url: str) -> dict[str, str | int]:
+    """Reputation-check each redirect hop before opening a pinned connection."""
+    body, headers = _safe_page_response(url)
+    text = _read_text(body, headers)
+    return {"text": text, "characters": len(text),
+            "contentType": headers["content-type"].split(";", 1)[0]}
+

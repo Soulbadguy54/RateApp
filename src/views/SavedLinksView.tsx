@@ -51,6 +51,8 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [previews, setPreviews] = useState<Record<number, { title: string | null; description: string | null }>>({})
+  const previewAttemptedRef = useRef(new Set<number>())
   const requestRef = useRef<AbortController | null>(null)
   const pendingDeleteRef = useRef<{ id: number; timer: number } | null>(null)
   const holdRef = useRef<{ pointerId: number; id: number; x: number; y: number; timer: number } | null>(null)
@@ -115,6 +117,42 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
   }, [])
 
   useEffect(() => { void fetchLinks() }, [fetchLinks])
+
+  // Preview fetches happen separately from the fast URL save. The API checks
+  // Safe Browsing, DNS, redirects and TLS; never load unverified remote images.
+  useEffect(() => {
+    let cancelled = false
+    const candidates = items.slice(0, 8).filter(item =>
+      !item.title && !previewAttemptedRef.current.has(item.id))
+    for (const item of candidates) previewAttemptedRef.current.add(item.id)
+    const load = async () => {
+      for (const item of candidates) {
+        if (cancelled) return
+        try {
+          const response = await sessionFetch('/api/saved-links/' + item.id + '/preview', { method: 'POST' })
+          if (!response.ok || cancelled) continue
+          const info = await response.json() as { title: string | null; description: string | null }
+          if (!cancelled) setPreviews(previous => ({ ...previous, [item.id]: info }))
+        } catch { /* A failed safety check leaves the local fallback preview. */ }
+      }
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [items])
+
+  // Native Android Back and Safari edge-swipe dismiss transient UI first,
+  // including multi-select, confirmation and the pending deletion countdown.
+  useEffect(() => {
+    const dismiss = (event: Event) => {
+      if (!bulkConfirmOpen && selectedIds.length === 0 && pendingDeleteId === null) return
+      event.preventDefault()
+      setBulkConfirmOpen(false)
+      setSelectedIds([])
+      cancelDelete()
+    }
+    window.addEventListener('rateapp:cancel-transient', dismiss)
+    return () => window.removeEventListener('rateapp:cancel-transient', dismiss)
+  }, [bulkConfirmOpen, selectedIds, pendingDeleteId])
 
   const addLink = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -212,15 +250,17 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
       suppressCardClickRef.current = null
       return
     }
-    if (!selectedIds.length || (event.target as HTMLElement).closest('button, a')) return
-    toggleSelection(link.id)
+    if ((event.target as HTMLElement).closest('button, a')) return
+    if (selectedIds.length) toggleSelection(link.id)
+    else window.open(link.url, '_blank', 'noopener,noreferrer')
   }
 
   const cardKeyDown = (link: SavedLink, event: KeyboardEvent<HTMLElement>) => {
-    if (!selectedIds.length || event.target !== event.currentTarget) return
+    if (event.target !== event.currentTarget) return
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      toggleSelection(link.id)
+      if (selectedIds.length) toggleSelection(link.id)
+      else window.open(link.url, '_blank', 'noopener,noreferrer')
     }
   }
 
@@ -249,7 +289,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
 
   return (
     <section className="saved-links-page" aria-label="Мои ссылки">
-      <header className="saved-links-header">
+      <header className="saved-links-header topbar">
         <h1>Мои ссылки</h1>
         <p>Сохранённые ссылки из других источников</p>
       </header>
@@ -306,10 +346,10 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
             key={link.id}
             data-saved-link-id={link.id}
             className={'saved-link-card' + (selectedIds.includes(link.id) ? ' saved-link-card--selected' : selectedIds.length ? ' saved-link-card--selection-mode' : '')}
-            role={selectedIds.length ? 'button' : undefined}
-            tabIndex={selectedIds.length ? 0 : undefined}
+            role="button"
+            tabIndex={0}
             aria-pressed={selectedIds.length ? selectedIds.includes(link.id) : undefined}
-            aria-label={selectedIds.length ? (link.title || displayHost(link.url)) + ', ' + (selectedIds.includes(link.id) ? 'выбрано' : 'не выбрано') : undefined}
+            aria-label={selectedIds.length ? (link.title || displayHost(link.url)) + ', ' + (selectedIds.includes(link.id) ? 'выбрано' : 'не выбрано') : 'Открыть ссылку ' + (link.title || displayHost(link.url))}
             onPointerDown={event => holdStart(link, event)}
             onPointerMove={holdMove}
             onPointerUp={cancelHold}
@@ -329,36 +369,27 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: .24, delay: Math.min(index, 7) * .04 }}
           >
-            <div className="saved-link-card__top">
-              <time dateTime={link.createdAt}>{readableDate(link.createdAt)}</time>
-            </div>
-            <h3>{link.title || displayHost(link.url)}</h3>
-            <p className="saved-link-card__host">{displayHost(link.url)}</p>
-            {!!link.games?.length && !selectedIds.length && (
-              <div className="saved-link-card__game-list">
-                {link.games.map(game => (
-                  <button type="button" key={game.id} className="saved-link-card__game"
-                    onClick={() => onOpenGame(game.id)} aria-label={'Открыть игру ' + game.title}>
-                    {game.coverUrl ? <img src={game.coverUrl} alt="" loading="lazy" /> : <Icon name="gamepad" size={16} />}
-                    <span>{game.title}</span>
-                  </button>
-                ))}
+            <div className="saved-link-card__body">
+              <div className="saved-link-card__thumbnail" aria-hidden="true">
+                {link.games?.[0]?.coverUrl
+                  ? <img src={link.games[0].coverUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                  : <Icon name="link" size={23} />}
               </div>
-            )}
-            <div className="saved-link-card__actions">
-              {selectedIds.length ? (
-                <button type="button" className={'saved-link-card__selector' + (selectedIds.includes(link.id) ? ' saved-link-card__selector--checked' : '')}
-                  aria-label={selectedIds.includes(link.id) ? 'Снять выбор ссылки' : 'Выбрать ссылку'}
-                  aria-pressed={selectedIds.includes(link.id)}
-                  onClick={event => { event.stopPropagation(); toggleSelection(link.id) }}
-                  disabled={deleting}>
-                  {selectedIds.includes(link.id) && <Icon name="checkmark" size={17} />}
-                </button>
-              ) : (
-                <>
-                  <a href={link.url} target="_blank" rel="noopener noreferrer" title="Открыть ссылку">
-                    <Icon name="globe" size={17} /> Открыть
-                  </a>
+              <div className="saved-link-card__copy">
+                <h3>{previews[link.id]?.title || link.title || displayHost(link.url)}</h3>
+                <p className="saved-link-card__host">{previews[link.id]?.description || displayHost(link.url)}</p>
+                <time dateTime={link.createdAt}>{readableDate(link.createdAt)}</time>
+              </div>
+              <div className="saved-link-card__actions">
+                {selectedIds.length ? (
+                  <button type="button" className={'saved-link-card__selector' + (selectedIds.includes(link.id) ? ' saved-link-card__selector--checked' : '')}
+                    aria-label={selectedIds.includes(link.id) ? 'Снять выбор ссылки' : 'Выбрать ссылку'}
+                    aria-pressed={selectedIds.includes(link.id)}
+                    onClick={event => { event.stopPropagation(); toggleSelection(link.id) }}
+                    disabled={deleting}>
+                    {selectedIds.includes(link.id) && <Icon name="checkmark" size={17} />}
+                  </button>
+                ) : (
                   <button type="button"
                     className={'saved-link-card__delete' + (pendingDeleteId === link.id ? ' saved-link-card__delete--pending' : '')}
                     aria-label={(pendingDeleteId === link.id ? 'Отменить удаление ссылки ' : 'Удалить ссылку ') + (link.title || displayHost(link.url))}
@@ -377,8 +408,8 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
                     )}
                     <Icon name="trash" size={18} />
                   </button>
-                </>
-              )}
+                )}
+              </div>
             </div>
           </motion.article>
         ))}

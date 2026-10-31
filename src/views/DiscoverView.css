@@ -145,3 +145,14 @@
 .discover-swipe-feedback--up{color:rgb(var(--palette-wishlist-rgb));--discover-fog-rgb:var(--palette-wishlist-rgb)}
 .discover-swipe-feedback--down{color:rgb(var(--palette-playthrough-rgb));--discover-fog-rgb:var(--palette-playthrough-rgb)}
 @media(prefers-reduced-motion:reduce){.discover-swipe-feedback{display:none}.discover-cover__image{transition:none;filter:none}.discover-cover__skeleton{animation:none}}
+
+/* Same heading hierarchy as Database, aligned at the upper-right on full-screen Discovery. */
+.discover-topbar__title {
+  margin: 0;
+  flex: 0 0 auto;
+  color: var(--igdb-accent);
+  font-size: clamp(23px, 6vw, 29px);
+  line-height: 1.02;
+  letter-spacing: -.04em;
+  font-weight: 850;
+}

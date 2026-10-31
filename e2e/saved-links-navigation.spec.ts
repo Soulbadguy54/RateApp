@@ -82,6 +82,22 @@ test('my links: quiet layout, delayed cancellation, long-press bulk delete and n
   await expect(page.getByText('Выбрано: 2')).toBeVisible()
   await expect(page.locator('.saved-link-card__selector--checked')).toHaveCount(2)
 
+  // A native Back or iOS edge swipe must close selection, not ask to exit PWA.
+  await page.goBack()
+  await expect(page.locator('.saved-link-card__selector')).toHaveCount(0)
+  await expect(page.locator('.app-exit-toast')).toHaveCount(0)
+  await expect(page).toHaveURL(/tab=links/)
+  // Re-enter the selection mode: the next Back still has its ordinary root guard.
+  const toSelect = await page.locator('.saved-link-card').first().locator('h3').boundingBox()
+  if (!toSelect) throw new Error('Link card disappeared')
+  await page.mouse.move(toSelect.x + toSelect.width / 2, toSelect.y + toSelect.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(530)
+  await page.mouse.up()
+  await expect(page.getByText('Выбрано: 1')).toBeVisible()
+  await page.locator('.saved-link-card__selector').last().click()
+  await expect(page.getByText('Выбрано: 2')).toBeVisible()
+
   await page.getByRole('button', { name: 'Удалить выбранные ссылки: 2' }).click()
   await expect(page.getByRole('alertdialog')).toContainText('Удалить выбранные ссылки (2)?')
   expect(bulkDeletes).toHaveLength(0)

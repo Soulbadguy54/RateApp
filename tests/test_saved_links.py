@@ -103,6 +103,35 @@ class SavedLinkTests(unittest.TestCase):
             submit_result({"id":link["id"], "leaseToken":claim["leaseToken"],
                            "games":["Hollow Knight Test"]})
 
+    def test_preview_only_after_save_and_reputation_checked(self):
+        link = self.save("preview")
+        self.assertIsNone(link["title"])
+        # A fast save does not read the source or update its metadata.
+        with patch("api.saved_links_safety.preview_source", return_value={
+            "title": "Verified article title", "description": "Verified metadata",
+        }) as preview:
+            result = self.client.post(f'/api/saved-links/{link["id"]}/preview')
+            self.assertEqual(result.status_code, 200, result.text)
+            self.assertEqual(result.json()["title"], "Verified article title")
+            self.assertEqual(result.json()["description"], "Verified metadata")
+            preview.assert_called_once_with(link["url"])
+        saved = self.client.get(f'/api/saved-links/{link["id"]}').json()
+        self.assertEqual(saved["title"], "Verified article title")
+        with patch("api.saved_links_safety.preview_source", side_effect=AssertionError("cache missed")):
+            cached = self.client.post(f'/api/saved-links/{link["id"]}/preview')
+        self.assertEqual(cached.json()["title"], "Verified article title")
+
+    def test_failed_preview_never_fetches_untrusted_remote_images(self):
+        from api.saved_links_safety import SourceSafetyError
+        link = self.save("blocked-preview")
+        with patch("api.saved_links_safety.preview_source",
+                   side_effect=SourceSafetyError("Unsafe URL", terminal=True)):
+            response = self.client.post(f'/api/saved-links/{link["id"]}/preview')
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["title"])
+        self.assertIsNone(response.json()["description"])
+        self.assertIsNone(self.client.get(f'/api/saved-links/{link["id"]}').json()["title"])
+
     def test_bulk_delete_is_atomic_scoped_and_preserves_catalog(self):
         first = self.save("bulk-a")
         second = self.save("bulk-b")
@@ -186,6 +215,7 @@ class SavedLinkTests(unittest.TestCase):
         for method, path in [("get",""),("delete",""),("post","/refresh"),("post","/retry")]:
             self.assertEqual(getattr(other,method)(
                 f'/api/saved-links/{link["id"]}{path}').status_code,404)
+        self.assertEqual(other.post(f'/api/saved-links/{link["id"]}/preview').status_code, 404)
         self.assertEqual(other.post("/api/saved-links/bulk-delete", json={
             "ids": [link["id"]],
         }).status_code, 404)

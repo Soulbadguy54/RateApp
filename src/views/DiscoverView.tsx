@@ -615,6 +615,7 @@ export default function DiscoverView({
         )}
         <button type="button" className="discover-icon-button discover-icon-button--info"
           aria-label="Показать обучение" onClick={() => setHelpOpen(true)}>i</button>
+        <h1 className="discover-topbar__title">Для тебя</h1>
       </header>
 
       <div className="discover-stage" ref={stageRef} aria-live="polite"
