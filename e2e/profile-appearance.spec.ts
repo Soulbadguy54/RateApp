@@ -194,7 +194,10 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   const picker = page.locator('.library-cloud-picker')
   await expect(picker).toBeVisible()
   await expect(picker.getByRole('heading', { name: 'Мои игры' })).toBeVisible()
-  await expect(picker.getByText('Выбери игру')).toBeVisible()
+  await expect(picker.getByText('Выбери игру!', { exact: true })).toBeVisible()
+  await expect(picker.getByText('Выбери игру!', { exact: true })).toHaveCSS('text-align', 'center')
+  await expect(picker.getByRole('button', { name: 'Назад в профиль' })).toHaveClass(/app-back-button/)
+  await expect(picker.getByRole('button', { name: 'Назад в профиль' })).toHaveCSS('width', '42px')
   await expect(picker.getByRole('button', { name: 'Добавить игру' })).toHaveCount(0)
   // Cancel picker with arrow. Profile remains in edit mode; no slot changed.
   await picker.getByRole('button', { name: 'Назад в профиль' }).click()
@@ -229,4 +232,73 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   await page.locator('.bottom-nav__item--profile').click()
   await expect(page.locator('.profile-top-game').nth(1)).toHaveAttribute('aria-label', 'My Playing')
   await expect(page.locator('.profile-top-game').nth(0)).toHaveAttribute('aria-label', /Top Alpha/)
+})
+
+
+test('Control Resonant playing and rated RDR2 both pin via public IGDB IDs, not private DB IDs', async ({ page }) => {
+  const games = [
+    { id: 129887, title: 'Control Resonant', status: 'playing', score: null },
+    { id: 7343, title: 'Red Dead Redemption 2', status: 'completed', score: 9.7 },
+  ] as const
+  const library = games.map((g, i) => ({
+    gameId: g.id, status: g.status, score: g.score, platform: 'PC',
+    completedAt: g.score == null ? null : '2026-10-01', startedAt: '2026-10-01',
+    atmosphereScore: g.score, storyScore: g.score,
+    technologyScore: g.score, gameplayScore: g.score,
+    addedAt: '2026-10-01', collectionIds: [], review: '',
+    game: { id: g.id, title: g.title, genres: [], year: 2026, releaseDate: '2026-01-01',
+      developer: 'Example', platforms: ['PC'], igdbRating: 91,
+      communityRating: 8.2, communityRatings: 30, accent: '#4da4f5',
+      accent2: '#273858', glyph: 'G' },
+  }))
+  // Backend owns two internal FKs (13, 14); bootstrap deliberately exposes
+  // unrelated public IGDB IDs. Fake the same server-side IGDB lookup contract.
+  const internalToIgdb = new Map([[13, 129887], [14, 7343]])
+  let pins: (number | null)[] = [null, null, null]
+  let saves = 0
+  const user = () => ({
+    id: 421, email: 'clouds-public-ids@example.test', nickname: 'public_ids',
+    profileTint: 'default', avatarVersion: 0,
+    profileCloudGameIds: pins, createdAt: '2026-10-30T00:00:00Z',
+  })
+  await page.route('**/api/**', async route => {
+    const pathname = new URL(route.request().url()).pathname
+    const json = (body: unknown, code = 200) => route.fulfill({
+      status: code, contentType: 'application/json', body: JSON.stringify(body),
+    })
+    if (pathname === '/api/bootstrap') return json({ user: user(), library, collections: [] })
+    if (pathname === '/api/profile/appearance' && route.request().method() === 'POST') {
+      const payload = route.request().postDataJSON() as { cloudGameIds: (number | null)[] }
+      const chosen = payload.cloudGameIds.filter((id): id is number => id !== null)
+      if (!chosen.every(id => [...internalToIgdb.values()].includes(id))) {
+        return json({ detail: 'INVALID_CLOUD_GAME' }, 422)
+      }
+      pins = payload.cloudGameIds
+      saves += 1
+      return json(user())
+    }
+    return json({})
+  })
+  await page.goto('/?tab=profile')
+  await page.getByRole('button', { name: 'Редактировать оформление профиля' }).click()
+  await page.getByRole('button', { name: 'Изменить игру в облаке 1' }).click()
+  const picker = page.locator('.library-cloud-picker')
+  await picker.locator('.game-card').filter({ hasText: 'Control Resonant' }).click()
+  await expect(page.getByRole('button', { name: 'Сохранить оформление профиля' })).toBeVisible()
+  await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click()
+  await picker.locator('.game-card').filter({ hasText: 'Red Dead Redemption 2' }).click()
+  await page.getByRole('button', { name: 'Сохранить оформление профиля' }).click()
+  await expect(page.getByRole('button', { name: 'Редактировать оформление профиля' })).toBeVisible()
+  expect(pins).toEqual([129887, 7343, null])
+  expect(saves).toBe(1)
+  await expect(page.getByRole('alert').filter({ hasText: 'Выбери игру из' })).toHaveCount(0)
+  await expect(page.locator('.profile-top-game').nth(0)).toHaveAttribute('aria-label', 'Control Resonant')
+  await expect(page.locator('.profile-top-game').nth(1)).toHaveAttribute('aria-label',
+    'Red Dead Redemption 2, личная оценка 9.7 из 10')
+  await page.reload()
+  await expect(page.locator('.profile-top-game').nth(0)).toHaveAttribute('aria-label', 'Control Resonant')
+  await expect(page.locator('.profile-top-game').nth(1)).toHaveAttribute('aria-label',
+    'Red Dead Redemption 2, личная оценка 9.7 из 10')
+  const steam = page.getByRole('img', { name: 'Steam — интеграция пока не подключена' })
+  await expect(steam.locator('img')).toHaveAttribute('src', '/brand/steam.svg')
 })

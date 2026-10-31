@@ -2108,7 +2108,7 @@ function App() {
         <div className="detail-page">
           <div className="detail-toolbar">
             <button
-              className="icon-button detail-back"
+              className="icon-button app-back-button detail-back"
               onClick={() => goBackOr({ tab: 'library', gameId: null, collectionId: null, formGameId: null })}
               aria-label="Назад"
             >
@@ -2143,7 +2143,7 @@ function App() {
       <div className="detail-page">
         <div className="detail-toolbar">
           <button
-            className="icon-button detail-back"
+            className="icon-button app-back-button detail-back"
             onClick={() => goBackOr({
               tab: currentViewRef.current.tab,
               gameId: null,
@@ -2516,7 +2516,7 @@ function App() {
         }
       >
       <header className="topbar library-topbar">
-        {cloudPicker && <button type="button" className="icon-button library-cloud-picker__back"
+        {cloudPicker && <button type="button" className="icon-button app-back-button"
           aria-label="Назад в профиль" onClick={closeProfileCloudPicker}><Icon name="back" size={20} /></button>}
         {cloudPicker ? <h1 className="library-title">Мои игры</h1> : (
           <motion.button layout className="library-title"
@@ -2628,7 +2628,7 @@ function App() {
         transition={{ duration: .24 }}
       >
         {cloudPicker ? (
-          <div className="library-cloud-picker__prompt">Выбери игру</div>
+          <div className="library-cloud-picker__prompt">Выбери игру!</div>
         ) : (<>
         <motion.div
           className="library-overview-card library-overview-card--games"
@@ -2912,7 +2912,7 @@ function App() {
       return (
         <>
           <header className="subpage-header">
-            <button className="icon-button" onClick={() => goBackOr({ tab: 'add', gameId: null, collectionId: null, formGameId: null })}><Icon name="back" size={20} /></button>
+            <button className="icon-button app-back-button" onClick={() => goBackOr({ tab: 'add', gameId: null, collectionId: null, formGameId: null })}><Icon name="back" size={20} /></button>
             <div>
               <h1>Прохождение</h1>
             </div>
@@ -3176,7 +3176,7 @@ function App() {
           <header className="subpage-header">
             <button
               type="button"
-              className="icon-button"
+              className="icon-button app-back-button"
               aria-label="Вернуться к коллекциям"
               onClick={() => goBackOr({ tab: 'collections', gameId: null, collectionId: null, formGameId: null })}
             >
@@ -3261,7 +3261,7 @@ function App() {
           <header className="detail-toolbar collection-detail-toolbar">
             <button
               type="button"
-              className="icon-button detail-back"
+              className="icon-button app-back-button detail-back"
               aria-label="Вернуться к коллекциям"
               onClick={() => {
                 if (editing) cancelCollectionEdit()

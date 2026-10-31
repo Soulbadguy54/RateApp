@@ -4419,20 +4419,32 @@ body:has(.auth-shell) .install-prompt { display: none; }
   flex: 1;
   min-width: 0;
 }
-.library-cloud-picker__back {
-  flex: 0 0 35px;
-  width: 35px;
-  height: 35px;
-  border: 1px solid rgba(140,242,125,.22);
-  border-radius: 12px;
+/* One Back-button contract for detail, playthrough, collections and picker. */
+.icon-button.app-back-button {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  flex: 0 0 42px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #242936, #11141c);
   color: var(--accent);
-  background: rgba(140,242,125,.06);
+}
+.icon-button.app-back-button > svg {
+  width: 19px;
+  height: 19px;
+  stroke-width: 2;
 }
 .library-cloud-picker .topbar-actions {
   margin-left: auto;
 }
 .library-cloud-picker__prompt {
+  display: grid;
+  place-items: center;
   grid-column: 1 / -1;
+  text-align: center;
   padding: 10px 13px;
   border: 1px solid rgba(140,242,125,.20);
   border-radius: 14px;

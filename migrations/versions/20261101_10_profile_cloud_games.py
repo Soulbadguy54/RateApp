@@ -1,4 +1,4 @@
-"""User-selected games for the three profile clouds; NULL positions remain automatic.
+"""Public IGDB IDs for three user-selected profile clouds; NULL slots stay automatic.
 
 Revision ID: 20261101_10
 Revises: 20261101_09

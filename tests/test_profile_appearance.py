@@ -1,5 +1,6 @@
 """Profile avatar/tint tests. Run against migrated isolated PostgreSQL."""
 import base64
+from datetime import date
 import secrets
 import struct
 import unittest
@@ -68,46 +69,75 @@ class ProfileAppearanceTests(unittest.TestCase):
         self.assertEqual(response.json()["avatarVersion"], 2)
         self.assertEqual(self.client.get("/api/profile/avatar").status_code, 404)
 
-    def test_cloud_choices_are_owner_scoped_atomic_and_strictly_three(self):
+    def test_cloud_choices_use_public_igdb_ids_and_support_playing_and_rated(self):
+        """Regression: bootstrap.gameId == Game.igdb_id, NOT UserGame.game_id.
+
+        Previously the API compared public IDs to local FKs and rejected both
+        a playing Control and a rated RDR2, despite them being in My Games.
+        """
         with SessionLocal() as session:
             owner = session.scalar(select(User).where(User.nickname == self.nickname))
-            game = Game(igdb_id=1_500_000_000 + secrets.randbelow(300_000_000),
-                        title="Own cloud pick")
-            session.add(game)
+            base_igdb_id = 1_500_000_000 + secrets.randbelow(200_000_000)
+            first = Game(igdb_id=base_igdb_id, title="Control (playing)")
+            second = Game(igdb_id=base_igdb_id + 1, title="Red Dead Redemption 2 (rated)")
+            session.add_all([first, second])
             session.flush()
-            session.add(UserGame(user_id=owner.id, game_id=game.id, status="playing"))
+            local_ids = [first.id, second.id]
+            public_ids = [first.igdb_id, second.igdb_id]
+            self.assertNotEqual(local_ids, public_ids)
+            session.add_all([
+                UserGame(user_id=owner.id, game_id=first.id, status="playing"),
+                UserGame(user_id=owner.id, game_id=second.id, status="completed",
+                         platform="PC", completed_at=date(2026, 10, 31), score=9.5,
+                         atmosphere_score=9.5, story_score=9.5,
+                         technology_score=9.5, gameplay_score=9.5),
+            ])
             session.commit()
-            game_id = game.id
+
         try:
+            slots = [public_ids[0], public_ids[1], None]
             response = self.client.post("/api/profile/appearance", json={
-                "tint": "coral", "cloudGameIds": [None, game_id, None],
+                "tint": "coral", "cloudGameIds": slots,
             })
             self.assertEqual(response.status_code, 200, response.text)
-            self.assertEqual(response.json()["profileCloudGameIds"], [None, game_id, None])
-            self.assertEqual(self.client.get("/api/profile").json()["profileCloudGameIds"],
-                             [None, game_id, None])
-            for slots in ([game_id, game_id, None], [game_id, None],
-                          [None, None, None, None], [game_id + 1, None, None]):
+            self.assertEqual(response.json()["profileCloudGameIds"], slots)
+            self.assertEqual(self.client.get("/api/profile").json()["profileCloudGameIds"], slots)
+
+            # A local database ID is not a valid public game ID. Nor may a
+            # client pass a foreign/non-library ID or pin the same game twice.
+            for bad in ([local_ids[0], None, None],
+                        [public_ids[0], public_ids[0], None],
+                        [public_ids[0], None],
+                        [None, None, None, None],
+                        [public_ids[1] + 10, None, None]):
                 response = self.client.post("/api/profile/appearance", json={
-                    "tint": "blue", "cloudGameIds": slots,
+                    "tint": "blue", "cloudGameIds": bad,
                 })
                 self.assertEqual(response.status_code, 422, response.text)
                 self.assertEqual(self.client.get("/api/profile").json()["profileTint"], "coral")
-                self.assertEqual(self.client.get("/api/profile").json()["profileCloudGameIds"],
-                                 [None, game_id, None])
-            # Omission never resets the user's pinned clouds.
+                self.assertEqual(self.client.get("/api/profile").json()["profileCloudGameIds"], slots)
+
+            # Omission keeps pins, and clearing them returns to auto ranking.
             response = self.client.post("/api/profile/appearance", json={"tint": "rose"})
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json()["profileCloudGameIds"], [None, game_id, None])
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["profileCloudGameIds"], slots)
+            response = self.client.post("/api/profile/appearance", json={
+                "tint": "default", "cloudGameIds": [None, None, None],
+            })
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["profileCloudGameIds"], [None, None, None])
         finally:
             with SessionLocal() as session:
                 owner = session.scalar(select(User).where(User.nickname == self.nickname))
                 if owner:
-                    session.query(UserGame).filter(UserGame.user_id == owner.id,
-                                                   UserGame.game_id == game_id).delete()
-                game = session.get(Game, game_id)
-                if game:
-                    session.delete(game)
+                    session.query(UserGame).filter(
+                        UserGame.user_id == owner.id,
+                        UserGame.game_id.in_(local_ids),
+                    ).delete(synchronize_session=False)
+                for game_id in local_ids:
+                    game = session.get(Game, game_id)
+                    if game:
+                        session.delete(game)
                 session.commit()
 
     def test_avatar_rejects_invalid_payload_and_auth(self):

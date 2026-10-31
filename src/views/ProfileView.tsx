@@ -162,6 +162,7 @@ export default function ProfileView({
       })
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { detail?: string } | null
+        if (body?.detail === 'INVALID_CLOUD_GAME') return
         throw new Error(body?.detail || 'Не удалось сохранить оформление.')
       }
       const saved = await response.json() as AuthUser
@@ -221,12 +222,7 @@ export default function ProfileView({
             </ol>
           )}
           <div className="profile-steam-cloud" role="img" aria-label="Steam — интеграция пока не подключена">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="16.5" cy="7.5" r="5.4" />
-              <circle cx="16.5" cy="7.5" r="2.6" />
-              <path d="m4 12 7.4 3.1 3.2-3.3M3 17l5.8 2.5 3-2.7-1.1-3.2" />
-              <circle cx="8.3" cy="17" r="3.8" />
-            </svg>
+            <img src="/brand/steam.svg" alt="" aria-hidden="true" draggable={false} />
           </div>
           <div className="profile-glass-header__avatar-row">
             {editing && photo ? (
