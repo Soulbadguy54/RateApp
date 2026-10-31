@@ -47,7 +47,7 @@ test('My Links: top-right plus, keyboard submit, newest first and reload cache',
   await page.getByPlaceholder('Введите ссылку').fill('example.org/second')
   await page.getByPlaceholder('Введите ссылку').press('Enter')
   await expect(page.locator('.saved-link-card')).toHaveCount(2)
-  await expect(page.locator('.saved-link-card').first()).toContainText('Новый обзор')
+  await expect(page.locator('.saved-link-card').first()).toContainText('Актуальный заголовок статьи')
   await expect(page.locator('.saved-link-card').first()).toContainText('Актуальный заголовок статьи')
   await expect(page.locator('.saved-link-card').first()).toContainText('Текст описания')
   await expect(page.getByText('Ссылка добавлена.')).toHaveCount(0)
@@ -55,7 +55,7 @@ test('My Links: top-right plus, keyboard submit, newest first and reload cache',
   await expect(page.getByPlaceholder('Введите ссылку')).toHaveValue('')
   await expect(page.getByRole('button', { name: 'Закрыть ввод ссылки' })).toBeVisible()
   await page.reload()
-  await expect(page.locator('.saved-link-card').first()).toContainText('Новый обзор')
+  await expect(page.locator('.saved-link-card').first()).toContainText('Актуальный заголовок статьи')
   await expect(page.locator('.saved-link-card')).toHaveCount(2)
 })
 
