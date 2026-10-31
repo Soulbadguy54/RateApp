@@ -352,6 +352,7 @@ def main() -> None:
     parser.add_argument("--expect-environment", required=True,
                         choices=("staging", "production", "development"))
     args = parser.parse_args()
+    started = time.monotonic()
     current_env = os.getenv("VERCEL_ENV", "development")
     if current_env != args.expect_environment:
         parser.error(f"Environment mismatch: expected {args.expect_environment}, running {current_env}")
@@ -374,7 +375,27 @@ def main() -> None:
                 raise ValueError("Payload too large")
             output = submit_result(json.loads(body))
     except (ValueError, json.JSONDecodeError) as exc:
+        # Structured metadata only: never print source text, URLs or lease
+        # tokens into long-lived Docker/Gateway logs.
+        print(json.dumps({
+            "event": "saved_link_worker", "stage": args.action,
+            "environment": current_env, "result": "error",
+            "errorType": type(exc).__name__,
+            "elapsedMs": round((time.monotonic() - started) * 1000),
+        }), file=sys.stderr, flush=True)
         parser.error(str(exc))
+    link_id = (
+        (output.get("jobs") or [{}])[0].get("id") if args.action == "claim"
+        else output.get("linkId", output.get("id"))
+    )
+    print(json.dumps({
+        "event": "saved_link_worker", "stage": args.action,
+        "environment": current_env,
+        "result": "empty" if args.action == "claim" and not output.get("jobs") else "ok",
+        "linkId": link_id,
+        "gamesCount": output.get("gamesCount", output.get("matched")),
+        "elapsedMs": round((time.monotonic() - started) * 1000),
+    }), file=sys.stderr, flush=True)
     print(json.dumps(output, ensure_ascii=False))
 
 

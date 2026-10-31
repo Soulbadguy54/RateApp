@@ -22,6 +22,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import selectinload
 
 from api.auth_routes import router as auth_router, RegisterPayload, LoginPayload
+from api.profile_routes import router as profile_router
 from api.library_routes import router as library_router
 from api.collection_routes import router as collection_router
 from api.push_routes import router as push_router
@@ -76,6 +77,7 @@ app = FastAPI(
 )
 
 app.include_router(auth_router)
+app.include_router(profile_router)
 app.include_router(library_router)
 app.include_router(collection_router)
 app.include_router(push_router)

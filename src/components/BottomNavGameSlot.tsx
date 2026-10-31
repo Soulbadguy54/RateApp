@@ -13,7 +13,7 @@ const gameOptions: { id: GameNavTab; label: string; icon: IconName }[] = [
   { id: 'discovery', label: 'Для тебя', icon: 'sparkles' },
 ]
 const collectionOptions: { id: GameNavTab; label: string; icon: IconName }[] = [
-  { id: 'collections', label: 'Коллекции', icon: 'layers' },
+  { id: 'collections', label: 'Коллекции', icon: 'heart' },
   { id: 'links', label: 'Мои ссылки', icon: 'link' },
 ]
 
