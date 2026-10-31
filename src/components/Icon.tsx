@@ -32,6 +32,9 @@ export type IconName =
   | 'clock'
   | 'video'
   | 'download'
+  | 'upload'
+  | 'bell'
+  | 'shield'
   | 'alert-triangle'
   | 'chevron-left'
   | 'chevron-right'
@@ -84,6 +87,9 @@ export default function Icon({ name, size = 22 }: { name: IconName; size?: numbe
     'chevron-right': <path d="m9 6 6 6-6 6"/>,
     'alert-triangle': <><path d="M10.2 4.3a2.1 2.1 0 0 1 3.6 0l8 14a2.1 2.1 0 0 1-1.8 3.2H4a2.1 2.1 0 0 1-1.8-3.2l8-14Z"/><path d="M12 9v5m0 3h.01"/></>,
     download: <><path d="M12 3v12m-5-5 5 5 5-5"/><path d="M4 17v3h16v-3"/></>,
+    upload: <><path d="M12 17V3m-5 5 5-5 5 5"/><path d="M4 17v3h16v-3"/></>,
+    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></>,
+    shield: <><path d="M12 2 20 5v6c0 5.4-3.2 8.7-8 11-4.8-2.3-8-5.6-8-11V5l8-3Z"/><path d="m9 12 2 2 4-4"/></>,
   }
 
   return <svg {...common}>{paths[name]}</svg>
