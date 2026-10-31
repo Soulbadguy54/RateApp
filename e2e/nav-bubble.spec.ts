@@ -60,9 +60,10 @@ test('game nav: tap priority, hold-and-drag bubble, swipe-only pinning, history 
   await expect(discovery).toBeVisible({ timeout: 3500 })
   // The actual liquid SVG background (not a faded box) shares the nav glass
   // color; the two options reuse the same icon/label and absolute cell size.
-  const glass = await page.locator('.bottom-nav').evaluate(el => getComputedStyle(el).backgroundColor)
+  const glass = await page.locator('.bottom-nav').evaluate(el => getComputedStyle(el).backdropFilter)
+  expect(glass).toContain('blur(12px)')
   const liquid = page.locator('.bottom-nav__liquid-path')
-  await expect(liquid).toHaveCSS('fill', glass)
+  await expect(liquid).toHaveCSS('fill', 'rgba(16, 24, 41, 0.5)')
   await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   // The path grows from a droplet into the whole two-cell panel.
   await expect.poll(

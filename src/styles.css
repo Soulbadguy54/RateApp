@@ -41,6 +41,11 @@ html, body {
   --section-caption-gap: 4px;
   --section-header-height: 54px;
   --section-header-bottom-gap: 14px;
+  --nav-liquid-fill: rgba(16, 24, 41, .5);
+  --text-field-height: 52px;
+  --text-field-radius: 14px;
+  --text-field-font-size: 14px;
+  --text-field-action-size: 32px;
   --header-glass-background: linear-gradient(150deg,
     rgba(14, 19, 32, .46), rgba(16, 24, 41, .43) 52%, rgba(10, 17, 31, .52));
   --header-glass-filter: blur(12px) saturate(120%);
@@ -4119,6 +4124,10 @@ body:has(.auth-shell) .install-prompt { display: none; }
 .detail-similar__track { touch-action: pan-y; }
 
 
+/* A sticky surface cannot fill the first page-padding strip. The scrollport
+   starts at y=0; all safe-area/top spacing is INSIDE the glass header. */
+.page--viewport:not(.page--discovery) { padding-top: 0; }
+
 /* SECTION HEADER v2 — full-width, square and flush to the viewport top.
    Exactly one translucent glass layer across all sections; inner content
    uses the same page gutters. CSS vars above form the design contract. */
@@ -4128,7 +4137,7 @@ body:has(.auth-shell) .install-prompt { display: none; }
   position: sticky;
   top: 0;
   z-index: 35;
-  margin: calc(-1 * var(--page-top-inset))
+  margin: 0
           calc(-1 * var(--page-inline-right))
           var(--section-header-bottom-gap)
           calc(-1 * var(--page-inline-left));
@@ -4220,3 +4229,110 @@ body:has(.auth-shell) .install-prompt { display: none; }
     background: rgba(15, 21, 33, .90);
   }
 }
+
+/* SECTION HEADER v3 — fixed glass follows the page into the top safe area.
+   Search/add forms remain children of their section header (not scrolling
+   siblings). Separate content passes underneath the sticky surface. */
+.page--viewport .page-motion .game-database-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+.game-database-heading__row { flex: none; }
+.game-database-heading .section-header-field {
+  margin: 12px 0 3px;
+}
+.game-database-heading .game-database-search {
+  margin: 0;
+}
+
+/* A single reusable text input visual language for search and URL entry.
+   Parent header supplies the glass; input retains a subtle field boundary. */
+.game-database-heading .game-database-search,
+.saved-links-header .saved-links-add.search-wrap {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  height: var(--text-field-height);
+  min-height: var(--text-field-height);
+  padding: 8px 10px 8px 14px;
+  gap: 10px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: var(--text-field-radius);
+  background: rgba(10,15,26,.18);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+.game-database-heading .game-database-search input,
+.saved-links-header .saved-links-add input {
+  min-width: 0;
+  width: 100%;
+  flex: 1;
+  font-size: var(--text-field-font-size);
+}
+.text-field-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.text-field-submit {
+  flex: 0 0 var(--text-field-action-size);
+  display: grid;
+  place-items: center;
+  width: var(--text-field-action-size);
+  height: var(--text-field-action-size);
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  color: #0b0d12;
+  background: var(--accent);
+}
+.game-database-search .text-field-submit {
+  background: var(--igdb-accent);
+}
+.text-field-submit:disabled {
+  color: var(--muted);
+  background: rgba(255,255,255,.08);
+  opacity: .7;
+  cursor: default;
+}
+.text-field-submit:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.game-database-heading .game-database-search__clear {
+  width: 26px;
+  height: 26px;
+}
+
+/* Lower navigation shares the SAME thin glass material as all headers.
+   One full-width, square strip; scrollable content continues behind it. */
+.bottom-nav {
+  border: 0;
+  border-top: 1px solid var(--header-glass-stroke);
+  border-radius: 0;
+  background: var(--header-glass-background);
+  -webkit-backdrop-filter: var(--header-glass-filter);
+  backdrop-filter: var(--header-glass-filter);
+  box-shadow: 0 -9px 20px rgba(3,8,20,.12);
+}
+@media (min-width: 700px) {
+  .bottom-nav {
+    right: 0;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    transform: none;
+    padding: 9px max(8px, var(--safe-right)) calc(8px + var(--safe-bottom)) max(8px, var(--safe-left));
+    border: 0;
+    border-top: 1px solid var(--header-glass-stroke);
+    border-radius: 0;
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .bottom-nav { background: rgba(15,21,33,.90); }
+}
+
+/* The expanding IGDB/Collections nav bubbles use the same translucent tint,
+   not the former 92%-opaque black backing. Animated SVG geometry unchanged. */
+.bottom-nav__liquid-path { fill: var(--nav-liquid-fill); }

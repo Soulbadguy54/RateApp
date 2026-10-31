@@ -2987,10 +2987,8 @@ function App() {
             <h1>База игр</h1>
             <p className="game-database-powered">powered by <strong>IGDB</strong></p>
           </div>
-        </header>
-
-        <p className="game-database-input-hint">Введи хотя бы 3 символа для поиска</p>
-        <div className="search-wrap game-database-search">
+          <div className="section-header-field">
+          <div className="search-wrap game-database-search">
           <Icon name="search" size={20} />
           <input
             ref={addSearchInputRef}
@@ -2998,15 +2996,16 @@ function App() {
             onChange={(event) => setAddQuery(event.target.value)}
             maxLength={100}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
                 event.preventDefault()
                 event.currentTarget.blur()
               }
             }}
             enterKeyHint="search"
-            placeholder="Название игры..."
+            placeholder="Введи первые три символа"
             aria-label="Поиск по базе игр"
           />
+          <div className="text-field-actions">
           {addQuery.length > 0 && (
             <button
               type="button"
@@ -3021,7 +3020,15 @@ function App() {
               <Icon name="x" size={15} />
             </button>
           )}
+          <button type="button" className="text-field-submit" aria-label="Подтвердить поиск"
+            disabled={addQuery.trim().length < 3 || addSearchLoading}
+            onClick={() => addSearchInputRef.current?.blur()}>
+            <Icon name="arrow" size={18} />
+          </button>
+          </div>
         </div>
+          </div>
+        </header>
 
         <section className="search-results">
           {addResults.map((game, index) => (

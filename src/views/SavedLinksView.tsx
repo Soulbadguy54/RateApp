@@ -344,6 +344,7 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
   return (
     <section className="saved-links-page" aria-label="Мои ссылки">
       <header className="saved-links-header topbar">
+        <div className="saved-links-heading-row">
         <div>
           <h1>Мои ссылки</h1>
           <p>Сохранённые ссылки из других источников</p>
@@ -355,7 +356,7 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
           onClick={() => setAddOpen(open => !open)}>
           <Icon name={addOpen ? 'close' : 'plus'} size={21} />
         </motion.button>
-      </header>
+        </div>
 
       <motion.div id="saved-links-add-field" className="saved-links-add-panel"
         initial={false} animate={{ height: addOpen ? 'auto' : 0, opacity: addOpen ? 1 : 0 }}
@@ -374,8 +375,14 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
               }
             }}
             disabled={!addOpen || saving} />
+          <button className="text-field-submit" type="submit"
+            aria-label="Добавить введённую ссылку"
+            disabled={!addOpen || saving || !url.trim()}>
+            <Icon name="arrow" size={18} />
+          </button>
         </form>
       </motion.div>
+      </header>
 
       {error && <div className="saved-links-message saved-links-message--error" role="alert">{error}</div>}
 

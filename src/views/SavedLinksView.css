@@ -8,10 +8,17 @@
 }
 .saved-links-header.topbar {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+}
+.saved-links-heading-row {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 0 var(--section-header-bottom-gap);
   gap: 12px;
+  width: 100%;
 }
 .saved-links-header h1 {
   margin: 0;
@@ -27,24 +34,9 @@
   color: var(--muted);
 }
 .saved-links-add-toggle { flex: 0 0 42px; }
-.saved-links-add-panel { margin-bottom: 9px; }
+.saved-links-add-panel { flex: 0 0 auto; margin: 0; }
 .saved-links-add.search-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 3px;
-  min-height: 57px;
-  padding: 10px 14px;
-  border-radius: 18px;
-}
-.saved-links-add.search-wrap input {
-  min-width: 0;
-  flex: 1;
-  height: 35px;
-  font-size: 14px;
-  border: 0;
-  background: transparent;
-  padding: 5px 0;
+  margin: 12px 0 12px;
 }
 .saved-links-add.search-wrap input:focus-visible { outline: none; }
 .saved-links-add.search-wrap:focus-within { border-color: var(--accent); }
