@@ -28,6 +28,8 @@ test('links retain glass header while the list scrolls underneath', async ({ pag
   const header = page.locator('.saved-links-header')
   await expect(header).toBeVisible()
   const scrollPane = page.locator('.page--viewport')
+  // PageMotion has a short entrance animation; inspect settled geometry.
+  await expect.poll(() => header.evaluate(el => el.getBoundingClientRect().top)).toBeLessThan(2)
   const initial = await header.boundingBox()
   expect(initial).not.toBeNull()
   const geometry = await header.evaluate(el => {
