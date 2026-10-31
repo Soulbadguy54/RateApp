@@ -498,3 +498,5 @@ ProfileView теперь объединяет H1 @nickname, большую ав�
 У collection nav и раскрывающегося меню вместо layers используется outline heart. Цветовые акценты в collection-card mosaic/footer усилены, данные colorScheme сохраняются.
 
 Existing ChatGPT automation для staging включена ежечасно и немедленный запуск запрошен; prompt ограничен одной ссылкой, одним guarded prepare, необязательными ≤2 search + ≤3 open текста после safety gate, без media анализа и произвольных команд. Первое выполнение claim id16 succeeded, prepare failed: Gateway upstream_unavailable, submit skipped. GPT результат в DB не сохранён. Gateway schedule для отдельного resolver id gsc_01M621B35V00EHJ896JJMPVMHN остаётся pending confirmation, владелец должен подтвердить его в Gateway. CLI worker пишет только безопасные JSON diagnostics без URL/leaseToken/текста, а ChatGPT Automation хранит run history.
+
+Аватар приватен даже при переключении между аккаунтами в одном браузере: /api/profile/avatar отдаёт Cache-Control: private, no-store; UI добавляет id текущего аккаунта и avatarVersion в параметрах URL, но серверный owner-scope остаётся основан на cookie, а не на параметре.
