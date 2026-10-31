@@ -3005,6 +3005,7 @@ function App() {
             placeholder="Введи первые три символа"
             aria-label="Поиск по базе игр"
           />
+          <div className="text-field-actions">
           {addQuery.length > 0 && (
             <button
               type="button"
@@ -3024,6 +3025,7 @@ function App() {
             onClick={() => addSearchInputRef.current?.blur()}>
             <Icon name="arrow" size={18} />
           </button>
+          </div>
         </div>
           </div>
         </header>
