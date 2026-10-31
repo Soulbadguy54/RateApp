@@ -189,7 +189,7 @@ export default function ProfileView({ user, topGames, onOpenGame, onOpenWishlist
         <div className={'profile-glass-header__hero' + (topGames.length ? ' profile-glass-header__hero--ranked' : '')}>
           {topGames.length > 0 && (
             <ol className={'profile-top-games profile-top-games--count-' + topGames.length}
-              aria-label="Три игры с самыми высокими личными оценками">
+              aria-label="Игры с самыми высокими личными оценками">
               {topGames.map(({ game, score }, index) => (
                 <li className="profile-top-games__item" key={game.id}>
                   <button type="button" className="profile-top-game"
