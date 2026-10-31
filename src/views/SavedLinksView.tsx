@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import Icon from '../components/Icon'
 import { sessionFetch } from '../sessionFetch'
@@ -87,7 +88,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
     return () => requestRef.current?.abort()
   }, [fetchLinks])
 
-  const addLink = async (event: React.FormEvent<HTMLFormElement>) => {
+  const addLink = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (busy) return
     const value = url.trim()
