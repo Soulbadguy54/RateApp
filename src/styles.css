@@ -3947,7 +3947,7 @@ body:has(.auth-shell) .install-prompt { display: none; }
   display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden;
   margin-top: 12px; padding: 0 0 3px; touch-action: pan-x pan-y;
   scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
-  scrollbar-width: none; overscroll-behavior-x: contain;
+  scrollbar-width: none; overscroll-behavior-x: auto;
 }
 .detail-similar__track::-webkit-scrollbar { display: none; }
 .detail-similar__item { flex: 0 0 101px; min-width: 0; scroll-snap-align: start; }
