@@ -347,8 +347,10 @@ def resolve_games(limit: int = 1, *, only_id: int | None = None) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("claim", "prepare", "submit", "resolve"))
+    parser.add_argument("action", choices=("claim", "prepare", "submit", "resolve", "stats"))
     parser.add_argument("--limit", type=int, default=1)
+    parser.add_argument("--only-id", type=int, default=None,
+                        help="Isolate a single saved link for staging QA (claim/resolve only)")
     parser.add_argument("--expect-environment", required=True,
                         choices=("staging", "production", "development"))
     args = parser.parse_args()
@@ -356,19 +358,32 @@ def main() -> None:
     current_env = os.getenv("VERCEL_ENV", "development")
     if current_env != args.expect_environment:
         parser.error(f"Environment mismatch: expected {args.expect_environment}, running {current_env}")
+    if args.only_id is not None and (args.only_id <= 0 or current_env != "staging"
+                                     or args.action not in ("claim", "resolve")):
+        parser.error("--only-id is only allowed for staging claim/resolve")
     try:
         if args.action == "claim":
             from api.saved_links_safety import safe_browsing_key
             if not safe_browsing_key():
                 raise ValueError("Safe Browsing key is not configured; URL claims are disabled")
-            output = claim_jobs(args.limit)
+            output = claim_jobs(args.limit, only_id=args.only_id)
         elif args.action == "prepare":
             body = sys.stdin.read(8192)
             if len(body) > 8191:
                 raise ValueError("Source-prepare token payload too large")
             output = prepare_job(json.loads(body))
         elif args.action == "resolve":
-            output = resolve_games(args.limit)
+            output = resolve_games(args.limit, only_id=args.only_id)
+        elif args.action == "stats":
+            with _session() as session:
+                statuses = session.execute(select(SavedLink.status, func.count(SavedLink.id))
+                    .group_by(SavedLink.status)).all()
+                output = {"environment": current_env,
+                          "byStatus": {status: count for status, count in statuses},
+                          "unprocessed": session.scalar(select(func.count(SavedLink.id)).where(
+                              SavedLink.gpt_names.is_(None))),
+                          "readyWithGames": session.scalar(select(func.count(SavedLink.id)).where(
+                              SavedLink.status == "ready", func.cardinality(SavedLink.game_ids) > 0))}
         else:
             body = sys.stdin.read(64 * 1024 + 1)
             if len(body) > 64 * 1024:
