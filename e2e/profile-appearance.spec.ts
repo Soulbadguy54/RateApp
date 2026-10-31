@@ -48,12 +48,17 @@ test('profile keeps nickname, avatar and tint inside one sticky glass panel', as
   })
   await expect(header.locator('.profile-avatar-crop img')).toBeVisible()
   await expect(header.getByRole('slider', { name: 'Масштаб аватара' })).toBeVisible()
-  await header.getByRole('slider', { name: 'Масштаб аватара' }).fill('1.7')
+  await header.getByRole('slider', { name: 'Масштаб аватара' }).evaluate(el => {
+    const input = el as HTMLInputElement
+    input.value = '1.7'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  })
   await header.getByRole('button', { name: 'Сохранить оформление профиля' }).click()
   await expect(header.getByRole('button', { name: 'Редактировать оформление профиля' })).toBeVisible()
   await expect(header.getByRole('radio')).toHaveCount(0)
   await expect(page.locator('.bottom-nav__avatar img')).toHaveAttribute('src', '/api/profile/avatar?v=1')
-  await expect(header).toHaveCSS('backdrop-filter', /blur\\(12px\\)/)
+  await expect(header).toHaveCSS('backdrop-filter', /blur\(12px\)/)
   // The remaining account content scrolls beneath the same header.
   await expect(page.getByText('Резервное копирование')).toBeVisible()
 })
