@@ -199,7 +199,7 @@ export default function ProfileView({
           {(editing || clouds.some(Boolean)) && (
             <ol className="profile-top-games" aria-label="Игры в облаках профиля">
               {clouds.map((cloud, index) => (
-                (editing || cloud) && <li className="profile-top-games__item" key={index}>
+                (editing || cloud) && <li className="profile-top-games__item" data-slot={index} key={index}>
                   <button type="button"
                     className={'profile-top-game' + (editing ? ' profile-top-game--editing' : '')}
                     title={cloud?.game.title ?? 'Выбрать игру'}
