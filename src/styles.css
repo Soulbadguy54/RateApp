@@ -4336,3 +4336,35 @@ body:has(.auth-shell) .install-prompt { display: none; }
 /* The expanding IGDB/Collections nav bubbles use the same translucent tint,
    not the former 92%-opaque black backing. Animated SVG geometry unchanged. */
 .bottom-nav__liquid-path { fill: var(--nav-liquid-fill); }
+
+/* Bottom navigation: colored items at rest; selected label is only subtly
+   brighter. The actual selected section remains the active glass bubble. */
+.bottom-nav > .bottom-nav__item,
+.bottom-nav > .bottom-nav__item svg,
+.bottom-nav__slot--collections > .bottom-nav__item,
+.bottom-nav__slot--collections > .bottom-nav__item svg {
+  color: rgba(140, 242, 125, .78);
+}
+.bottom-nav__slot:not(.bottom-nav__slot--collections) > .bottom-nav__item,
+.bottom-nav__slot:not(.bottom-nav__slot--collections) > .bottom-nav__item svg {
+  color: rgba(var(--igdb-accent-rgb), .78);
+}
+.bottom-nav .bottom-nav__item--active > .bottom-nav__content > span:last-child {
+  color: #c6e9c3;
+}
+.bottom-nav__slot:not(.bottom-nav__slot--collections) .bottom-nav__item--active > .bottom-nav__content > span:last-child {
+  color: #e8ceff;
+}
+
+/* Library covers are tap targets, not browser image-download targets. */
+.page--library .game-card__cover-wrap,
+.page--library .game-card__cover-wrap .cover,
+.page--library .game-card__cover-wrap img {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.page--library .game-card__cover-wrap img {
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
