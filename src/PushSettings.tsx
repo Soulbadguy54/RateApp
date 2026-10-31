@@ -65,8 +65,16 @@ async function readPushState(): Promise<PushState> {
   if (!response.ok) throw new Error('Не удалось проверить настройки уведомлений.')
   const config = await response.json() as PushConfig
   const permission = supportsWebPush() ? Notification.permission : 'default'
-  const registration = supportsWebPush() ? await navigator.serviceWorker.ready : null
-  const subscription = await registration?.pushManager.getSubscription()
+  // Never block profile diagnostics on a Service Worker that has not
+  // activated (or is disabled). Server-side push configuration is independent.
+  const registration = supportsWebPush() && config.enabled
+    ? await withTimeout(navigator.serviceWorker.ready, 2500,
+        'Service Worker недоступен').catch(() => null)
+    : null
+  const subscription = registration
+    ? await withTimeout(registration.pushManager.getSubscription(), 2500,
+        'Не удалось прочитать подписку').catch(() => null)
+    : null
   return { config, permission, subscribed: Boolean(subscription && config.devices > 0) }
 }
 
