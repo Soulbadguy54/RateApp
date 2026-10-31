@@ -546,7 +546,7 @@
 @media (max-height: 700px) and (max-width: 699px) {
   .profile-glass-header__hero {
     --profile-avatar-size: clamp(130px, 24svh, 160px);
-    height: calc(var(--profile-avatar-size) + clamp(34px, 6svh, 44px));
+    height: max(calc(var(--profile-avatar-size) + clamp(34px, 6svh, 44px)), calc(var(--profile-cloud-height) + var(--profile-cloud-height) + var(--profile-cloud-height) + 4px));
     margin-top: 6px;
   }
   .page--viewport .page-motion .profile-glass-header.topbar {
@@ -557,6 +557,10 @@
   .profile-settings__tab { min-height: 40px; padding-top: 6px; padding-bottom: 7px; }
   .profile-security__row { min-height: 45px; padding-top: 3px; padding-bottom: 3px; }
   .profile-settings + .app-build-version { margin-top: 4px; }
+}
+@media (max-width: 360px) {
+  .profile-security__backup-actions :is(button, a) { padding: 5px; gap: 3px; }
+  .profile-security__row--backup .profile-security__identity { gap: 5px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .profile-settings__tab { transition: none !important; }
