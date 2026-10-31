@@ -423,3 +423,12 @@ SavedLinksView отображает кнопку plus в topbar и по нажа
 
 Страница игры: long hold 530ms на Layers/Heart вызывает PUT /api/library/{igdbId}/wishlist, после успешного ответа обновляет entries и показывает центральный исчезающий Motion-toast. Короткий tap как прежде открывает коллекции. Блок Похожие после Об игре: GET /api/games/{igdb_id}/similar берёт related IDs из games.igdb_payload.similar_games, join через Game.igdb_id, до 12 результатов, отсутствующие batch-fetch по IGDB BACKGROUND и _cache_igdb_games, без новых таблиц/миграций. Строки без related IDs показывают пустое состояние.
 
+
+## 31 октября 2026 — UX полировка длинного нажатия, каруселей, ввода URL (develop)
+
+Открытая через plus форма URL в `SavedLinksView` не закрывается после POST: очищается только `url`, новая saved link добавляется сверху в `AnimatePresence` с opacity/y, ранее видимые карточки анимируются через Motion `layout="position"` + spring; фоновая сверка с API остаётся. Не возвращать старое поведение автозакрытия.
+
+Общий `src/components/CarouselArrows.tsx` измеряет `scrollLeft`, `scrollWidth`, `clientWidth` с ResizeObserver+scroll и показывает зелёные навигационные chevrons только в доступных направлениях; используется в `SavedLinksView` и подробностях `similar_games`. При отсутствии переполнения стрелок нет. На detail «ПОХОЖИЕ» с первого рендера занимает карусельными placeholder обложками; открывает настоящую карусель после загрузки изображений (до 2.2 с), избегая эффектов постепенной догрузки. `Cover(smoothLoad)` даёт shimmer/fade для картинок мозаики коллекций и похожих.
+
+На деталях игры `Collection`-icon: onTouchStart и onTouchMove/End/Cancel отвечают за touch-hold, на мыши и pen остаются Pointer Events. Native contextmenu только запрещается, не отменяет таймер 470 мс. Обычный tap по-прежнему открывает picker, теперь анимированный через AnimatePresence; служебная подпись о плюсах/галочках удалена. Если игра уже в wishlist, длинное нажатие даёт toast без повторного PUT. Discovery h1 «Для тебя» слева, туториал i справа, Undo не сдвигает заголовок.
+
