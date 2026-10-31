@@ -505,6 +505,9 @@ def preview_source(url: str) -> dict[str, str]:
         check_safe_browsing(canonical_url(url))
         return {"title": "Видео YouTube", "description": ""}
     metadata = _parse_page_preview(body, headers)
+    if not metadata["title"] and _youtube_video_id(url):
+        # Consent / anti-bot pages can return HTTP 200 without video metadata.
+        return {"title": "Видео YouTube", "description": ""}
     return {"title": metadata["title"], "description": metadata["description"]}
 
 
