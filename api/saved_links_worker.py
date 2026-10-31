@@ -186,25 +186,61 @@ def submit_result(payload: dict) -> dict:
                 "status": link.status, "gamesCount": len(names) if error is None else 0}
 
 
+def _normalized_match_name(value: str) -> str:
+    """Allow harmless punctuation changes, never broad trigram look-alikes."""
+    import re
+    return " ".join(re.sub(r"[\W_]+", " ", unicodedata.normalize(
+        "NFKC", value).casefold(), flags=re.UNICODE).split())
+
+
+def _matches_named_game(query: str, names: list[str]) -> bool:
+    expected = _normalized_match_name(query)
+    return bool(expected) and any(
+        _normalized_match_name(candidate) == expected for candidate in names
+    )
+
+
 def _find_top_game_id(name: str) -> int | None:
-    """The same local ranking, then IGDB ranking, as catalog search."""
+    """Only accept an exact catalog title/alias, not the best fuzzy hit.
+
+    A top search hit for a short name like SOMA can be Shadow of Mordor;
+    falsely associating that title is worse than leaving it unresolved.
+    """
     from api.games_routes import (
         _local_game_search, _ranked_igdb_search_rows, _cache_igdb_games,
     )
     from api.igdb_client import Priority
+    from api.models import GameAlias
 
     query = name.strip()[:100]
     if len(query) < 3:
         return None
     with _session() as session:
         items = _local_game_search(session, query, 0)["items"]
-        if items:
-            return int(items[0]["id"])
+        for item in items:
+            igdb_id = item.get("id")
+            if not isinstance(igdb_id, int):
+                continue
+            game = session.scalar(select(Game).where(Game.igdb_id == igdb_id))
+            if game is None:
+                continue
+            aliases = session.scalars(select(GameAlias.name).where(
+                GameAlias.game_id == game.id,
+            )).all()
+            if _matches_named_game(query, [game.title, *aliases]):
+                return int(game.igdb_id)
     items, _ = _ranked_igdb_search_rows(query, priority=Priority.BACKGROUND)
-    if not items:
-        return None
-    cached = _cache_igdb_games([items[0]])
-    return int(cached[0]["id"]) if cached else None
+    for item in items:
+        titles = [str(item.get("name") or "")]
+        titles.extend(
+            str(alt.get("name") or "") for alt in item.get("alternative_names") or []
+            if isinstance(alt, dict)
+        )
+        if not _matches_named_game(query, titles):
+            continue
+        cached = _cache_igdb_games([item])
+        return int(cached[0]["id"]) if cached else None
+    return None
 
 
 def resolve_games(limit: int = 1, *, only_id: int | None = None) -> dict:
