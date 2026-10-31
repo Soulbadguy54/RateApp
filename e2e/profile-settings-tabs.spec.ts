@@ -72,6 +72,10 @@ test('phone settings fit above navigation in idle mode, without page horizontal 
     await test.step(viewport.width + '×' + viewport.height, async () => {
       await page.setViewportSize(viewport)
       await page.goto('/?tab=profile')
+      await expect(page.getByRole('tabpanel', { name: 'Уведомления' })).toBeVisible()
+      const defaultOverflow = await page.locator('.page--viewport').evaluate(
+        pane => pane.scrollHeight - pane.clientHeight)
+      expect(defaultOverflow, 'Notifications at ' + viewport.width).toBeLessThanOrEqual(2)
       await page.getByRole('tab', { name: 'Безопасность' }).click()
       await expect(page.locator('.profile-security__row')).toHaveCount(3)
       const geometry = await page.evaluate(() => {
