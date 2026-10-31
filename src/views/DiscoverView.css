@@ -27,6 +27,8 @@
 .discover-icon-button{display:grid;place-items:center;flex:0 0 auto;width:42px;height:42px;border:1px solid var(--line-strong);border-radius:13px;background:linear-gradient(145deg,#242936,#11141c);color:#fff}
 .discover-icon-button--info{margin-left:auto;font:italic 700 19px Georgia,serif}
 .discover-icon-button--undo{font-size:26px;line-height:1;color:#d2cbff}
+.discover-topbar:has(.discover-icon-button--undo) .discover-icon-button--undo{margin-left:auto}
+.discover-topbar:has(.discover-icon-button--undo) .discover-icon-button--info{margin-left:0}
 .discover-icon-button:disabled{opacity:.4}
 .discover-stage{position:relative;flex:1;min-height:0;width:100%;overflow:hidden;border-radius:0;background:var(--bg)}
 .discover-deck{position:absolute;inset:0;overflow:hidden;background:var(--bg)}
@@ -146,7 +148,7 @@
 .discover-swipe-feedback--down{color:rgb(var(--palette-playthrough-rgb));--discover-fog-rgb:var(--palette-playthrough-rgb)}
 @media(prefers-reduced-motion:reduce){.discover-swipe-feedback{display:none}.discover-cover__image{transition:none;filter:none}.discover-cover__skeleton{animation:none}}
 
-/* Same heading hierarchy as Database, aligned at the upper-right on full-screen Discovery. */
+/* Same heading hierarchy as Database: title left, tutorial icon right on Discovery. */
 .discover-topbar__title {
   margin: 0;
   flex: 0 0 auto;
