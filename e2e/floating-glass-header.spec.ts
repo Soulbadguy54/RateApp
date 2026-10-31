@@ -56,7 +56,7 @@ test('links retain glass header while the list scrolls underneath', async ({ pag
   expect(geometry.captionGap).toBe(4)
   await expect(scrollPane).toHaveCSS('padding-top', '0px')
   const bottomGlass = page.locator('.bottom-nav')
-  await expect(bottomGlass).toHaveCSS('backdrop-filter', /blur\\(12px\\)/)
+  await expect(bottomGlass).toHaveCSS('backdrop-filter', /blur\(12px\)/)
   await expect(bottomGlass).toHaveCSS('border-bottom-left-radius', '0px')
 
   // Expanded link entry stays attached to the pinned heading, including
@@ -76,7 +76,7 @@ test('links retain glass header while the list scrolls underneath', async ({ pag
   await expect(page.getByPlaceholder('Введи первые три символа')).toBeVisible()
   await expect(page.locator('.game-database-heading .game-database-search')).toHaveCount(1)
   await expect(page.getByRole('button', { name: 'Подтвердить поиск' })).toBeDisabled()
-  await expect(page.locator('.game-database-heading').evaluate(el => el.getBoundingClientRect().top)).resolves.toBeLessThan(2)
+  await expect.poll(() => page.locator('.game-database-heading').evaluate(el => el.getBoundingClientRect().top)).toBeLessThan(2)
   await page.goto('/?tab=library')
   await expect(page.locator('.library-title')).toHaveCSS('font-size', geometry.titleSize)
   await page.goto('/?tab=links')
