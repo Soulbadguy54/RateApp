@@ -20,6 +20,7 @@ export default function CarouselArrows({
     lastT: number; velocity: number; moved: boolean } | null>(null)
   const momentumRef = useRef<number | null>(null)
   const ignoreClickRef = useRef(false)
+  const clickResetRef = useRef<number | null>(null)
   const stopMomentum = () => {
     if (momentumRef.current !== null) cancelAnimationFrame(momentumRef.current)
     momentumRef.current = null
@@ -27,6 +28,7 @@ export default function CarouselArrows({
   }
   useEffect(() => () => {
     if (momentumRef.current !== null) cancelAnimationFrame(momentumRef.current)
+    if (clickResetRef.current !== null) window.clearTimeout(clickResetRef.current)
   }, [])
   const onDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     // Phones already have native inertia and edge elasticity.
@@ -36,6 +38,7 @@ export default function CarouselArrows({
     if (!el || el.scrollWidth <= el.clientWidth) return
     stopMomentum()
     ignoreClickRef.current = false
+    if (clickResetRef.current !== null) window.clearTimeout(clickResetRef.current)
     gestureRef.current = { id: event.pointerId, x: event.clientX, left: el.scrollLeft,
       lastX: event.clientX, lastT: performance.now(), velocity: 0, moved: false }
   }
@@ -61,6 +64,12 @@ export default function CarouselArrows({
     gestureRef.current = null
     if (!g || g.id !== event.pointerId || !g.moved) return
     ignoreClickRef.current = true
+    // Some browsers omit the synthetic click after a drag. Do not swallow a
+    // subsequent independent tap on a card in that case.
+    clickResetRef.current = window.setTimeout(() => {
+      ignoreClickRef.current = false
+      clickResetRef.current = null
+    }, 80)
     const el = track.current
     if (!el) return
     if (event.currentTarget.hasPointerCapture(event.pointerId))
