@@ -19,9 +19,10 @@ export default function ProfileView({
   }
   return (
     <>
+      <header className="topbar profile-topbar"><h1>Профиль</h1></header>
       <section className="profile-hero profile-hero--compact">
         <div className="profile-avatar">{user.nickname.slice(0, 1).toUpperCase()}</div>
-        <h1>@{user.nickname}</h1>
+        <h2>@{user.nickname}</h2>
       </section>
       <PushSettings user={user.nickname} onOpenWishlist={onOpenWishlist} />
       <section className="info-card account-card">
