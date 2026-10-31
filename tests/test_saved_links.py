@@ -77,6 +77,31 @@ class SavedLinkTests(unittest.TestCase):
                   side_effect=AssertionError("alias already matched")):
             self.assertEqual(_find_top_game_id("Мор (Утопия)"), self.igdb_id)
 
+    def test_similar_games_uses_existing_igdb_payload_without_network(self):
+        target_id = self.igdb_id + 1
+        with SessionLocal() as session:
+            original = session.scalar(select(Game).where(Game.igdb_id == self.igdb_id))
+            original.igdb_payload = {"similar_games": [target_id, target_id, self.igdb_id]}
+            related = Game(igdb_id=target_id, title="Related test game",
+                           cover_url="https://images.igdb.com/test.jpg")
+            session.add(related)
+            session.commit()
+        try:
+            with patch("api.games_routes.igdb_client.request",
+                       side_effect=AssertionError("must use local DB")):
+                response = self.client.get(f"/api/games/{self.igdb_id}/similar")
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(len(response.json()["items"]), 1)
+            self.assertEqual(response.json()["items"][0]["id"], target_id)
+            self.assertEqual(response.json()["items"][0]["title"], "Related test game")
+            self.assertEqual(TestClient(app).get(
+                f"/api/games/{self.igdb_id}/similar").status_code, 401)
+        finally:
+            with SessionLocal() as session:
+                related = session.scalar(select(Game).where(Game.igdb_id == target_id))
+                if related: session.delete(related)
+                session.commit()
+
     def test_url_and_owner_unique_and_null_distinct_from_empty(self):
         for url in ("file:///etc/passwd", "http://127.0.0.1/",
                     "https://localhost/", "https://foo.test/",
@@ -101,7 +126,9 @@ class SavedLinkTests(unittest.TestCase):
     def test_oldest_url_first_and_list_newest_first(self):
         first = self.save("old")
         second = self.save("new")
-        got = claim_jobs()["jobs"][0]
+        # A shared staging DB may contain an older pending user's link.
+        # Scope the claim to this test user rather than consuming their work.
+        got = claim_jobs(only_id=first["id"])["jobs"][0]
         self.assertEqual(got["id"], first["id"])
         links = self.client.get("/api/saved-links").json()["items"]
         self.assertEqual([x["id"] for x in links[:2]],
