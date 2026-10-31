@@ -5,6 +5,7 @@ test.use({ serviceWorkers: 'block' })
 test('profile keeps nickname, avatar and tint inside one sticky glass panel', async ({ page }) => {
   let avatarVersion = 0
   let tint = 'default'
+  let saves = 0
   const user = () => ({
     id: 416, email: 'appearance@example.test', nickname: 'appearance_qa',
     createdAt: '2026-10-30T00:00:00Z', public: true,
@@ -19,11 +20,16 @@ test('profile keeps nickname, avatar and tint inside one sticky glass panel', as
     if (pathname === '/api/bootstrap') return json({ user: user(), library: [], collections: [] })
     if (pathname === '/api/profile/appearance' && route.request().method() === 'POST') {
       const payload = route.request().postDataJSON() as { tint: string; updateAvatar: boolean; avatarData?: string }
-      expect(payload.tint).toBe('blue')
-      expect(payload.updateAvatar).toBe(true)
-      expect((payload.avatarData ?? '').length).toBeGreaterThan(100)
+      saves++
+      expect(payload.tint).toBe(['blue', 'coral', 'default'][saves - 1])
+      expect(payload.updateAvatar).toBe(saves === 1)
+      if (saves === 1) {
+        expect((payload.avatarData ?? '').length).toBeGreaterThan(100)
+        avatarVersion++
+      } else {
+        expect(payload.avatarData).toBeUndefined()
+      }
       tint = payload.tint
-      avatarVersion++
       return json(user())
     }
     if (pathname === '/api/profile/avatar') return route.fulfill({ status: 404, body: '' })
@@ -38,9 +44,20 @@ test('profile keeps nickname, avatar and tint inside one sticky glass panel', as
   await expect(header.getByRole('button', { name: 'Редактировать оформление профиля' })).toBeVisible()
   await header.getByRole('button', { name: 'Редактировать оформление профиля' }).click()
   await expect(header.getByRole('button', { name: 'Сохранить оформление профиля' })).toBeVisible()
-  await expect(header.getByRole('radio')).toHaveCount(6)
+  const bigPencil = header.getByRole('button', { name: 'Выбрать аватар' })
+  await expect(bigPencil).toBeVisible()
+  await expect(bigPencil.locator('svg')).toHaveCSS('width', '72px')
+  const pencilBox = await bigPencil.boundingBox()
+  const avatarBox = await header.locator('.profile-glass-header__avatar-row').boundingBox()
+  expect(pencilBox && avatarBox).toBeTruthy()
+  expect(Math.abs(pencilBox!.x - avatarBox!.x)).toBeLessThan(2)
+  expect(Math.abs(pencilBox!.y - avatarBox!.y)).toBeLessThan(2)
+  await expect(header.getByRole('radio')).toHaveCount(7)
+  await expect(header.getByRole('radio', { name: 'Коралловый' })).toBeVisible()
+  await expect(header.getByRole('radio', { name: 'Зелёный' })).toHaveCount(0)
   await header.getByRole('radio', { name: 'Синий' }).click()
   await expect(header.getByRole('radio', { name: 'Синий' })).toHaveAttribute('aria-checked', 'true')
+  await expect(header.getByRole('heading', { name: '@appearance_qa' })).toHaveCSS('color', 'rgb(113, 155, 228)')
   // Native file input uses the OS picker on the phone. Simulate its selection.
   await header.locator('input[type=file]').setInputFiles({
     name: 'profile.png', mimeType: 'image/png',
@@ -58,6 +75,20 @@ test('profile keeps nickname, avatar and tint inside one sticky glass panel', as
   await expect(header.getByRole('button', { name: 'Редактировать оформление профиля' })).toBeVisible()
   await expect(header.getByRole('radio')).toHaveCount(0)
   await expect(page.locator('.bottom-nav__avatar img')).toHaveAttribute('src', '/api/profile/avatar?u=416&v=1')
+  const navLabel = page.locator('.bottom-nav__item--profile .bottom-nav__content > span:last-child')
+  await expect(navLabel).toHaveCSS('color', 'rgb(113, 155, 228)')
+  // Changing only the glass tint also changes the nickname and nav label.
+  await header.getByRole('button', { name: 'Редактировать оформление профиля' }).click()
+  await header.getByRole('radio', { name: 'Коралловый' }).click()
+  await expect(header.getByRole('heading', { name: '@appearance_qa' })).toHaveCSS('color', 'rgb(238, 138, 114)')
+  await header.getByRole('button', { name: 'Сохранить оформление профиля' }).click()
+  await expect(navLabel).toHaveCSS('color', 'rgb(238, 138, 114)')
+  // Default removes the tint overlay; green is a fallback, NOT a palette choice.
+  await header.getByRole('button', { name: 'Редактировать оформление профиля' }).click()
+  await header.getByRole('radio', { name: 'Без оттенка' }).click()
+  await header.getByRole('button', { name: 'Сохранить оформление профиля' }).click()
+  await expect(header.getByRole('heading', { name: '@appearance_qa' })).toHaveCSS('color', 'rgb(140, 242, 125)')
+  await expect(navLabel).toHaveCSS('color', 'rgb(140, 242, 125)')
   await expect(header).toHaveCSS('backdrop-filter', /blur\(12px\)/)
   // The remaining account content scrolls beneath the same header.
   await expect(page.getByText('Резервное копирование')).toBeVisible()
