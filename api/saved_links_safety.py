@@ -440,7 +440,7 @@ class _PagePreview(HTMLParser):
             or "player" in self.fields.get("twitter:card", "").lower()
         ):
             caption = re.search(r':\s*["“«](.{8,180}?)["”»]', description)
-            if caption and ("@" in title or not title or title.lower().endswith("on instagram")):
+            if caption and ("@" in title or not title or bool(re.search(r"\\bon [A-Za-z ]{3,30}$", title, re.I))):
                 title = caption.group(1).strip()
         image_url = (
             self.structured.get("image") or self.fields.get("og:image:secure_url")
@@ -482,7 +482,7 @@ def preview_thumbnail_source(url: str) -> tuple[bytes, str] | None:
     if not metadata["image_url"]:
         return None
     try:
-        media_url = canonical_url(urljoin(url, metadata["image_url"]))
+        media_url = canonical_url(urljoin(headers.get("__verified_final_url", url), metadata["image_url"]))
     except ValueError:
         return None
     if urlsplit(media_url).scheme != "https":
@@ -527,6 +527,7 @@ def _safe_page_response(url: str, *,
             current, deadline, accepted_types=accepted_types, max_bytes=max_bytes,
         )
         if status == 200:
+            headers["__verified_final_url"] = current
             return body, headers
         if hop == MAX_REDIRECTS:
             raise SourceSafetyError("Слишком много перенаправлений.", terminal=True)
