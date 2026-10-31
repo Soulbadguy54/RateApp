@@ -100,8 +100,9 @@ test('Game detail from links: IGDB ID, similar covers, and wishlist hold toast',
   await page.getByRole('button', { name: 'Открыть игру SOMA' }).click()
   await expect(page).toHaveURL(/game=9727/)
   await expect(page.getByRole('heading', { name: 'SOMA' })).toBeVisible()
-  const dismissInstall = page.getByRole('button', { name: 'Закрыть предложение установки' })
-  if (await dismissInstall.isVisible()) await dismissInstall.click()
+  // This test verifies game gestures, not the asynchronous install banner.
+  // Avoid a banner mounting/unmounting over the lower game cover during click.
+  await page.addStyleTag({ content: '.install-prompt { display: none !important; pointer-events: none !important; }' })
   await expect(page.getByRole('button', { name: 'Открыть похожую игру Disco Elysium' })).toBeVisible()
   const collection = page.getByRole('button', { name: 'Коллекции', exact: true }).first()
   // Mobile touch events must survive native contextmenu/pointercancel.
@@ -129,8 +130,7 @@ test('Game detail from links: IGDB ID, similar covers, and wishlist hold toast',
   expect(added).toBe(1)
   await expect(page.locator('.detail-collection-picker')).toHaveCount(0)
   // PWA install overlay appears on a delay on some mobile engines.
-  const lateInstall = page.getByRole('button', { name: 'Закрыть предложение установки' })
-  if (await lateInstall.isVisible()) await lateInstall.click()
+
   await page.getByRole('button', { name: 'Открыть похожую игру Disco Elysium' }).click()
   await expect(page).toHaveURL(/game=26472/)
 })
