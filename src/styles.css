@@ -34,6 +34,11 @@ html, body {
   --safe-left: env(safe-area-inset-left, 0px);
   --bottom-nav-height: 62px;
   --page-bottom-gap: 14px;
+  --header-glass-background: linear-gradient(122deg,
+    rgba(56, 67, 87, .68) 0%, rgba(32, 43, 62, .67) 42%, rgba(24, 36, 51, .72) 100%);
+  --header-glass-stroke: rgba(190, 213, 237, .19);
+  --header-glass-shadow: 0 12px 30px rgba(4, 9, 20, .19),
+    inset 0 1px 0 rgba(244, 250, 255, .13);
 }
 
 * {
@@ -109,7 +114,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .topbar h1,
 .subpage-header h1,
-.profile-hero h1,
+.profile-hero h2,
 .detail-hero h1,
 .section-heading h2,
 .info-card h2 {
@@ -121,7 +126,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: clamp(29px, 8vw, 42px);
   line-height: 1.02;
 }
-.profile-hero h1,
+.profile-hero h2,
 .detail-hero h1 {
   color: var(--accent);
 }
@@ -1924,7 +1929,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: 8px;
   font-weight: 800;
 }
-.profile-hero h1 { font-size: 28px; }
+.profile-hero h2 { font-size: 28px; }
 .profile-hero > p {
   margin: 5px 0 17px;
   color: var(--muted);
@@ -4099,3 +4104,72 @@ body:has(.auth-shell) .install-prompt { display: none; }
 }
 
 .detail-similar__track { touch-action: pan-y; }
+
+
+/* Shared floating glass: the page itself remains the scrollport, so the
+   content travels beneath the fixed controls without layout duplication. */
+.page--viewport:not(.page--discovery) .page-motion :is(
+  .topbar, .subpage-header, .detail-toolbar
+) {
+  position: sticky;
+  top: 0;
+  z-index: 35;
+  margin-inline: -8px;
+  padding: 9px 8px 11px;
+  border: 1px solid var(--header-glass-stroke);
+  border-top-color: rgba(244, 250, 255, .11);
+  border-radius: 0 0 18px 18px;
+  background: var(--header-glass-background);
+  -webkit-backdrop-filter: blur(30px) saturate(140%);
+  backdrop-filter: blur(30px) saturate(140%);
+  box-shadow: var(--header-glass-shadow);
+}
+/* Saved Links retains its own caption and matches the shared header inset. */
+.page--viewport .page-motion .saved-links-page .saved-links-header.topbar {
+  margin-inline: -8px;
+}
+.page--viewport .page-motion .profile-topbar { margin-bottom: 16px; }
+
+/* Preserve My Games' scroll-anchored collapse: header, filters and chevron
+   stay one measured sticky surface rather than independent moving panels. */
+.library-sticky-stack {
+  background: var(--header-glass-background);
+  -webkit-backdrop-filter: blur(30px) saturate(140%);
+  backdrop-filter: blur(30px) saturate(140%);
+  border-bottom-color: var(--header-glass-stroke);
+  border-radius: 0 0 19px 19px;
+  box-shadow: var(--header-glass-shadow);
+}
+.library-sticky-stack--collapsed {
+  border-bottom-color: rgba(190, 213, 237, .23);
+  box-shadow: var(--header-glass-shadow);
+}
+.library-control-dock {
+  border-top: 1px solid rgba(213, 230, 248, .10);
+  padding-top: 3px;
+}
+.library-dock-toggle {
+  color: rgba(217, 233, 244, .75);
+  border-radius: 0 0 18px 18px;
+}
+.library-dock-toggle:focus-visible { outline-offset: -2px; }
+.library-filter-panel {
+  border-color: rgba(194, 215, 235, .13);
+  background: rgba(35, 46, 63, .40);
+}
+.library-filter-panel .filter-option { background-color: rgba(20, 28, 40, .57); }
+.library-filter-panel .filter-option--active { background-color: var(--accent); }
+
+/* A lazy screen occupies its final space from the first frame. */
+.viewport-loading {
+  display: grid;
+  place-items: center;
+  min-height: max(230px, calc(100dvh - var(--safe-top) - var(--bottom-nav-height) - 85px));
+}
+.viewport-loading > .content-loading { width: 100%; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .library-sticky-stack,
+  .page--viewport:not(.page--discovery) .page-motion :is(.topbar,.subpage-header,.detail-toolbar) {
+    background: rgba(35, 44, 61, .95);
+  }
+}
