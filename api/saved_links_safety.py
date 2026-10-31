@@ -5,6 +5,7 @@ file downloads, or arbitrary tool calls; Safe Browsing lookup precedes every hop
 """
 import html
 import ipaddress
+import re
 import os
 import socket
 import ssl
@@ -193,7 +194,9 @@ class _PinnedHTTP(HTTPConnection):
         self.sock = socket.create_connection((self._pinned_address, self.port), self.timeout)
 
 
-def _fetch_once(url: str, deadline: float) -> tuple[int, dict[str, str], bytes]:
+def _fetch_once(url: str, deadline: float, *,
+                accepted_types: tuple[str, ...] = ACCEPTED_TYPES,
+                max_bytes: int = MAX_RESPONSE_BYTES) -> tuple[int, dict[str, str], bytes]:
     parts = urlsplit(url)
     port = 443 if parts.scheme == "https" else 80
     remaining = deadline - time.monotonic()
@@ -211,20 +214,20 @@ def _fetch_once(url: str, deadline: float) -> tuple[int, dict[str, str], bytes]:
         connection.request("GET", path, headers={
             "Host": parts.netloc,
             "User-Agent": "RateAPP-SavedLinks/1.0",
-            "Accept": "text/html, application/xhtml+xml, text/plain",
+            "Accept": ", ".join(accepted_types),
             "Accept-Encoding": "identity",
             "Connection": "close",
         })
         response = connection.getresponse()
         headers = {key.lower(): value for key, value in response.getheaders()}
-        if int(headers.get("content-length", "0")) > MAX_RESPONSE_BYTES:
+        if int(headers.get("content-length", "0")) > max_bytes:
             raise SourceSafetyError("Размер страницы превышает лимит.", terminal=True)
         if response.status in (301, 302, 303, 307, 308):
             return response.status, headers, b""
         if response.status != 200:
             raise SourceSafetyError("Сайт не предоставил доступный материал.")
         content_type = headers.get("content-type", "").split(";", 1)[0].strip().lower()
-        if content_type not in ACCEPTED_TYPES:
+        if content_type not in accepted_types:
             raise SourceSafetyError("Неподдерживаемый тип содержимого.", terminal=True)
         if headers.get("content-encoding", "identity").lower() != "identity":
             raise SourceSafetyError("Сжатое содержимое не поддерживается.", terminal=True)
@@ -236,11 +239,11 @@ def _fetch_once(url: str, deadline: float) -> tuple[int, dict[str, str], bytes]:
                 raise SourceSafetyError("Истекло время чтения ссылки.")
             if connection.sock is not None:
                 connection.sock.settimeout(min(remaining, 3.0))
-            chunk = response.read(min(16_384, MAX_RESPONSE_BYTES + 1 - byte_count))
+            chunk = response.read(min(16_384, max_bytes + 1 - byte_count))
             if not chunk:
                 break
             byte_count += len(chunk)
-            if byte_count > MAX_RESPONSE_BYTES:
+            if byte_count > max_bytes:
                 raise SourceSafetyError("Размер страницы превышает лимит.", terminal=True)
             chunks.append(chunk)
         return response.status, headers, b"".join(chunks)
@@ -326,6 +329,8 @@ class _PagePreview(HTMLParser):
         self.title_parts: list[str] = []
         self.og_title = ""
         self.description = ""
+        self.image = ""
+        self.video_marker = False
 
     def handle_starttag(self, tag, attrs):
         attributes = dict(attrs)
@@ -338,7 +343,13 @@ class _PagePreview(HTMLParser):
         if name in ("og:title", "twitter:title") and not self.og_title:
             self.og_title = value[:180]
         if name in ("og:description", "description", "twitter:description") and not self.description:
-            self.description = value[:240]
+            self.description = value[:800]
+        if name in ("og:image", "twitter:image") and not self.image:
+            self.image = str(attributes.get("content") or "")[:2048]
+        if name in ("og:video", "og:video:url", "og:video:secure_url", "og:type") and (
+            name != "og:type" or "video" in value.lower()
+        ):
+            self.video_marker = True
 
     def handle_endtag(self, tag):
         if tag == "title":
@@ -354,6 +365,39 @@ class _PagePreview(HTMLParser):
         return {"title": html.unescape(title), "description": html.unescape(description)}
 
 
+def _instagram_reel_url(url: str) -> bool:
+    parts = urlsplit(url)
+    return (parts.hostname or "").lower().rstrip(".") in (
+        "www.instagram.com", "instagram.com", "m.instagram.com"
+    ) and bool(re.fullmatch(r"/(?:reel|reels|p)/[A-Za-z0-9_-]+/?", parts.path))
+
+
+def _instagram_caption(raw: str) -> str:
+    """Extract a caption, not the generic Instagram account/profile heading."""
+    value = html.unescape(" ".join(raw.split()))
+    if not value:
+        return ""
+    # Public Instagram metadata often looks like:
+    # '1,005 likes, 21 comments - @user on Instagram: "actual reel caption"'
+    match = re.search(r"\bon Instagram\s*:\s*[\\\"“'«](.+?)[\\\"”'»](?:\s*[|·-].*)?$", value, re.I)
+    if match:
+        return match.group(1).strip()[:180]
+    match = re.search(r"\bon Instagram\s*:\s*(.{12,})", value, re.I)
+    if match:
+        return match.group(1).strip(' "“”').strip()[:180]
+    return ""
+
+
+def _instagram_preview_metadata(page: _PagePreview) -> dict[str, str]:
+    generic = page.result()
+    caption = (_instagram_caption(page.description) or
+               _instagram_caption(page.og_title))
+    if caption:
+        return {"title": caption, "description": generic["description"][:200]}
+    return {"title": "Видео Instagram", "description": ""}
+
+
+
 def preview_source(url: str) -> dict[str, str]:
     """Bounded HTML metadata from the same Safe Browsing and pinned reader."""
     body, headers = _safe_page_response(url)
@@ -367,7 +411,57 @@ def preview_source(url: str) -> dict[str, str]:
             charset = candidate
     page = _PagePreview()
     page.feed(body.decode(charset, errors="replace")[:MAX_RESPONSE_BYTES])
+    if _instagram_reel_url(url):
+        return _instagram_preview_metadata(page)
     return page.result()
+
+
+def instagram_thumbnail_source(url: str) -> tuple[bytes, str] | None:
+    """Proxy only a post-specific image from the vetted Instagram CDN.
+
+    A profile avatar/login page is deliberately not used as a Reel preview.
+    This endpoint never follows an unverified URL or returns its address.
+    """
+    if not _instagram_reel_url(url):
+        return None
+    body, headers = _safe_page_response(url)
+    if headers["content-type"].split(";", 1)[0].strip().lower() not in ("text/html", "application/xhtml+xml"):
+        return None
+    parser = _PagePreview()
+    parser.feed(body.decode("utf-8", errors="replace"))
+    caption = (_instagram_caption(parser.description) or
+               _instagram_caption(parser.og_title))
+    if not parser.image or not (caption or parser.video_marker):
+        return None
+    try:
+        image_url = canonical_url(parser.image)
+    except ValueError:
+        return None
+    parts = urlsplit(image_url)
+    host = (parts.hostname or "").lower()
+    if (parts.scheme != "https" or not (
+        host.endswith(".cdninstagram.com") or host == "cdninstagram.com" or
+        host.endswith(".fbcdn.net") or host == "fbcdn.net"
+    )):
+        return None
+    check_safe_browsing(image_url, timeout=5)
+    deadline = time.monotonic() + 10
+    status, response_headers, image = _fetch_once(
+        image_url, deadline,
+        accepted_types=("image/jpeg", "image/png", "image/webp"),
+        max_bytes=512_000,
+    )
+    if status != 200 or len(image) < 20:
+        return None
+    mime = response_headers["content-type"].split(";", 1)[0].strip().lower()
+    signatures = {
+        "image/jpeg": image.startswith(b"\xff\xd8\xff"),
+        "image/png": image.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/webp": image.startswith(b"RIFF") and image[8:12] == b"WEBP",
+    }
+    if not signatures.get(mime, False):
+        return None
+    return image, mime
 
 
 def _safe_page_response(url: str) -> tuple[bytes, dict[str, str]]:
