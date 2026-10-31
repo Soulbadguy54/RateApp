@@ -1,0 +1,41 @@
+import { expect, test } from '@playwright/test'
+
+test.use({ serviceWorkers: 'block' })
+
+test('native Back dismisses collection multiselect without prompting to exit', async ({ page }) => {
+  const nickname = 'back_' + Date.now().toString(36).slice(-8)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Регистрация' }).click()
+  await page.locator('input[type=email]').fill(nickname + '@example.com')
+  await page.locator('input[autocomplete=username]').fill(nickname)
+  await page.locator('input[autocomplete=new-password]').first().fill('29843571')
+  await page.locator('input[autocomplete=new-password]').last().fill('29843571')
+  await page.getByRole('button', { name: 'Создать аккаунт' }).click()
+  await expect(page.locator('.bottom-nav')).toBeVisible()
+  const dismissInstall = page.getByRole('button', { name: 'Закрыть предложение установки' })
+  if (await dismissInstall.isVisible()) await dismissInstall.click()
+
+  await page.locator('[data-nav-slot="collections"] > button').click()
+  await page.getByRole('button', { name: 'Создать коллекцию' }).first().click()
+  await page.getByPlaceholder('Например, Лучшие RPG').fill('Тестовый выбор')
+  await page.getByRole('button', { name: 'Создать коллекцию' }).last().click()
+  await expect(page.getByRole('heading', { name: 'Тестовый выбор' })).toBeVisible()
+  await page.goBack()
+  await expect(page.getByRole('heading', { name: 'Коллекции' })).toBeVisible()
+
+  const card = page.locator('.collection-card').filter({ hasText: 'Тестовый выбор' })
+  const rect = await card.boundingBox()
+  if (!rect) throw new Error('Collection card was not rendered')
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(540)
+  await page.mouse.up()
+  await expect(page.getByText('Выбрано: 1')).toBeVisible()
+
+  await page.goBack()
+  await expect(page.getByText('Выбрано: 1')).toHaveCount(0)
+  await expect(page.locator('.app-exit-toast')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Коллекции' })).toBeVisible()
+  await page.goBack()
+  await expect(page.locator('.app-exit-toast')).toBeVisible()
+})
