@@ -19,9 +19,15 @@
   content: '';
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   pointer-events: none;
   background: rgba(var(--profile-tint-rgb, 14,19,32), var(--profile-tint-alpha, 0));
+}
+.profile-glass-header__title-row,
+.profile-glass-header__avatar-row,
+.profile-appearance-panel {
+  position: relative;
+  z-index: 1;
 }
 .profile-glass-header__title-row {
   display: flex;
