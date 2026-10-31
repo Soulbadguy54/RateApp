@@ -5,6 +5,8 @@ export type AuthUser = {
   id: number
   email: string
   nickname: string
+  profileTint?: string
+  avatarVersion?: number
   createdAt: string
   public: boolean
 }
