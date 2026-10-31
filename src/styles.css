@@ -4386,3 +4386,25 @@ body:has(.auth-shell) .install-prompt { display: none; }
   -webkit-touch-callout: none;
   pointer-events: none;
 }
+
+/* Profile is personalizable, but only within this nav item. No tint is green.
+   The other three navigation choices retain their existing semantic colors. */
+.bottom-nav > .bottom-nav__item--profile,
+.bottom-nav > .bottom-nav__item--profile > .bottom-nav__content > span:last-child {
+  color: rgba(var(--profile-accent-rgb, 140,242,125), .78);
+}
+.bottom-nav > .bottom-nav__item--profile.bottom-nav__item--active > .bottom-nav__content > span:last-child {
+  color: rgb(var(--profile-accent-rgb, 140,242,125));
+}
+.bottom-nav > .bottom-nav__item--profile .bottom-nav__active-surface {
+  border-color: rgba(var(--profile-accent-rgb, 140,242,125), .26);
+  background: rgba(var(--profile-accent-rgb, 140,242,125), .09);
+}
+.bottom-nav > .bottom-nav__item--profile .bottom-nav__avatar {
+  color: rgb(var(--profile-accent-rgb, 140,242,125));
+  border-color: rgba(var(--profile-accent-rgb, 140,242,125), .48);
+}
+.bottom-nav > .bottom-nav__item--profile.bottom-nav__item--active .bottom-nav__avatar {
+  color: #0b0d12;
+  background: rgb(var(--profile-accent-rgb, 140,242,125));
+}
