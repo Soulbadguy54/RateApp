@@ -14,6 +14,7 @@ from api.saved_links_safety import (
     _read_text,
     check_safe_browsing,
     prepare_source,
+    preview_source,
 )
 
 
@@ -44,6 +45,36 @@ class _SafeBrowsingClient:
 
 
 class SavedLinksSafetyTests(unittest.TestCase):
+    def test_preview_metadata_is_plain_text_and_bounded(self):
+        html_data = (b"<html><head><title>Fallback title</title>"
+                     b'<meta property="og:title" content="Best Games &amp; Stories">'
+                     b'<meta name="description" content="A safe &amp; short summary">'
+                     b'<meta property="og:image" content="https://private.example/track.png">'
+                     b"</head><body><script>alert(1)</script></body></html>")
+        with patch("api.saved_links_safety._safe_page_response", return_value=(
+            html_data, {"content-type": "text/html; charset=utf-8"},
+        )) as fetch:
+            result = preview_source("https://example.org/awesome")
+        self.assertEqual(result, {
+            "title": "Best Games & Stories",
+            "description": "A safe & short summary",
+        })
+        self.assertNotIn("og:image", str(result))
+        fetch.assert_called_once_with("https://example.org/awesome")
+
+    def test_preview_fails_closed_without_page(self):
+        with patch("api.saved_links_safety._safe_page_response",
+                   side_effect=SourceSafetyError("Dangerous URL", terminal=True)):
+            with self.assertRaises(SourceSafetyError):
+                preview_source("https://example.org/not-safe")
+        with patch("api.saved_links_safety._safe_page_response", return_value=(
+            b"plain text", {"content-type": "text/plain"},
+        )):
+            self.assertEqual(preview_source("https://example.org/plain"), {
+                "title": "", "description": "",
+            })
+
+
     def test_missing_key_blocks_before_any_request(self):
         with patch.dict(os.environ, {"WEB_RISK_API_KEY": "", "SAFE_BROWSING_API_KEY": ""}), patch(
             "api.saved_links_safety.httpx.Client",
