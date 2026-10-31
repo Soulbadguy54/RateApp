@@ -21,6 +21,10 @@ test('links show game cover carousel and navigate to ordinary game details', asy
           createdAt: '2026-10-31T12:00:00', games: [
             { id: 101, igdbId: 9727, title: 'SOMA', coverUrl: null },
             { id: 102, igdbId: 26472, title: 'Disco Elysium', coverUrl: null },
+            { id: 103, igdbId: 103, title: 'Pentiment', coverUrl: null },
+            { id: 104, igdbId: 104, title: 'Amnesia', coverUrl: null },
+            { id: 105, igdbId: 105, title: 'Penumbra', coverUrl: null },
+            { id: 106, igdbId: 106, title: 'Postal', coverUrl: null },
           ],
         },
         {
@@ -44,8 +48,14 @@ test('links show game cover carousel and navigate to ordinary game details', asy
   const source = page.locator('[data-saved-link-id="7"]')
   const withoutGames = page.locator('[data-saved-link-id="8"]')
   await expect(source.locator('.saved-link-card__matched')).toBeVisible()
-  await expect(source.locator('.saved-link-card__game-tile')).toHaveCount(2)
+  await expect(source.locator('.saved-link-card__game-tile')).toHaveCount(6)
   await expect(withoutGames.locator('.saved-link-card__matched')).toHaveCount(0)
+  const right = source.getByRole('button', { name: 'Прокрутить игры вправо' })
+  const left = source.getByRole('button', { name: 'Прокрутить игры влево' })
+  await expect(right).toBeVisible()
+  await expect(left).toHaveCount(0)
+  await right.click()
+  await expect(left).toBeVisible()
   await expect(source.getByRole('button', { name: 'Открыть игру SOMA' })).toBeVisible()
   await source.getByRole('button', { name: 'Открыть игру SOMA' }).click()
   await expect(page).toHaveURL(/tab=links.*game=9727/)
