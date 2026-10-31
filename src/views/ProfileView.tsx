@@ -65,6 +65,7 @@ export default function ProfileView({
   const imageRef = useRef<HTMLImageElement>(null)
   const cropRef = useRef<HTMLDivElement>(null)
   const [viewSize, setViewSize] = useState(VIEW_SIZE)
+  const previousViewSizeRef = useRef(VIEW_SIZE)
   const pointsRef = useRef(new Map<number, Point>())
   const gestureRef = useRef<{ start: Point; moved: boolean; pinched: boolean } | null>(null)
   const reducedMotion = useReducedMotion()
@@ -94,6 +95,15 @@ export default function ProfileView({
     y: Math.max(-Math.max(0, (natural.y * cover * nextZoom - viewSize) / 2),
       Math.min(Math.max(0, (natural.y * cover * nextZoom - viewSize) / 2), value.y)),
   })
+  // Preserve the same relative focal point across viewport rotation/resizing.
+  // Clamp after scaling, so a previously dragged image never exposes blank crop.
+  useEffect(() => {
+    const scale = viewSize / previousViewSizeRef.current
+    previousViewSizeRef.current = viewSize
+    if (!natural.x || !natural.y || scale === 1) return
+    setOffset(current => clampOffset({ x: current.x * scale, y: current.y * scale }, zoom))
+  }, [viewSize, natural.x, natural.y, zoom])
+
   const changeZoom = (value: number) => {
     const next = Math.max(1, Math.min(3.2, value))
     setZoom(next)
