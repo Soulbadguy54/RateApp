@@ -163,3 +163,22 @@
   letter-spacing: -.04em;
   font-weight: var(--section-title-weight);
 }
+
+/* Respect short and narrow phone viewports without disturbing the 12px poster
+   stage offset and touch sheet geometry verified by existing gesture E2E. */
+@media (max-width: 699px) {
+  .discover-topbar {
+    padding-left: max(var(--safe-left), clamp(12px, 3.5vw, 18px));
+    padding-right: max(var(--safe-right), clamp(12px, 3.5vw, 18px));
+  }
+  .discover-topbar__title { min-width: 0; overflow-wrap: anywhere; }
+  .discover-icon-button { width: clamp(40px, 11vw, 44px); height: clamp(40px, 11vw, 44px); }
+  .discover-sheet__body { padding-left: clamp(9px, 3.3vw, 13px); padding-right: clamp(9px, 3.3vw, 13px); }
+  .discover-sheet__identity h2 { font-size: clamp(17px, 5.15vw, 25px); }
+  .discover-guide__intro { max-width: calc(100% - 36px); }
+}
+@media (max-height: 600px) and (max-width: 699px) {
+  .discover-guide__intro { top: 50%; }
+  .discover-guide__intro h2 { margin-bottom: 8px; }
+  .discover-guide__intro .discover-guide__detail-tip { margin-top: 8px; }
+}
