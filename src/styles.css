@@ -4457,3 +4457,91 @@ body:has(.auth-shell) .install-prompt { display: none; }
 .library-cloud-picker .game-card {
   cursor: pointer;
 }
+
+/* Mobile responsiveness contract (2026-11-01).
+   Fixed pixels remain for touch affordances/icons; surfaces and content follow
+   the AVAILABLE viewport with bounded dimensions and safe-area insets. */
+:root {
+  --bottom-nav-height: clamp(62px, 8svh, 74px);
+  --section-header-height: clamp(54px, 7svh, 68px);
+  --section-header-bottom-gap: clamp(10px, 1.6svh, 16px);
+}
+@media (min-width: 700px) {
+  :root { --bottom-nav-height: 72px; --section-header-height: 54px; --section-header-bottom-gap: 14px; }
+}
+@media (max-width: 699px) {
+  .page {
+    --page-inline-left: max(calc(var(--safe-left) + 12px), clamp(18px, 4.5vw, 22px));
+    --page-inline-right: max(calc(var(--safe-right) + 12px), clamp(18px, 4.5vw, 22px));
+    --page-top-inset: max(calc(var(--safe-top) + 6px), clamp(12px, 1.8svh, 20px));
+  }
+  .page--library .library-sticky-stack {
+    margin-left: calc(-1 * var(--page-inline-left));
+    margin-right: calc(-1 * var(--page-inline-right));
+    padding-left: var(--page-inline-left);
+    padding-right: var(--page-inline-right);
+  }
+  .page--library .status-strip {
+    margin-left: calc(-1 * var(--page-inline-left));
+    margin-right: calc(-1 * var(--page-inline-right));
+    padding-left: var(--page-inline-left);
+    padding-right: var(--page-inline-right);
+  }
+  .bottom-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-height: calc(var(--bottom-nav-height) + var(--safe-bottom));
+    padding-left: max(8px, var(--safe-left));
+    padding-right: max(8px, var(--safe-right));
+  }
+  .bottom-nav > .bottom-nav__item, .bottom-nav > .bottom-nav__slot {
+    min-width: 0;
+    min-height: 44px;
+  }
+  .bottom-nav__content { min-width: 0; max-width: 100%; }
+  .bottom-nav__content > span:last-child {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: clamp(8px, 2.2vw, 10px);
+  }
+  .game-grid, .collection-grid, .detail-rating-section, .library-summary {
+    min-width: 0;
+  }
+  .game-grid, .collection-grid { column-gap: clamp(8px, 3vw, 14px); }
+  .detail-rating-section { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detail-rating-panel, .detail-rating-panel__label, .detail-rating-panel__score {
+    min-width: 0;
+  }
+  .detail-hero { gap: clamp(9px, 3.2vw, 14px); }
+  .detail-hero h1 { font-size: clamp(24px, 7.5vw, 42px); }
+  .collection-detail-identity__icon {
+    width: clamp(52px, 16vw, 70px);
+    height: clamp(52px, 16vw, 70px);
+    flex-basis: clamp(52px, 16vw, 70px);
+  }
+  .detail-similar__item, .detail-similar__skeleton-item {
+    flex: 0 0 clamp(88px, 25vw, 112px);
+  }
+  .detail-similar__cover, .detail-similar__skeleton-cover {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 101 / 132;
+  }
+  .detail-similar__loading-track { min-height: 0; }
+  .detail-wishlist-toast { max-width: calc(100vw - 28px); white-space: normal; }
+  .pwa-update-notice { bottom: calc(var(--bottom-nav-height) + var(--safe-bottom) + 16px); }
+}
+@media (max-width: 360px) {
+  .detail-toolbar__actions, .collection-detail-toolbar .detail-toolbar__actions { gap: 4px; }
+  .detail-hero { grid-template-columns: minmax(0, 38%) minmax(0, 1fr); }
+  .collection-detail-identity { gap: 9px; }
+  .profile-stats { width: 100%; }
+}
+@media (max-height: 600px) and (max-width: 699px) {
+  :root { --section-header-height: 54px; --section-header-bottom-gap: 10px; }
+  .page--viewport .page-motion .topbar,
+  .page--viewport .page-motion .subpage-header,
+  .page--viewport .page-motion .detail-toolbar { padding-bottom: 6px; }
+}
