@@ -32,4 +32,11 @@ test('Discovery uses violet spinner above a friendly message; Links uses green',
   await expect(violet).toBeVisible()
   await expect(violet).toContainText('Подбираем игры')
   await expect(violet.locator('.content-loading__spinner')).toHaveCSS('border-top-color', 'rgb(223, 182, 255)')
+  // The real feed loader is centered inside the same stage as the lazy fallback.
+  const offset = await page.locator('.discover-stage').evaluate(stage => {
+    const rect = stage.querySelector('.content-loading')!.getBoundingClientRect()
+    const area = stage.getBoundingClientRect()
+    return Math.abs(rect.top + rect.height / 2 - (area.top + area.height / 2))
+  })
+  expect(offset).toBeLessThan(2)
 })
