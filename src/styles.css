@@ -3135,7 +3135,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .profile-hero--compact .profile-avatar {
   margin-bottom: 13px;
 }
-.profile-hero--compact h1 {
+.profile-hero--compact h2 {
   margin: 0;
   font-size: 27px;
   line-height: 1.25;
