@@ -3969,7 +3969,7 @@ body:has(.auth-shell) .install-prompt { display: none; }
 }
 .detail-wishlist-toast {
   position: fixed; z-index: 1600; left: 50%; top: 42%;
-  transform: translateX(-50%); display: flex; align-items: center;
+  translate: -50% 0; display: flex; align-items: center;
   gap: 10px; max-width: calc(100vw - 28px); padding: 16px 18px;
   border: 1px solid rgba(255, 162, 202, .5); border-radius: 19px;
   color: #ffe3ef; background: rgba(36, 20, 38, .94);
