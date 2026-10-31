@@ -54,6 +54,18 @@ test('links retain glass header while the list scrolls underneath', async ({ pag
   expect(geometry.glass).toContain('blur(12px)')
   expect(geometry.captionSize).toBe('11px')
   expect(geometry.captionGap).toBe(4)
+  await expect(scrollPane).toHaveCSS('padding-top', '0px')
+  const bottomGlass = page.locator('.bottom-nav')
+  await expect(bottomGlass).toHaveCSS('backdrop-filter', /blur\\(12px\\)/)
+  await expect(bottomGlass).toHaveCSS('border-bottom-left-radius', '0px')
+
+  // Expanded link entry stays attached to the pinned heading, including
+  // after scroll — no detached/scrolling input panel.
+  await page.getByRole('button', { name: 'Добавить ссылку' }).click()
+  await expect(page.getByPlaceholder('Введите ссылку')).toBeVisible()
+  await expect(header.locator('.saved-links-add')).toHaveCount(1)
+  await expect(header.locator('.saved-links-add')).toHaveCSS('height', '52px')
+  await page.getByRole('button', { name: 'Закрыть ввод ссылки' }).click()
 
   // Other sections use the SAME main heading scale, including Discovery.
   await page.goto('/?tab=add')
@@ -61,6 +73,10 @@ test('links retain glass header while the list scrolls underneath', async ({ pag
   await expect(catalogTitle).toBeVisible()
   await expect(catalogTitle).toHaveCSS('font-size', geometry.titleSize)
   await expect(page.locator('.game-database-powered')).toHaveCSS('margin-top', '4px')
+  await expect(page.getByPlaceholder('Введи первые три символа')).toBeVisible()
+  await expect(page.locator('.game-database-heading .game-database-search')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Подтвердить поиск' })).toBeDisabled()
+  await expect(page.locator('.game-database-heading').evaluate(el => el.getBoundingClientRect().top)).resolves.toBeLessThan(2)
   await page.goto('/?tab=library')
   await expect(page.locator('.library-title')).toHaveCSS('font-size', geometry.titleSize)
   await page.goto('/?tab=links')
