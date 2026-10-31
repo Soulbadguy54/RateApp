@@ -6,6 +6,7 @@ import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
 import BottomNavGameSlot from './components/BottomNavGameSlot'
 import { profileTintOption } from './profilePalette'
+import { profileTopGames } from './profileTopGames'
 import RatingWheel, { closestHalfPoint } from './components/RatingWheel'
 import { CollectionIcon, CollectionAppearanceEditor } from './components/CollectionAppearance'
 import {
@@ -1043,6 +1044,10 @@ function App() {
   }, [entries, catalogGameById])
 
   const sortedCollections = useMemo(() => sortCollections(collections), [collections])
+  const topRatedProfileGames = useMemo(
+    () => profileTopGames(entries, catalogGameById),
+    [entries, catalogGameById],
+  )
 
   const entryMap = useMemo(
     () => new Map(entries.map((entry) => [entry.gameId, entry])),
@@ -3521,6 +3526,8 @@ function App() {
     <Suspense fallback={<div className="viewport-loading"><ContentLoading tone="green" text="Открываем профиль…" /></div>}>
     <ProfileView
       user={authUser!}
+      topGames={topRatedProfileGames}
+      onOpenGame={openGame}
       onSaved={(updated) => setAuthUser(updated)}
       onOpenWishlist={() => navigateTo({
         tab: 'collections', gameId: null, collectionId: WISHLIST_COLLECTION_ID, formGameId: null,
