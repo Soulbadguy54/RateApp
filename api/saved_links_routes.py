@@ -2,10 +2,13 @@
 import hashlib
 import ipaddress
 import re
+import threading
+import time
+from collections import OrderedDict
 from datetime import timedelta
 from urllib.parse import urlsplit, urlunsplit
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -16,6 +19,12 @@ from api.security import _current_user, _now, _session
 router = APIRouter()
 MAX_LINKS_PER_USER = 100
 MAX_NEW_LINKS_PER_DAY = 15
+
+# Small bounded, short-lived cache: no user HTML or unverified CDN URLs stored.
+_thumbnail_lock = threading.Lock()
+_thumbnail_cache: OrderedDict[str, tuple[float, bytes, str]] = OrderedDict()
+_THUMBNAIL_TTL_SECONDS = 600
+_THUMBNAIL_CACHE_MAX_ITEMS = 24
 
 
 class LinkCreate(BaseModel):
@@ -178,14 +187,14 @@ def saved_link_preview(link_id: int, request: Request) -> dict[str, str | None]:
     uses the same Google Safe Browsing, redirect and pinned DNS/TLS reader as
     the GPT source worker; no HTML is returned to the client.
     """
-    from api.saved_links_safety import SourceSafetyError, preview_source
+    from api.saved_links_safety import SourceSafetyError, preview_source, _instagram_reel_url
 
     with _session() as session:
         user = _current_user(request, session)
         link = _get_user_link(session, user.id, link_id)
-        if link.title:
-            return {"title": link.title[:180], "description": None}
         url = link.url
+        if link.title and not _instagram_reel_url(url):
+            return {"title": link.title[:180], "description": None}
     try:
         preview = preview_source(url)
     except (SourceSafetyError, ValueError):
@@ -199,10 +208,51 @@ def saved_link_preview(link_id: int, request: Request) -> dict[str, str | None]:
             link = session.scalar(select(SavedLink).where(
                 SavedLink.id == link_id, SavedLink.user_id == user.id,
             ).with_for_update())
-            if link is not None and not link.title and link.url == url:
+            if link is not None and link.url == url and (
+                not link.title or _instagram_reel_url(url)
+            ):
                 link.title = title
                 session.commit()
     return {"title": title or None, "description": preview["description"] or None}
+
+
+@router.get("/api/saved-links/{link_id}/thumbnail")
+def saved_link_instagram_thumbnail(link_id: int, request: Request) -> Response:
+    """Authenticated, same-origin thumbnail; never an arbitrary URL proxy.
+
+    Only a specific Instagram post with an actual media OG:image is eligible.
+    The source HTML and CDN bytes are both checked using Safe Browsing and
+    public pinned DNS/TLS; failures return 204 with no user-visible URL.
+    """
+    from api.saved_links_safety import SourceSafetyError, _instagram_reel_url, instagram_thumbnail_source
+
+    with _session() as session:
+        user = _current_user(request, session)
+        link = _get_user_link(session, user.id, link_id)
+        url = link.url
+    if not _instagram_reel_url(url):
+        return Response(status_code=204, headers={"Cache-Control": "private, max-age=60"})
+    now = time.monotonic()
+    with _thumbnail_lock:
+        cached = _thumbnail_cache.get(url)
+        if cached is not None and cached[0] >= now:
+            _thumbnail_cache.move_to_end(url)
+            return Response(content=cached[1], media_type=cached[2],
+                            headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
+    try:
+        image = instagram_thumbnail_source(url)
+    except (SourceSafetyError, ValueError, OSError):
+        image = None
+    if image is None:
+        return Response(status_code=204, headers={"Cache-Control": "private, max-age=60"})
+    body, mime = image
+    with _thumbnail_lock:
+        _thumbnail_cache[url] = (now + _THUMBNAIL_TTL_SECONDS, body, mime)
+        _thumbnail_cache.move_to_end(url)
+        while len(_thumbnail_cache) > _THUMBNAIL_CACHE_MAX_ITEMS:
+            _thumbnail_cache.popitem(last=False)
+    return Response(content=body, media_type=mime,
+                    headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/api/saved-links/{link_id}")

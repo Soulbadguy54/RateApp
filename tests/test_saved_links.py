@@ -132,6 +132,43 @@ class SavedLinkTests(unittest.TestCase):
         self.assertIsNone(response.json()["description"])
         self.assertIsNone(self.client.get(f'/api/saved-links/{link["id"]}').json()["title"])
 
+    def test_instagram_thumbnail_requires_owner_and_verified_binary(self):
+        from api.saved_links_routes import _thumbnail_cache, _thumbnail_lock
+        link = self.client.post("/api/saved-links", json={
+            "url": "https://www.instagram.com/reel/CABc123/"
+        }).json()
+        with _thumbnail_lock:
+            _thumbnail_cache.clear()
+        image = b"\xff\xd8\xff" + b"x" * 200
+        with patch("api.saved_links_safety.instagram_thumbnail_source",
+                   return_value=(image, "image/jpeg")) as fetch:
+            response = self.client.get(f'/api/saved-links/{link["id"]}/thumbnail')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, image)
+            self.assertEqual(response.headers["content-type"], "image/jpeg")
+            self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+            again = self.client.get(f'/api/saved-links/{link["id"]}/thumbnail')
+            self.assertEqual(again.status_code, 200)
+            fetch.assert_called_once_with(link["url"])
+        with _thumbnail_lock:
+            _thumbnail_cache.clear()
+
+    def test_instagram_thumbnail_blocks_non_instagram_and_failed_safety(self):
+        safe = self.save("non-ig-proxy")
+        with patch("api.saved_links_safety.instagram_thumbnail_source",
+                   side_effect=AssertionError("external hosts not fetched")):
+            self.assertEqual(
+                self.client.get(f'/api/saved-links/{safe["id"]}/thumbnail').status_code, 204)
+        reel = self.client.post("/api/saved-links", json={
+            "url": "https://www.instagram.com/reel/Blocked123/"
+        }).json()
+        from api.saved_links_safety import SourceSafetyError
+        with patch("api.saved_links_safety.instagram_thumbnail_source",
+                   side_effect=SourceSafetyError("blocked")):
+            response = self.client.get(f'/api/saved-links/{reel["id"]}/thumbnail')
+            self.assertEqual(response.status_code, 204)
+            self.assertEqual(response.content, b"")
+
     def test_bulk_delete_is_atomic_scoped_and_preserves_catalog(self):
         first = self.save("bulk-a")
         second = self.save("bulk-b")
@@ -216,6 +253,7 @@ class SavedLinkTests(unittest.TestCase):
             self.assertEqual(getattr(other,method)(
                 f'/api/saved-links/{link["id"]}{path}').status_code,404)
         self.assertEqual(other.post(f'/api/saved-links/{link["id"]}/preview').status_code, 404)
+        self.assertEqual(other.get(f'/api/saved-links/{link["id"]}/thumbnail').status_code, 404)
         self.assertEqual(other.post("/api/saved-links/bulk-delete", json={
             "ids": [link["id"]],
         }).status_code, 404)

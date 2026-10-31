@@ -62,6 +62,70 @@ class SavedLinksSafetyTests(unittest.TestCase):
         self.assertNotIn("og:image", str(result))
         fetch.assert_called_once_with("https://example.org/awesome")
 
+    def test_instagram_reel_prefers_post_caption_to_profile_name(self):
+        from api.saved_links_safety import preview_source
+        reel = "https://www.instagram.com/reel/CABc123/"
+        html_body = (b'<html><head><title>John Smith (@smith) Instagram</title>'
+            b'<meta property="og:title" content="John Smith (@smith) Instagram">'
+            b'<meta property="og:description" content="1,800 likes, 34 comments - @smith on Instagram: &quot;Best indie games of 2026&quot;">'
+            b"</head></html>")
+        with patch("api.saved_links_safety._safe_page_response", return_value=(
+            html_body, {"content-type": "text/html; charset=utf-8"},
+        )):
+            preview = preview_source(reel)
+        self.assertEqual(preview["title"], "Best indie games of 2026")
+        self.assertNotIn("John Smith", preview["title"])
+
+    def test_instagram_generic_profile_falls_back_to_reel_label(self):
+        from api.saved_links_safety import preview_source
+        reel = "https://www.instagram.com/reel/CABc123/"
+        with patch("api.saved_links_safety._safe_page_response", return_value=(
+            b'<meta property="og:title" content="John Smith on Instagram">'
+            b'<meta property="og:image" content="https://cdninstagram.com/avatar.jpg">',
+            {"content-type": "text/html; charset=utf-8"},
+        )):
+            preview = preview_source(reel)
+        self.assertEqual(preview["title"], "Видео Instagram")
+
+    def test_instagram_media_proxy_requires_post_metadata_safe_cdn_and_magic(self):
+        from api.saved_links_safety import instagram_thumbnail_source, SourceSafetyError
+        reel = "https://www.instagram.com/reel/CABc123/"
+        text_page = (b'<meta property="og:description" '
+                     b'content="@smith on Instagram: &quot;New reel caption&quot;">'
+                     b'<meta property="og:image" content="https://scontent.cdninstagram.com/media.jpg">')
+        sample = b"\xff\xd8\xff" + b"x" * 200
+        with patch("api.saved_links_safety._safe_page_response", return_value=(
+            text_page, {"content-type": "text/html"},
+        )), patch("api.saved_links_safety.check_safe_browsing") as checked, patch(
+            "api.saved_links_safety._fetch_once",
+            return_value=(200, {"content-type": "image/jpeg"}, sample),
+        ) as fetched:
+            result = instagram_thumbnail_source(reel)
+            self.assertEqual(result, (sample, "image/jpeg"))
+            checked.assert_called_once_with("https://scontent.cdninstagram.com/media.jpg", timeout=5)
+            self.assertEqual(fetched.call_args.kwargs["max_bytes"], 512_000)
+        with patch("api.saved_links_safety._safe_page_response", return_value=(
+            text_page.replace(b"scontent.cdninstagram.com", b"127.0.0.1"),
+            {"content-type": "text/html"},
+        )), patch("api.saved_links_safety._fetch_once", side_effect=AssertionError("must not fetch")):
+            self.assertIsNone(instagram_thumbnail_source(reel))
+        with patch("api.saved_links_safety._safe_page_response", return_value=(
+            text_page, {"content-type": "text/html"},
+        )), patch("api.saved_links_safety.check_safe_browsing",
+                 side_effect=SourceSafetyError("blocked")):
+            with self.assertRaises(SourceSafetyError):
+                instagram_thumbnail_source(reel)
+
+    def test_instagram_profile_avatar_is_not_used_as_reel_cover(self):
+        from api.saved_links_safety import instagram_thumbnail_source
+        reel = "https://www.instagram.com/reel/CABc123/"
+        generic = (b'<meta property="og:title" content="@smith on Instagram">'
+                   b'<meta property="og:image" content="https://scontent.cdninstagram.com/avatar.jpg">')
+        with patch("api.saved_links_safety._safe_page_response", return_value=(
+            generic, {"content-type": "text/html"},
+        )), patch("api.saved_links_safety._fetch_once", side_effect=AssertionError("avatar must not load")):
+            self.assertIsNone(instagram_thumbnail_source(reel))
+
     def test_preview_fails_closed_without_page(self):
         with patch("api.saved_links_safety._safe_page_response",
                    side_effect=SourceSafetyError("Dangerous URL", terminal=True)):
