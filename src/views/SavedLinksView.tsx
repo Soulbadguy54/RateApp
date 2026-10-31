@@ -419,6 +419,41 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
                 )}
               </div>
             </div>
+            {link.games?.length > 0 && selectedIds.length === 0 && (
+              <motion.section className="saved-link-card__matched"
+                aria-label={'Игры из ссылки: ' + link.games.length}
+                initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                transition={{ duration: .24, ease: 'easeOut' }}
+                onClick={event => event.stopPropagation()}
+                onPointerDown={event => event.stopPropagation()}
+                onContextMenu={event => event.stopPropagation()}>
+                <div className="saved-link-card__matched-heading">
+                  <strong>Игры из ссылки</strong>
+                  <span>{link.games.length}</span>
+                </div>
+                <div className="saved-link-card__matched-track" role="list"
+                  aria-label="Найденные игры, прокрутка по горизонтали">
+                  {link.games.map(game => (
+                    <div className="saved-link-card__matched-item" role="listitem" key={game.id}>
+                      <button className="saved-link-card__game-tile" type="button"
+                        onClick={event => {
+                          event.stopPropagation()
+                          onOpenGame(game.id)
+                        }}
+                        aria-label={'Открыть игру ' + game.title}>
+                        <div className="saved-link-card__game-cover">
+                          {game.coverUrl
+                            ? <img src={game.coverUrl} alt="" loading="lazy" />
+                            : <Icon name="gamepad" size={25} />}
+                        </div>
+                        <span title={game.title}>{game.title}</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </motion.section>
+            )}
           </motion.article>
         ))}
       </div>
