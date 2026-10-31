@@ -140,6 +140,59 @@ class SavedLinksSafetyTests(unittest.TestCase):
             with self.assertRaises(SourceSafetyError):
                 preview_thumbnail_source("https://example.org/test")
 
+    def test_youtube_links_recognized_without_accepting_other_domains(self):
+        from api.saved_links_safety import _youtube_video_id
+        video_id = "dQw4w9WgXcQ"
+        for url in (
+            f"https://youtu.be/{video_id}?si=tracking",
+            f"https://www.youtube.com/watch?v={video_id}&t=18",
+            f"https://m.youtube.com/shorts/{video_id}",
+            f"https://youtube.com/live/{video_id}",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(_youtube_video_id(url), video_id)
+        for url in (
+            "https://youtube.com.evil.example/watch?v=dQw4w9WgXcQ",
+            "https://youtu.be/too-short",
+            "https://youtu.be/dQw4w9WgXcQ/another",
+            "https://www.youtube.com/playlist?list=PL123",
+        ):
+            self.assertIsNone(_youtube_video_id(url))
+
+    def test_youtube_dns_fallback_requires_reputation_check(self):
+        with patch("api.saved_links_safety._safe_page_response",
+                   side_effect=SourceSafetyError("DNS unavailable")), patch(
+            "api.saved_links_safety.check_safe_browsing",
+        ) as check:
+            result = preview_source("https://youtu.be/dQw4w9WgXcQ")
+            self.assertEqual(result, {"title": "Видео YouTube", "description": ""})
+            check.assert_called_once_with("https://youtu.be/dQw4w9WgXcQ")
+        with patch("api.saved_links_safety._safe_page_response",
+                   side_effect=SourceSafetyError("DNS unavailable")), patch(
+            "api.saved_links_safety.check_safe_browsing",
+            side_effect=SourceSafetyError("Unsafe", terminal=True),
+        ):
+            with self.assertRaises(SourceSafetyError):
+                preview_source("https://youtu.be/dQw4w9WgXcQ")
+
+    def test_youtube_fallback_thumbnail_is_verified_pinned_cdn(self):
+        from api.saved_links_safety import preview_thumbnail_source
+        jpeg = b"\xff\xd8\xff" + b"image" * 70
+        with patch("api.saved_links_safety._safe_page_response", side_effect=[
+            SourceSafetyError("YouTube DNS unavailable"),
+            (jpeg, {"content-type": "image/jpeg"}),
+        ]) as fetch, patch("api.saved_links_safety.check_safe_browsing") as check:
+            result = preview_thumbnail_source("https://youtu.be/dQw4w9WgXcQ")
+        self.assertEqual(result, (jpeg, "image/jpeg"))
+        check.assert_called_once_with("https://youtu.be/dQw4w9WgXcQ")
+        self.assertEqual(fetch.call_args_list[1].args[0],
+                         "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
+        self.assertTrue(fetch.call_args_list[1].kwargs["require_https"])
+        with patch("api.saved_links_safety._safe_page_response",
+                   side_effect=SourceSafetyError("unsafe source", terminal=True)):
+            with self.assertRaises(SourceSafetyError):
+                preview_thumbnail_source("https://youtu.be/dQw4w9WgXcQ")
+
     def test_preview_fails_closed_without_page(self):
         with patch("api.saved_links_safety._safe_page_response",
                    side_effect=SourceSafetyError("Dangerous URL", terminal=True)):
