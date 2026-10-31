@@ -29,11 +29,11 @@
   overflow: hidden;
   background:
     radial-gradient(circle at 18% 10%,
-      color-mix(in srgb, var(--collection-accent, #c4a2ff) 9%, transparent),
+      color-mix(in srgb, var(--collection-accent, #c4a2ff) 22%, transparent),
       transparent 80%),
     linear-gradient(145deg,
-      color-mix(in srgb, var(--collection-shade, #7b46c7) 13%, #171b24),
-      color-mix(in srgb, var(--collection-shade, #7b46c7) 5%, #10131a));
+      color-mix(in srgb, var(--collection-shade, #7b46c7) 31%, #171b24),
+      color-mix(in srgb, var(--collection-shade, #7b46c7) 15%, #10131a));
 }
 .collection-card__mosaic > .cover {
   min-width: 0;
@@ -63,12 +63,12 @@
   padding: 12px;
   background:
     radial-gradient(ellipse at 5% 0%,
-      color-mix(in srgb, var(--collection-accent, #c4a2ff) 5%, transparent),
+      color-mix(in srgb, var(--collection-accent, #c4a2ff) 16%, transparent),
       transparent 85%),
     linear-gradient(112deg,
-      color-mix(in srgb, var(--collection-shade, #7b46c7) 10%, #171b24),
-      color-mix(in srgb, var(--collection-shade, #7b46c7) 6%, #121620) 65%,
-      color-mix(in srgb, var(--collection-shade, #7b46c7) 3%, #10131a));
+      color-mix(in srgb, var(--collection-shade, #7b46c7) 25%, #171b24),
+      color-mix(in srgb, var(--collection-shade, #7b46c7) 15%, #121620) 65%,
+      color-mix(in srgb, var(--collection-shade, #7b46c7) 10%, #10131a));
 }
 .collection-card__footer strong,
 .collection-card__footer span { display: block; }
