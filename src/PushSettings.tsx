@@ -1,6 +1,7 @@
 import { sessionFetch } from './sessionFetch'
 import { useEffect, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
+import Icon from './components/Icon'
 
 type PushConfig = { enabled: boolean; publicKey: string; devices: number }
 type PushState = { config: PushConfig; subscribed: boolean; permission: NotificationPermission }
@@ -292,12 +293,32 @@ export default function PushSettings({ user, onOpenWishlist }: { user: string; o
           </motion.span>
         </button> : <span className="push-switch__loading" role="status" aria-label="Загружаем настройки уведомлений" />}
       </div>
-      {!supported && <p className="push-settings__note">{iosHelp}</p>}
-      {supported && state && !state.config.enabled && <p className="push-settings__note">Уведомления временно недоступны.</p>}
-      {supported && state?.permission === 'denied' && !enabled &&
-        <p className="push-settings__note">Разреши уведомления в настройках браузера или телефона.</p>}
+      {!supported && (
+        <p className="push-settings__warning"><Icon name="alert-triangle" size={18} />{iosHelp}</p>
+      )}
+      {supported && state && !state.config.enabled && (
+        <p className="push-settings__warning" role="status">
+          <Icon name="alert-triangle" size={18} />
+          Сервис уведомлений не настроен на сервере Rate APP. Разрешение браузера здесь не поможет.
+        </p>
+      )}
+      {supported && state?.config.enabled && state.permission === 'default' && !enabled && (
+        <button type="button" className="push-settings__warning push-settings__warning--action"
+          onClick={toggle} disabled={busy}>
+          <Icon name="alert-triangle" size={18} />
+          <span>Необходимы права на уведомления. Нажми, чтобы разрешить.</span>
+        </button>
+      )}
+      {supported && state?.config.enabled && state.permission === 'denied' && !enabled && (
+        <p className="push-settings__warning" role="status">
+          <Icon name="alert-triangle" size={18} />
+          Уведомления заблокированы. Разреши их в настройках браузера или телефона: повторный запрос прав браузер не покажет.
+        </p>
+      )}
       {busy && optimisticEnabled && phase && <p className="push-settings__note" role="status">{PUSH_PHASE_LABELS[phase]}</p>}
-      {message && <p className="push-settings__note" role="status">{message}</p>}
+      {message && <p className="push-settings__warning" role="alert">
+        <Icon name="alert-triangle" size={18} />{message}
+      </p>}
     </section>
   )
 }
