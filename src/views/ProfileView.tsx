@@ -4,6 +4,8 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import type { AuthUser } from '../AuthScreen'
 import PushSettings from '../PushSettings'
 import Icon from '../components/Icon'
+import { Cover } from '../components/GameCard'
+import type { ProfileTopGame } from '../profileTopGames'
 import { sessionFetch } from '../sessionFetch'
 import { PROFILE_TINTS, profileTintOption, type ProfileTint } from '../profilePalette'
 import './ProfileView.css'
@@ -35,8 +37,10 @@ type Point = { x: number; y: number }
 
 /** A mobile-first gesture cropper: one finger pans, two fingers pinch.
     The same transformation is baked into a small 256px PNG on Save. */
-export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }: {
+export default function ProfileView({ user, topGames, onOpenGame, onOpenWishlist, onLogout, onSaved }: {
   user: AuthUser
+  topGames: ProfileTopGame[]
+  onOpenGame: (gameId: number) => void
   onOpenWishlist: () => void
   onLogout: () => Promise<void>
   onSaved: (user: AuthUser) => void
@@ -53,6 +57,7 @@ export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }:
   const inputRef = useRef<HTMLInputElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   const pointsRef = useRef(new Map<number, Point>())
+  const gestureRef = useRef<{ start: Point; moved: boolean; pinched: boolean } | null>(null)
   const reducedMotion = useReducedMotion()
 
   useEffect(() => {
@@ -86,13 +91,21 @@ export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }:
   }
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (!photo) return
-    pointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    const start = { x: event.clientX, y: event.clientY }
+    if (pointsRef.current.size === 0) gestureRef.current = { start, moved: false, pinched: false }
+    pointsRef.current.set(event.pointerId, start)
+    if (pointsRef.current.size > 1 && gestureRef.current) gestureRef.current.pinched = true
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const old = pointsRef.current.get(event.pointerId)
-    if (!old || !photo || !natural.x) return
+    if (!old || !photo) return
     const p = { x: event.clientX, y: event.clientY }
+    if (gestureRef.current &&
+      Math.hypot(p.x - gestureRef.current.start.x, p.y - gestureRef.current.start.y) > 8) {
+      gestureRef.current.moved = true
+    }
+    if (!natural.x) { pointsRef.current.set(event.pointerId, p); return }
     const others = [...pointsRef.current.entries()].filter(([key]) => key !== event.pointerId)
     if (others.length) {
       const other = others[0][1]
@@ -109,6 +122,10 @@ export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }:
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
     pointsRef.current.delete(event.pointerId)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    if (pointsRef.current.size > 0) return
+    const isTap = event.type === 'pointerup' && !gestureRef.current?.moved && !gestureRef.current?.pinched
+    gestureRef.current = null
+    if (isTap) inputRef.current?.click()
   }
   const bakeAvatar = (): string | null => {
     const image = imageRef.current
@@ -169,31 +186,62 @@ export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }:
             <Icon name={editing ? 'checkmark' : 'edit'} size={21} />
           </motion.button>
         </div>
-        <div className="profile-glass-header__avatar-row">
-          {editing && photo ? (
-            <div className="profile-avatar-crop" role="group" aria-label="Кадрирование аватара"
-              onPointerDown={onPointerDown} onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
-              onWheel={event => { if (photo) changeZoom(zoom - event.deltaY / 440) }}>
-              <img ref={imageRef} src={photo} alt="Предпросмотр аватара" draggable={false}
-                onLoad={event => setNatural({ x: event.currentTarget.naturalWidth, y: event.currentTarget.naturalHeight })}
-                style={{ width: natural.x * cover * zoom, height: natural.y * cover * zoom,
-                  transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))` }} />
-            </div>
-          ) : <ProfileAvatar user={user} className="profile-glass-header__avatar" />}
-          {editing && (
-            <>
-              <button type="button"
-                className={'profile-glass-header__avatar-edit' + (photo ? ' profile-glass-header__avatar-edit--cropping' : '')}
-                aria-label="Выбрать аватар"
-                disabled={Boolean(photo)}
-                onClick={() => inputRef.current?.click()}>
-                <Icon name="edit" size={72} />
-              </button>
-              <input ref={inputRef} type="file" accept="image/*" className="profile-file-input"
-                onChange={event => { onChoosePhoto(event.target.files?.[0]); event.currentTarget.value = '' }} />
-            </>
+        <div className={'profile-glass-header__hero' + (topGames.length ? ' profile-glass-header__hero--ranked' : '')}>
+          {topGames.length > 0 && (
+            <ol className={'profile-top-games profile-top-games--count-' + topGames.length}
+              aria-label="Игры с самыми высокими личными оценками">
+              {topGames.map(({ game, score }, index) => (
+                <li className="profile-top-games__item" key={game.id}>
+                  <button type="button" className="profile-top-game"
+                    title={game.title}
+                    aria-label={game.title + ', личная оценка ' + score.toFixed(1) + ' из 10'}
+                    onClick={() => onOpenGame(game.id)}
+                    style={{ '--cloud-delay': (-index * 2.13) + 's' } as CSSProperties}>
+                    <span className="profile-top-game__cover"><Cover game={game} thumbnail /></span>
+                    <span className="profile-top-game__score" aria-hidden="true">
+                      <Icon name="star" size={10} />{score.toFixed(1)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ol>
           )}
+          <div className="profile-glass-header__avatar-row">
+            {editing && photo ? (
+              <div className="profile-avatar-crop" role="button" tabIndex={0}
+                aria-label="Кадрировать аватар или нажать для выбора другой фотографии"
+                onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    inputRef.current?.click()
+                  }
+                }}
+                onWheel={event => { if (photo) changeZoom(zoom - event.deltaY / 440) }}>
+                <img ref={imageRef} src={photo} alt="Предпросмотр аватара" draggable={false}
+                  onLoad={event => setNatural({ x: event.currentTarget.naturalWidth, y: event.currentTarget.naturalHeight })}
+                  style={{ width: natural.x * cover * zoom, height: natural.y * cover * zoom,
+                    transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))` }} />
+              </div>
+            ) : <ProfileAvatar user={user} className="profile-glass-header__avatar" />}
+            {editing && (
+              <>
+                {photo ? (
+                  <span className="profile-glass-header__avatar-edit profile-glass-header__avatar-edit--cropping" aria-hidden="true">
+                    <Icon name="edit" size={72} />
+                  </span>
+                ) : (
+                  <button type="button" className="profile-glass-header__avatar-edit" aria-label="Выбрать аватар"
+                    onClick={() => inputRef.current?.click()}>
+                    <Icon name="edit" size={72} />
+                  </button>
+                )}
+                <input ref={inputRef} type="file" accept="image/*" className="profile-file-input"
+                  onChange={event => { onChoosePhoto(event.target.files?.[0]); event.currentTarget.value = '' }} />
+              </>
+            )}
+          </div>
         </div>
         <AnimatePresence initial={false}>
           {editing && (
@@ -202,16 +250,6 @@ export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }:
               animate={{ height: 'auto', opacity: 1 }}
               exit={reducedMotion ? undefined : { height: 0, opacity: 0 }}
               transition={{ duration: reducedMotion ? 0 : .25, ease: 'easeOut' }}>
-              {photo && (
-                <div className="profile-zoom-control">
-                  <span>Масштаб</span>
-                  <input type="range" min={1} max={3.2} step={.05} value={zoom}
-                    aria-label="Масштаб аватара" onChange={event => changeZoom(Number(event.target.value))} />
-                  <button type="button" className="profile-replace-photo" onClick={() => inputRef.current?.click()}>
-                    Другое фото
-                  </button>
-                </div>
-              )}
               <div className="profile-color-picker" role="radiogroup" aria-label="Оттенок стекла профиля">
                 {PROFILE_TINTS.map(color => (
                   <button key={color.id} type="button" role="radio"
@@ -223,7 +261,6 @@ export default function ProfileView({ user, onOpenWishlist, onLogout, onSaved }:
                   </button>
                 ))}
               </div>
-              {photo && <p className="profile-crop-hint">Перемещайте фото пальцем, двумя пальцами меняйте масштаб.</p>}
               {error && <p className="profile-appearance-error" role="alert">{error}</p>}
             </motion.div>
           )}
