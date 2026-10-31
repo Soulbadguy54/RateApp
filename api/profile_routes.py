@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 from sqlalchemy import select
-from api.models import UserGame
+from api.models import Game, UserGame
 
 from api.security import _current_user, _session, _user_payload
 
@@ -61,13 +61,21 @@ def save_appearance(payload: AppearancePayload, request: Request) -> dict[str, o
             if any(game_id <= 0 for game_id in chosen) or len(set(chosen)) != len(chosen):
                 raise HTTPException(status_code=422, detail="Игры в облаках должны быть разными.")
             if chosen:
-                owned = set(session.scalars(select(UserGame.game_id).where(
-                    UserGame.user_id == user.id,
-                    UserGame.game_id.in_(chosen),
-                    UserGame.status.in_(("completed", "playing", "dropped")),
-                )).all())
+                # Bootstrap exposes Game.igdb_id as gameId. UserGame.game_id is
+                # an internal FK and must NEVER be compared to client game IDs.
+                owned = set(session.scalars(
+                    select(Game.igdb_id)
+                    .join(UserGame, UserGame.game_id == Game.id)
+                    .where(
+                        UserGame.user_id == user.id,
+                        Game.igdb_id.in_(chosen),
+                        UserGame.status.in_(("completed", "playing", "dropped")),
+                    )
+                ).all())
                 if owned != set(chosen):
-                    raise HTTPException(status_code=422, detail="Выбери игру из «Моих игр».")
+                    # This can only be reached by a forged/stale API request.
+                    # Keep it machine-readable, without a red UI helper label.
+                    raise HTTPException(status_code=422, detail="INVALID_CLOUD_GAME")
             user.profile_cloud_game_ids = slots
         user.profile_tint = payload.tint
         if payload.updateAvatar:
