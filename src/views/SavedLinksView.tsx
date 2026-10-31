@@ -6,7 +6,7 @@ import Icon from '../components/Icon'
 import { sessionFetch } from '../sessionFetch'
 import './SavedLinksView.css'
 
-type SavedGame = { id: number; title: string; coverUrl?: string | null }
+type SavedGame = { id: number; igdbId: number; title: string; coverUrl?: string | null }
 type SavedLink = {
   id: number
   url: string
@@ -18,6 +18,22 @@ type LinksPage = { items: SavedLink[]; nextBefore: number | null }
 
 const DELETE_DELAY_MS = 4000
 const HOLD_DELAY_MS = 480
+const META_TTL_MS = 24 * 60 * 60 * 1000
+const LINKS_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
+type LinkPreview = { title: string | null; description: string | null; at: number }
+type LinksCache = { savedAt: number; items: SavedLink[]; previews: Record<number, LinkPreview>; nextBefore: number | null }
+
+function cachedLinks(key: string): LinksCache | null {
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    const value = JSON.parse(raw) as LinksCache
+    if (!value || !Array.isArray(value.items) ||
+        !Number.isFinite(value.savedAt) || Date.now() - value.savedAt > LINKS_CACHE_TTL_MS) return null
+    return value
+  } catch { return null }
+}
 
 function displayHost(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
@@ -36,12 +52,20 @@ async function responseError(response: Response, fallback: string) {
   return fallback
 }
 
-export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: number) => void }) {
+export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
+  onOpenGame: (gameIgdbId: number) => void
+  cacheNamespace: string
+}) {
+  const cacheKey = 'rateapp:saved-links:v3:' + cacheNamespace
+  const initialCacheRef = useRef<LinksCache | null>(cachedLinks(cacheKey))
+  const addInputRef = useRef<HTMLInputElement>(null)
   const reduceMotion = useReducedMotion()
-  const [items, setItems] = useState<SavedLink[]>([])
-  const [nextBefore, setNextBefore] = useState<number | null>(null)
+  const [items, setItems] = useState<SavedLink[]>(() => initialCacheRef.current?.items ?? [])
+  const [nextBefore, setNextBefore] = useState<number | null>(initialCacheRef.current?.nextBefore ?? null)
   const [url, setUrl] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [addOpen, setAddOpen] = useState(false)
+  const [freshlyAddedId, setFreshlyAddedId] = useState<number | null>(null)
+  const [loading, setLoading] = useState(!initialCacheRef.current)
   const [loadingMore, setLoadingMore] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -50,7 +74,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [previews, setPreviews] = useState<Record<number, { title: string | null; description: string | null }>>({})
+  const [previews, setPreviews] = useState<Record<number, LinkPreview>>(() => initialCacheRef.current?.previews ?? {})
   const previewAttemptedRef = useRef(new Set<number>())
   const requestRef = useRef<AbortController | null>(null)
   const pendingDeleteRef = useRef<{ id: number; timer: number } | null>(null)
@@ -94,7 +118,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
     const controller = new AbortController()
     if (!before) requestRef.current = controller
     if (before) setLoadingMore(true)
-    else setLoading(true)
+    else if (!initialCacheRef.current) setLoading(true)
     try {
       const response = await sessionFetch('/api/saved-links?limit=50' + (before ? '&before=' + before : ''), { signal: controller.signal })
       if (!response.ok) throw new Error(await responseError(response, 'Не удалось загрузить ссылки.'))
@@ -117,12 +141,30 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
 
   useEffect(() => { void fetchLinks() }, [fetchLinks])
 
+  useEffect(() => {
+    try {
+      const previous = cachedLinks(cacheKey)
+      const data: LinksCache = {
+        savedAt: Date.now(), items: items.slice(0, 50),
+        nextBefore, previews,
+      }
+      if (!loading || items.length > 0 || !previous) {
+        window.localStorage.setItem(cacheKey, JSON.stringify(data))
+      }
+    } catch { /* Private browsing or storage quota: normal loading works. */ }
+  }, [cacheKey, items, nextBefore, previews, loading])
+
+  useEffect(() => {
+    if (addOpen) addInputRef.current?.focus({ preventScroll: true })
+  }, [addOpen])
+
   // Preview fetches happen separately from the fast URL save. The API checks
   // Safe Browsing, DNS, redirects and TLS; never load unverified remote images.
   useEffect(() => {
     let cancelled = false
     const candidates = items.slice(0, 8).filter(item =>
-      !previewAttemptedRef.current.has(item.id))
+      !previewAttemptedRef.current.has(item.id) &&
+      (!previews[item.id] || Date.now() - previews[item.id].at >= META_TTL_MS))
     for (const item of candidates) previewAttemptedRef.current.add(item.id)
     const load = async () => {
       for (const item of candidates) {
@@ -131,7 +173,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
           const response = await sessionFetch('/api/saved-links/' + item.id + '/preview', { method: 'POST' })
           if (!response.ok || cancelled) continue
           const info = await response.json() as { title: string | null; description: string | null }
-          if (!cancelled) setPreviews(previous => ({ ...previous, [item.id]: info }))
+          if (!cancelled) setPreviews(previous => ({ ...previous, [item.id]: { ...info, at: Date.now() } }))
         } catch { /* A failed safety check leaves the local fallback preview. */ }
       }
     }
@@ -175,9 +217,12 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
         body: JSON.stringify({ url: normalized }),
       })
       if (!response.ok) throw new Error(await responseError(response, 'Не удалось сохранить ссылку.'))
+      const added = await response.json() as SavedLink
       setUrl('')
-      setNotice('Ссылка добавлена.')
-      await fetchLinks()
+      setAddOpen(false)
+      setFreshlyAddedId(added.id)
+      setItems(current => [added, ...current.filter(link => link.id !== added.id)])
+      void fetchLinks()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось сохранить ссылку.')
     } finally {
@@ -297,33 +342,39 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
   return (
     <section className="saved-links-page" aria-label="Мои ссылки">
       <header className="saved-links-header topbar">
-        <h1>Мои ссылки</h1>
-        <p>Сохранённые ссылки из других источников</p>
+        <div>
+          <h1>Мои ссылки</h1>
+          <p>Сохранённые ссылки из других источников</p>
+        </div>
+        <motion.button type="button" className="round-add saved-links-add-toggle"
+          aria-label={addOpen ? 'Закрыть ввод ссылки' : 'Добавить ссылку'}
+          aria-expanded={addOpen} aria-controls="saved-links-add-field"
+          whileTap={reduceMotion ? undefined : { scale: .94 }}
+          onClick={() => setAddOpen(open => !open)}>
+          <Icon name={addOpen ? 'close' : 'plus'} size={21} />
+        </motion.button>
       </header>
 
-      <form className="saved-links-add" onSubmit={event => void addLink(event)}>
-        <label htmlFor="saved-links-url">Добавить ссылку</label>
-        <div className="saved-links-add__row">
-          <input id="saved-links-url" type="text" inputMode="url" autoComplete="url"
+      <motion.div id="saved-links-add-field" className="saved-links-add-panel"
+        initial={false} animate={{ height: addOpen ? 'auto' : 0, opacity: addOpen ? 1 : 0 }}
+        transition={{ duration: reduceMotion ? 0 : .25, ease: 'easeOut' }}
+        style={{ overflow: 'hidden' }}>
+        <form className="search-wrap saved-links-add" onSubmit={event => void addLink(event)}>
+          <Icon name="link" size={20} />
+          <input ref={addInputRef} type="text" inputMode="url" autoComplete="url"
             value={url} onChange={event => setUrl(event.target.value)}
-            placeholder="example.com" maxLength={2048} required />
-          <motion.button type="submit" disabled={saving || deleting || !url.trim()}
-            whileTap={reduceMotion ? undefined : { scale: .94 }}
-            aria-label="Сохранить ссылку">
-            <Icon name={saving ? 'clock' : 'plus'} size={21} />
-          </motion.button>
-        </div>
-      </form>
+            placeholder="Введите ссылку" aria-label="Введите ссылку"
+            enterKeyHint="done" maxLength={2048} required
+            disabled={!addOpen || saving} />
+        </form>
+      </motion.div>
 
       {error && <div className="saved-links-message saved-links-message--error" role="alert">{error}</div>}
-      {notice && <div className="saved-links-message" role="status">{notice}</div>}
 
-      <div className="saved-links-subheading">
-        <div>
-          <h2>Сохранённое <span>{items.length}{nextBefore ? '+' : ''}</span></h2>
-          {selectedIds.length > 0 && <p className="saved-links-selection-count">Выбрано: {selectedIds.length}</p>}
-        </div>
-        {selectedIds.length > 0 && (
+
+      {selectedIds.length > 0 && (
+        <div className="saved-links-subheading">
+          <span className="saved-links-selection-count">Выбрано: {selectedIds.length}</span>
           <div className="saved-links-bulk-actions">
             <button type="button" aria-label="Отменить выбор ссылок" title="Отменить выбор"
               onClick={() => setSelectedIds([])} disabled={deleting}>
@@ -335,8 +386,8 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
               <Icon name="trash" size={20} />
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {loading && <div className="saved-links-empty" role="status">Загружаем ссылки…</div>}
       {!loading && !items.length && (
@@ -378,7 +429,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
             }}
             onClick={event => cardClick(link, event)}
             onKeyDown={event => cardKeyDown(link, event)}
-            initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+            initial={reduceMotion ? false : { opacity: 0, y: link.id === freshlyAddedId ? -15 : 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: .24, delay: Math.min(index, 7) * .04 }}
           >
@@ -386,7 +437,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
               <div className="saved-link-card__thumbnail" aria-hidden="true">
                 <Icon name="link" size={23} />
                 <img className="saved-link-card__preview-image"
-                  src={'/api/saved-links/' + link.id + '/thumbnail'} alt=""
+                  src={'/api/saved-links/' + link.id + '/thumbnail?viewer=' + encodeURIComponent(cacheNamespace)} alt=""
                   loading="lazy" referrerPolicy="no-referrer"
                   onError={event => { event.currentTarget.style.display = 'none' }} />
               </div>
@@ -428,10 +479,6 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
                 onClick={event => event.stopPropagation()}
                 onPointerDown={event => event.stopPropagation()}
                 onContextMenu={event => event.stopPropagation()}>
-                <div className="saved-link-card__matched-heading">
-                  <strong>Игры из ссылки</strong>
-                  <span>{link.games.length}</span>
-                </div>
                 <div className="saved-link-card__matched-track" role="list"
                   aria-label="Найденные игры, прокрутка по горизонтали">
                   {link.games.map(game => (
@@ -439,7 +486,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
                       <button className="saved-link-card__game-tile" type="button"
                         onClick={event => {
                           event.stopPropagation()
-                          onOpenGame(game.id)
+                          onOpenGame(game.igdbId)
                         }}
                         aria-label={'Открыть игру ' + game.title}>
                         <div className="saved-link-card__game-cover">
