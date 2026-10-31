@@ -23,7 +23,14 @@ test('My Links: top-right plus, keyboard submit, newest first and reload cache',
       list = [newItem, ...list]
       await json(newItem, 201)
     } else if (pathname.endsWith('/preview')) {
-      await json({ title: null, description: null })
+      if (pathname.includes('/62/')) {
+        // Server GET revalidates while this new link's metadata is still
+        // running. The request must not be cancelled by a list re-render.
+        await new Promise(resolve => setTimeout(resolve, 320))
+        await json({ title: 'Актуальный заголовок статьи', description: 'Текст описания' })
+      } else {
+        await json({ title: null, description: null })
+      }
     } else if (pathname.endsWith('/thumbnail')) {
       await route.fulfill({ status: 204, body: '' })
     } else await json({})
@@ -41,6 +48,8 @@ test('My Links: top-right plus, keyboard submit, newest first and reload cache',
   await page.getByPlaceholder('Введите ссылку').press('Enter')
   await expect(page.locator('.saved-link-card')).toHaveCount(2)
   await expect(page.locator('.saved-link-card').first()).toContainText('Новый обзор')
+  await expect(page.locator('.saved-link-card').first()).toContainText('Актуальный заголовок статьи')
+  await expect(page.locator('.saved-link-card').first()).toContainText('Текст описания')
   await expect(page.getByText('Ссылка добавлена.')).toHaveCount(0)
   await expect(page.getByPlaceholder('Введите ссылку')).toBeVisible()
   await expect(page.getByPlaceholder('Введите ссылку')).toHaveValue('')
