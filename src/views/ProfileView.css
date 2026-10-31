@@ -1,0 +1,155 @@
+/* Unified sticky Liquid Glass profile: title, hero and edit form are ONE layer.
+   Existing .topbar glass tokens govern top/safe-area and full-bleed geometry. */
+.page--viewport .page-motion .profile-glass-header.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 36;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding-bottom: 16px;
+  isolation: isolate;
+  overflow: visible;
+  background: var(--header-glass-background);
+  -webkit-backdrop-filter: var(--header-glass-filter);
+  backdrop-filter: var(--header-glass-filter);
+}
+.profile-glass-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: rgba(var(--profile-tint-rgb, 14,19,32), var(--profile-tint-alpha, 0));
+}
+.profile-glass-header__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+.profile-glass-header__title-row h1 {
+  min-width: 0;
+  margin: 0;
+  color: var(--accent);
+  font-size: var(--section-title-size);
+  font-weight: var(--section-title-weight);
+  line-height: 1.02;
+  letter-spacing: -.04em;
+  overflow-wrap: anywhere;
+}
+.profile-glass-header__edit { flex: 0 0 42px; }
+.profile-glass-header__avatar-row {
+  position: relative;
+  align-self: center;
+  width: 142px;
+  height: 142px;
+  margin: 13px auto 0;
+}
+.profile-picture {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 50%;
+  background: linear-gradient(145deg,#303848,#141821);
+  color: #f0f5f6;
+  font-size: 50px;
+  font-weight: 800;
+}
+.profile-picture img,
+.profile-avatar-crop img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+.profile-avatar-crop {
+  position: relative;
+  width: 142px;
+  height: 142px;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.28);
+  background: #171c29;
+  touch-action: none;
+  cursor: grab;
+}
+.profile-avatar-crop img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: auto;
+  height: auto;
+  max-width: none;
+  object-fit: unset;
+  user-select: none;
+}
+.profile-avatar-crop:active { cursor: grabbing; }
+.profile-glass-header__avatar-edit {
+  position: absolute;
+  right: -5px;
+  bottom: 2px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--header-glass-stroke);
+  border-radius: 50%;
+  color: #11171a;
+  background: var(--accent);
+  box-shadow: 0 4px 16px rgba(0,0,0,.34);
+}
+.profile-file-input { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; pointer-events:none; }
+.profile-appearance-panel {
+  overflow: hidden;
+  width: 100%;
+}
+.profile-color-picker {
+  display: flex;
+  justify-content: center;
+  gap: 11px;
+  padding: 18px 0 4px;
+}
+.profile-color-picker__swatch {
+  display: grid;
+  width: 35px;
+  height: 35px;
+  flex: 0 0 35px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.35);
+  border-radius: 50%;
+  background: var(--swatch);
+  color: #0d1117;
+}
+.profile-color-picker__swatch:first-child {
+  background: linear-gradient(145deg,rgba(255,255,255,.14),rgba(11,16,26,.22));
+  color: #c6d0dc;
+}
+.profile-color-picker__swatch--active {
+  outline: 2px solid #f6f7f9;
+  outline-offset: 3px;
+}
+.profile-crop-hint { margin: 10px 0 0; color: var(--muted); font-size: 10px; text-align: center; }
+.profile-zoom-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.profile-zoom-control input { width: min(200px, 60vw); accent-color: var(--accent); }
+.profile-appearance-error { margin: 10px 0 0; color: #ff9ba4; font-size: 11px; }
+@media (prefers-reduced-motion: reduce) {
+  .profile-appearance-panel { transition: none !important; }
+}
