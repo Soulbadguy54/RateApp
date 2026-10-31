@@ -503,6 +503,50 @@ def game_details(game_id: int, request: Request) -> dict[str, object]:
         return _detail_response(session, game, details)
 
 
+@router.get("/api/games/{game_id}/similar")
+def similar_games(game_id: int, request: Request) -> dict[str, object]:
+    """Read IGDB similar_games from the existing cached full Game payload.
+
+    Batch-hydrate missing catalog games only on demand. No new column, join
+    table or eager IGDB request when the user opens the source list.
+    """
+    with _session() as session:
+        _current_user(request, session)
+        game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+        if game is None:
+            raise HTTPException(status_code=404, detail="Игра не найдена в нашей базе.")
+        raw = (game.igdb_payload or {}).get("similar_games") or []
+        related_ids = list(dict.fromkeys(
+            i for i in raw if type(i) is int and i > 0 and i != game_id
+        ))[:12] if isinstance(raw, list) else []
+        if not related_ids:
+            return {"items": []}
+        present = {row.igdb_id for row in session.scalars(
+            select(Game).where(Game.igdb_id.in_(related_ids))
+        ).all()}
+    missing = [value for value in related_ids if value not in present]
+    if missing:
+        try:
+            rows = igdb_client.request(
+                "games",
+                f"fields {IGDB_GAME_FIELDS}; where id = ({','.join(map(str, missing))}) "
+                "& version_parent = null; limit 12;",
+                priority=Priority.BACKGROUND,
+            )
+            if rows:
+                _cache_igdb_games(rows)
+        except (HTTPException, OSError, ValueError):
+            # The related shelf is optional, and local matches remain usable.
+            pass
+    with _session() as session:
+        fetched = {row.igdb_id: row for row in session.scalars(
+            select(Game).where(Game.igdb_id.in_(related_ids))
+        ).all()}
+        ordered = [fetched[i] for i in related_ids if i in fetched][:12]
+        ratings = _community_rating_map(session, [g.id for g in ordered]) if ordered else {}
+        return {"items": [_game_payload(g, ratings.get(g.id)) for g in ordered]}
+
+
 def _ranked_igdb_search_rows(
     query: str, offset: int = 0, *, priority: Priority = Priority.SEARCH,
 ) -> tuple[list[dict[str, object]], bool]:

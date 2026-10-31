@@ -19,8 +19,8 @@ test('links show game cover carousel and navigate to ordinary game details', asy
         {
           id: 7, url: 'https://example.org/with-games', title: 'Article with games',
           createdAt: '2026-10-31T12:00:00', games: [
-            { id: 101, title: 'SOMA', coverUrl: null },
-            { id: 102, title: 'Disco Elysium', coverUrl: null },
+            { id: 101, igdbId: 9727, title: 'SOMA', coverUrl: null },
+            { id: 102, igdbId: 26472, title: 'Disco Elysium', coverUrl: null },
           ],
         },
         {
@@ -33,7 +33,7 @@ test('links show game cover carousel and navigate to ordinary game details', asy
     } else if (pathname.endsWith('/thumbnail')) {
       await route.fulfill({ status: 204, body: '' })
     } else if (/\/api\/games\/\d+\/details$/.test(pathname)) {
-      await json({ game: { id: 101, igdbId: 999, title: 'SOMA',
+      await json({ game: { id: 9727, igdbId: 9727, title: 'SOMA',
         coverUrl: null, platforms: [], genres: [], description: '', releaseDate: null,
         igdbRating: null }, details: {} })
     } else await json({})
@@ -43,12 +43,12 @@ test('links show game cover carousel and navigate to ordinary game details', asy
   await expect(page.getByRole('heading', { name: 'Мои ссылки' })).toBeVisible()
   const source = page.locator('[data-saved-link-id="7"]')
   const withoutGames = page.locator('[data-saved-link-id="8"]')
-  await expect(source.getByText('Игры из ссылки')).toBeVisible()
+  await expect(source.locator('.saved-link-card__matched')).toBeVisible()
   await expect(source.locator('.saved-link-card__game-tile')).toHaveCount(2)
   await expect(withoutGames.locator('.saved-link-card__matched')).toHaveCount(0)
   await expect(source.getByRole('button', { name: 'Открыть игру SOMA' })).toBeVisible()
   await source.getByRole('button', { name: 'Открыть игру SOMA' }).click()
-  await expect(page).toHaveURL(/tab=links.*game=101/)
+  await expect(page).toHaveURL(/tab=links.*game=9727/)
   await expect(page.getByRole('heading', { name: 'Мои ссылки' })).toHaveCount(0)
   await page.goBack()
   await expect(page.getByRole('heading', { name: 'Мои ссылки' })).toBeVisible()
