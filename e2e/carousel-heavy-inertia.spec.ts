@@ -2,9 +2,9 @@ import { expect, test } from '@playwright/test'
 
 test.use({ serviceWorkers: 'block' })
 
-test('slow drag is weighted; fast drag continues toward the far end without opening games', async ({ page }) => {
+test('slow drag is weighted; fast drag coasts through several covers without racing to the end', async ({ page }) => {
   let openDetails = 0
-  const games = Array.from({ length: 14 }, (_, i) => ({
+  const games = Array.from({ length: 24 }, (_, i) => ({
     id: 1000 + i, igdbId: 5000 + i, title: 'Game ' + (i + 1), coverUrl: null,
   }))
   await page.route('**/api/**', async route => {
@@ -51,6 +51,7 @@ test('slow drag is weighted; fast drag continues toward the far end without open
   await ptr.up()
   await page.waitForTimeout(1500)
   const afterFast = await track.evaluate(el => el.scrollLeft)
-  expect(afterFast).toBeGreaterThan(limits.max * .8)
+  expect(afterFast).toBeGreaterThan(afterSlow + 240)
+  expect(afterFast).toBeLessThan(limits.max * .85)
   expect(openDetails).toBe(0)
 })
