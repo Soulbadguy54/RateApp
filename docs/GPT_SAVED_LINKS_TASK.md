@@ -51,3 +51,10 @@ Automation run history records the real GPT attempt. Every run should report tim
 First forced run 31.10.2026 18:24 UTC: claim id=16 succeeded, Gateway upstream_unavailable prevented prepare, extract skipped, submit skipped, no names written. Do not forcibly re-claim the same link until its ordinary lease expiration; the worker enforces up to 3 attempts.
 
 The existing hourly Gateway resolver schedule gsc_01M621B35V00EHJ896JJMPVMHN remains pending (needsConfirmation). The owner must confirm the Gateway schedule called RateAPP staging — одна ссылка и все игры. Without that action, GPT names may be submitted but game-ID matching will not be scheduled. Only staging container rateapp-stage-api is permitted.
+
+
+## Операционный фикс на 01.11.2026 (PR #135)
+
+Указанная ранее фраза про «resolver требует подтверждения» устарела: Gateway `gsc_01M621B35V00EHJ896JJMPVMHN` активен и имеет успешный последний запуск. Зафиксирован сбой ChatGPT Automation `not_found`: агент отправлял команду на несуществующий selector `rateapp`. Для каждого разрешённого вызова Gateway использовать `server="srv_01M5EGQNHR00Q9ZVKASJYKESEW"`, `shell="/bin/bash"`, текущие строго фиксированные команды `docker exec rateapp-stage-api ...`. Секретные lease tokens не выводить в финальные отчёты; только передавать в stdin prepare/submit. Никаких дополнительных команд/веб-запросов до успешного prepare и никаких действий с production.
+
+Для проверки по синтетической ссылке из отдельного staging user заменить ТОЛЬКО QA claim и QA resolve на вызовы с `--only-id TEST_LINK_ID`. После успешного QA вернуть штатный production-independent staged prompt с обычным claim, включить hourly задачу и проверить `is_enabled`. Не запрашивать реальный URL/контент пользователя при испытаниях. Автоматизация может честно завершать источник ошибкой unavailable, если доступна лишь социальная заставка, а не текст материала.
