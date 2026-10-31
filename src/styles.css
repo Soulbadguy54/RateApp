@@ -4055,3 +4055,47 @@ body:has(.auth-shell) .install-prompt { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .push-settings__warning--action { transition: none; }
 }
+
+/* Intermediate-strength collection themes: distinct colored rims/tinted
+   surfaces, without the previous bright neon glow. */
+.collection-card:not(.collection-card--selected) {
+  border-color: color-mix(in srgb, var(--collection-accent, #c4a2ff) 44%, rgba(150,155,170,.18));
+  background: radial-gradient(ellipse at 5% 0%, color-mix(in srgb, var(--collection-accent, #c4a2ff) 16%, transparent), transparent 66%),
+    linear-gradient(148deg, #20232d, #11141b);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--collection-accent, #c4a2ff) 14%, transparent),
+    0 6px 18px rgba(0,0,0,.16);
+}
+.collection-card .collection-card__footer {
+  background: linear-gradient(110deg, color-mix(in srgb, var(--collection-accent, #c4a2ff) 13%, #171b24), #161922 90%);
+}
+.collection-card .collection-card__mark { color: var(--collection-accent, #c4a2ff); }
+
+/* One heart, no rotating Layers/Heart icon or duplicated visual language.
+   Long press toggles the system wishlist; a short tap still opens collections. */
+.detail-page .detail-catalog-icon--collections {
+  color: rgb(var(--palette-wishlist-rgb));
+  border: 1px solid rgba(var(--palette-wishlist-rgb), .48);
+  background: rgba(var(--palette-wishlist-rgb), .07);
+  transition: background .28s ease, border-color .28s ease, box-shadow .28s ease;
+}
+.detail-page .detail-catalog-icon--collections[aria-expanded="true"] {
+  color: rgb(var(--palette-wishlist-rgb));
+  border-color: rgba(var(--palette-wishlist-rgb), .66);
+  background: rgba(var(--palette-wishlist-rgb), .14);
+}
+.detail-page .detail-catalog-icon--collections.detail-catalog-icon--wishlist-active {
+  color: rgb(var(--palette-wishlist-rgb));
+  border-color: rgb(var(--palette-wishlist-rgb));
+  background: rgba(var(--palette-wishlist-rgb), .16);
+  box-shadow: 0 0 0 1px rgba(var(--palette-wishlist-rgb), .15),
+    0 3px 18px rgba(var(--palette-wishlist-rgb), .18);
+}
+.detail-page .detail-catalog-icon--wishlist-active > svg {
+  fill: rgb(var(--palette-wishlist-rgb));
+  stroke: rgb(var(--palette-wishlist-rgb));
+}
+@media (prefers-reduced-motion: reduce) {
+  .detail-page .detail-catalog-icon--collections { transition: none; }
+}
+
+.detail-similar__track { touch-action: pan-y; }

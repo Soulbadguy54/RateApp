@@ -307,7 +307,7 @@ export default function PushSettings({ user, onOpenWishlist }: { user: string; o
       {supported && state && !state.config.enabled && (
         <p className="push-settings__warning" role="status">
           <Icon name="alert-triangle" size={18} />
-          Сервис уведомлений не настроен на сервере Rate APP. Разрешение браузера здесь не поможет.
+          Сервис уведомлений недоступен.
         </p>
       )}
       {supported && state?.config.enabled && state.permission === 'default' && !enabled && (

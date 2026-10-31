@@ -1,0 +1,31 @@
+/* Shared loading grammar: tinted ring above a short, nontechnical caption. */
+.content-loading {
+  --loading-accent: var(--accent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  min-height: 155px;
+  padding: 20px 10px;
+  text-align: center;
+}
+.content-loading--violet { --loading-accent: var(--igdb-accent); }
+.content-loading__spinner {
+  display: block;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border: 2.5px solid color-mix(in srgb, var(--loading-accent) 20%, transparent);
+  border-top-color: var(--loading-accent);
+  border-right-color: color-mix(in srgb, var(--loading-accent) 65%, transparent);
+  border-radius: 50%;
+  animation: game-database-spin .88s linear infinite;
+}
+.content-loading__text { color: #c1c8d3; font-size: 12px; font-weight: 650; line-height: 1.5; }
+.content-loading--compact { min-height: 78px; gap: 9px; padding: 9px; }
+.content-loading--compact .content-loading__spinner { width: 21px; height: 21px; flex-basis: 21px; }
+.content-loading--compact .content-loading__text { font-size: 11px; }
+@media (prefers-reduced-motion: reduce) {
+  .content-loading__spinner { animation: none; }
+}

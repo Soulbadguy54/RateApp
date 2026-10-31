@@ -25,6 +25,7 @@ import AuthScreen, { type AuthUser } from './AuthScreen'
 import { sessionFetch, subscribeSessionExpiry, getSessionExpiredSnapshot, resetSessionExpired } from './sessionFetch'
 import './views/DiscoverView.css'
 import LoadingScreen from './LoadingScreen'
+import ContentLoading from './components/ContentLoading'
 import { PushOnboarding, clearPushStateCache, disconnectPushForLogout, preloadPushState } from './PushSettings'
 import {
   games,
@@ -394,7 +395,8 @@ function App() {
   const [similarGamesById, setSimilarGamesById] = useState<Record<number, Game[]>>({})
   const [similarCoversReadyById, setSimilarCoversReadyById] = useState<Record<number, boolean>>({})
   const similarLoadingRef = useRef(new Set<number>())
-  const [wishlistToastGameId, setWishlistToastGameId] = useState<number | null>(null)
+  const [wishlistToast, setWishlistToast] = useState<{ gameId: number; added: boolean } | null>(null)
+  const wishlistToggleInFlightRef = useRef(new Set<number>())
   const wishlistToastTimerRef = useRef<number | null>(null)
   const wishlistHoldRef = useRef<{ pointerId: number; x: number; y: number; timer: number } | null>(null)
   const suppressWishlistClickRef = useRef<number>(0)
@@ -2000,27 +2002,30 @@ function App() {
   const selectedEntry = selectedGameId ? entryMap.get(selectedGameId) : undefined
   const selectedGame = selectedGameId ? catalogGameById.get(selectedGameId!) : undefined
 
-  const showWishlistToast = (gameId: number) => {
+  const showWishlistToast = (gameId: number, added: boolean) => {
     if (wishlistToastTimerRef.current) window.clearTimeout(wishlistToastTimerRef.current)
-    setWishlistToastGameId(gameId)
+    setWishlistToast({ gameId, added })
     wishlistToastTimerRef.current = window.setTimeout(() => {
-      setWishlistToastGameId(null)
+      setWishlistToast(null)
       wishlistToastTimerRef.current = null
     }, 2200)
   }
 
-  const wishlistQuickAdd = async (game: Game) => {
-    if (entryMap.get(game.id)?.collectionIds.includes(WISHLIST_COLLECTION_ID)) {
-      showWishlistToast(game.id)
-      return
-    }
+  const wishlistQuickToggle = async (game: Game) => {
+    if (wishlistToggleInFlightRef.current.has(game.id)) return
+    const included = Boolean(entryMap.get(game.id)?.collectionIds.includes(WISHLIST_COLLECTION_ID))
+    wishlistToggleInFlightRef.current.add(game.id)
     try {
-      const response = await sessionFetch('/api/library/' + game.id + '/wishlist', { method: 'PUT' })
-      if (!response.ok) throw new Error('Wishlist save failed')
-      setEntries(current => withCollectionMembership(current, game.id, WISHLIST_COLLECTION_ID, true))
-      showWishlistToast(game.id)
+      const response = await sessionFetch('/api/library/' + game.id + '/wishlist', {
+        method: included ? 'DELETE' : 'PUT',
+      })
+      if (!response.ok) throw new Error('Wishlist update failed')
+      setEntries(current => withCollectionMembership(current, game.id, WISHLIST_COLLECTION_ID, !included))
+      showWishlistToast(game.id, !included)
     } catch {
-      window.alert('Не удалось добавить игру в «Хочу пройти».')
+      window.alert('Не удалось изменить список «Хочу пройти». Попробуй ещё раз.')
+    } finally {
+      wishlistToggleInFlightRef.current.delete(game.id)
     }
   }
 
@@ -2037,9 +2042,9 @@ function App() {
               <Icon name="back" size={20} />
             </button>
           </div>
-          <p className="game-database-loading" role="status">
-            {failedGameDetailsId === selectedGameId ? 'Не удалось загрузить игру.' : 'Загружаем игру из базы…'}
-          </p>
+          {failedGameDetailsId === selectedGameId
+            ? <p className="game-database-loading" role="alert">Не удалось загрузить игру.</p>
+            : <ContentLoading tone={activeTab === 'add' || activeTab === 'discovery' ? 'violet' : 'green'} text="Открываем игру…" />}
         </div>
       )
     }
@@ -2080,8 +2085,10 @@ function App() {
           <div className="detail-toolbar__actions">
             <button
               type="button"
-              className="round-add detail-catalog-icon detail-catalog-icon--collections"
+              className={'round-add detail-catalog-icon detail-catalog-icon--collections' +
+                (selectedEntry?.collectionIds.includes(WISHLIST_COLLECTION_ID) ? ' detail-catalog-icon--wishlist-active' : '')}
               aria-label="Коллекции"
+              aria-pressed={Boolean(selectedEntry?.collectionIds.includes(WISHLIST_COLLECTION_ID))}
               title="Управление коллекциями"
               aria-expanded={collectionPickerOpen}
               aria-controls="game-collection-picker"
@@ -2096,7 +2103,7 @@ function App() {
                   wishlistHoldRef.current = null
                   suppressWishlistClickRef.current = Date.now()
                   setCollectionPickerOpen(false)
-                  void wishlistQuickAdd(selectedGame)
+                  void wishlistQuickToggle(selectedGame)
                 }, 470)
                 wishlistHoldRef.current = {
                   pointerId: event.pointerId, x: event.clientX, y: event.clientY, timer,
@@ -2121,7 +2128,7 @@ function App() {
                   wishlistHoldRef.current = null
                   suppressWishlistClickRef.current = Date.now()
                   setCollectionPickerOpen(false)
-                  void wishlistQuickAdd(selectedGame)
+                  void wishlistQuickToggle(selectedGame)
                 }, 470)
                 wishlistHoldRef.current = {
                   pointerId, x: touch.clientX, y: touch.clientY, timer,
@@ -2149,12 +2156,7 @@ function App() {
                 setCollectionPickerOpen(open => !open)
               }}
             >
-              <span className="detail-catalog-icon__symbol detail-catalog-icon__symbol--layers" aria-hidden="true">
-                <Icon name="layers" size={19} />
-              </span>
-              <span className="detail-catalog-icon__symbol detail-catalog-icon__symbol--heart" aria-hidden="true">
-                <Icon name="heart" size={19} />
-              </span>
+              <Icon name="heart" size={21} />
             </button>
             {isPlaythrough(selectedEntry) ? (
               <>
@@ -2196,8 +2198,8 @@ function App() {
             animate={{ opacity: 1, height: 'auto' }}
             exit={shouldReduceMotion ? undefined : { opacity: 0, height: 0 }}
             style={{ overflow: 'hidden' }}
-            transition={{ height: { duration: shouldReduceMotion ? 0 : .32, ease: [.2, .7, .2, 1] },
-              opacity: { duration: shouldReduceMotion ? 0 : .19 } }}>
+            transition={{ height: { duration: shouldReduceMotion ? 0 : .53, ease: [.25, .8, .25, 1] },
+              opacity: { duration: shouldReduceMotion ? 0 : .36 } }}>
           <section className="detail-collection-picker" id="game-collection-picker"
             aria-label="Управление коллекциями">
             <div className="detail-collection-picker__heading">
@@ -2416,14 +2418,14 @@ function App() {
         </section>
 
         <AnimatePresence>
-          {wishlistToastGameId === selectedGame.id && (
-            <motion.div key={selectedGame.id} className="detail-wishlist-toast" role="status"
+          {wishlistToast?.gameId === selectedGame.id && (
+            <motion.div key={selectedGame.id + '-' + wishlistToast.added} className="detail-wishlist-toast" role="status"
               initial={{ opacity: 0, y: 35, scale: .87 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -85, scale: .93 }}
               transition={{ duration: .45, ease: 'easeOut' }}>
               <Icon name="heart" size={21} />
-              Добавлено в «Хочу пройти»
+              {wishlistToast.added ? 'Добавлено в «Хочу пройти»' : 'Убрано из «Хочу пройти»'}
             </motion.div>
           )}
         </AnimatePresence>
@@ -3046,10 +3048,7 @@ function App() {
         {addSearchHasMore && !addSearchError && <div ref={addSearchSentinelRef} className="game-database-sentinel" aria-hidden="true" />}
 
         {addSearchLoading && (
-          <div className="game-database-loading" role="status">
-            <span className="game-database-loading__spinner" aria-hidden="true" />
-            {addSearchSource === 'igdb' ? 'Подгружаем игры из IGDB…' : 'Ищем в базе игр…'}
-          </div>
+          <ContentLoading compact tone="violet" text="Ищем игры…" />
         )}
 
         {addSearchError && (
@@ -3512,7 +3511,7 @@ function App() {
   }
 
   const renderProfile = () => (
-    <Suspense fallback={<div className="profile-loading">Загружаем профиль…</div>}>
+    <Suspense fallback={<ContentLoading tone="green" text="Открываем профиль…" />}>
     <ProfileView
       user={authUser!}
       onOpenWishlist={() => navigateTo({
@@ -3592,7 +3591,7 @@ function App() {
                 {activeTab === 'library' && renderLibrary()}
                 {activeTab === 'add' && renderAdd()}
                 {activeTab === 'discovery' && (
-                  <Suspense fallback={<div className="game-database-loading">Загружаем рекомендации…</div>}>
+                  <Suspense fallback={<ContentLoading tone="violet" text="Подбираем игры…" />}>
                     <DiscoverView
                       nickname={authUser.nickname}
                       onAddPlaythrough={(game) => {
@@ -3616,7 +3615,7 @@ function App() {
                 )}
                 {activeTab === 'collections' && renderCollections()}
                 {activeTab === 'links' && (
-                  <Suspense fallback={<div className="game-database-loading">Загружаем ссылки…</div>}>
+                  <Suspense fallback={<ContentLoading tone="green" text="Открываем ссылки…" />}>
                     <SavedLinksView onOpenGame={openGame} cacheNamespace={String(authUser.id)} />
                   </Suspense>
                 )}

@@ -17,3 +17,17 @@
 @media (prefers-reduced-motion: reduce) {
   .game-carousel-arrow { transition: none; }
 }
+
+/* Horizontal gestures are controlled by the shared pointer physics, not the
+   browser's early scroll-snap stop. Vertical diagonal scrolling stays native. */
+.game-carousel-shell { touch-action: pan-y; }
+ .game-carousel-shell > [role="list"] {
+  touch-action: pan-y;
+  scroll-snap-type: none;
+  -webkit-overflow-scrolling: touch;
+  cursor: grab;
+}
+.game-carousel-shell > [role="list"]:active { cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) {
+  .game-carousel-shell > [role="list"] { scroll-behavior: auto; }
+}
