@@ -18,7 +18,6 @@ type LinksPage = { items: SavedLink[]; nextBefore: number | null }
 
 const DELETE_DELAY_MS = 4000
 const HOLD_DELAY_MS = 480
-const COUNTDOWN_SEGMENTS = Array.from({ length: 12 }, (_, index) => index)
 
 function displayHost(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
@@ -56,7 +55,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
   const requestRef = useRef<AbortController | null>(null)
   const pendingDeleteRef = useRef<{ id: number; timer: number } | null>(null)
   const holdRef = useRef<{ pointerId: number; id: number; x: number; y: number; timer: number } | null>(null)
-  const suppressCardClickRef = useRef<number | null>(null)
+  const suppressCardClickRef = useRef<{ id: number; until: number } | null>(null)
   const cancelDialogRef = useRef<HTMLButtonElement>(null)
 
   const cancelDelete = () => {
@@ -230,11 +229,17 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
     const target = event.target as HTMLElement
     if (target.closest('button, a, input')) return
     cancelHold()
+    suppressCardClickRef.current = null
+    // Capture touch and pen events to keep the hold stable across nested
+    // text/preview elements. Scrolling still cancels via pointercancel/move.
+    if (event.pointerType !== 'mouse') {
+      try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* unsupported */ }
+    }
     const timer = window.setTimeout(() => {
       if (holdRef.current?.id !== link.id || holdRef.current.pointerId !== event.pointerId) return
       holdRef.current = null
       cancelDelete()
-      suppressCardClickRef.current = link.id
+      suppressCardClickRef.current = { id: link.id, until: Date.now() + 1600 }
       setSelectedIds([link.id])
     }, HOLD_DELAY_MS)
     holdRef.current = { id: link.id, pointerId: event.pointerId, x: event.clientX, y: event.clientY, timer }
@@ -246,7 +251,9 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
   }
 
   const cardClick = (link: SavedLink, event: MouseEvent<HTMLElement>) => {
-    if (suppressCardClickRef.current === link.id) {
+    if (suppressCardClickRef.current?.id === link.id &&
+        Date.now() < suppressCardClickRef.current.until) {
+      // Long-press may produce click after pointerup on Safari/Chromium.
       suppressCardClickRef.current = null
       return
     }
@@ -354,14 +361,20 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
             onPointerMove={holdMove}
             onPointerUp={cancelHold}
             onPointerCancel={cancelHold}
-            onPointerLeave={cancelHold}
+            onPointerLeave={event => { if (event.pointerType === 'mouse') cancelHold() }}
             onContextMenu={event => {
-              if (deleting) return
               event.preventDefault()
+              if (deleting || (event.target as HTMLElement).closest('button, a')) return
               cancelHold()
+              // Touch long-press fires a native contextmenu event *after* our
+              // 480ms timer. Never toggle off the item that was just selected.
+              if (suppressCardClickRef.current?.id === link.id &&
+                  Date.now() < suppressCardClickRef.current.until) return
               cancelDelete()
-              if (!selectedIds.length) setSelectedIds([link.id])
-              else toggleSelection(link.id)
+              if (!selectedIds.length) {
+                suppressCardClickRef.current = { id: link.id, until: Date.now() + 1600 }
+                setSelectedIds([link.id])
+              }
             }}
             onClick={event => cardClick(link, event)}
             onKeyDown={event => cardKeyDown(link, event)}
@@ -397,14 +410,7 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
                     onClick={event => { event.stopPropagation(); armDelete(link.id) }}
                     disabled={deleting || saving}>
                     {pendingDeleteId === link.id && (
-                      <svg className="saved-link-card__countdown" viewBox="0 0 32 32" aria-hidden="true">
-                        {COUNTDOWN_SEGMENTS.map(segment => (
-                          <motion.line key={segment} x1="16" y1="2.8" x2="16" y2="6.5"
-                            transform={'rotate(' + segment * 30 + ' 16 16)'}
-                            initial={{ opacity: 1 }} animate={{ opacity: .12 }}
-                            transition={{ delay: segment * (DELETE_DELAY_MS / COUNTDOWN_SEGMENTS.length / 1000), duration: .1 }} />
-                        ))}
-                      </svg>
+                      <span className="saved-link-card__radial-timer" aria-hidden="true" />
                     )}
                     <Icon name="trash" size={18} />
                   </button>
