@@ -389,11 +389,11 @@ def _instagram_caption(raw: str) -> str:
 
 
 def _instagram_preview_metadata(page: _PagePreview) -> dict[str, str]:
-    generic = page.result()
     caption = (_instagram_caption(page.description) or
                _instagram_caption(page.og_title))
     if caption:
-        return {"title": caption, "description": generic["description"][:200]}
+        # Avoid repeating Instagram's likes/comments/account SEO text.
+        return {"title": caption, "description": ""}
     return {"title": "Видео Instagram", "description": ""}
 
 
