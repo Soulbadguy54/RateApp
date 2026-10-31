@@ -1,0 +1,8 @@
+Rate APP staging quality-assurance article. This is a synthetic test source, not a user's saved link.
+
+This article mentions the video games Hollow Knight, Hades, and Celeste.
+Hollow Knight is a metroidvania game. Hades is an action roguelike game.
+Celeste is a platformer game.
+
+Only these three named games belong to the article. The material is synthetic,
+public and explicitly intended for testing a saved-link extraction worker.
