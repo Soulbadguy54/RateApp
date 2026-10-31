@@ -34,11 +34,18 @@ html, body {
   --safe-left: env(safe-area-inset-left, 0px);
   --bottom-nav-height: 62px;
   --page-bottom-gap: 14px;
-  --header-glass-background: linear-gradient(122deg,
-    rgba(56, 67, 87, .68) 0%, rgba(32, 43, 62, .67) 42%, rgba(24, 36, 51, .72) 100%);
-  --header-glass-stroke: rgba(190, 213, 237, .19);
-  --header-glass-shadow: 0 12px 30px rgba(4, 9, 20, .19),
-    inset 0 1px 0 rgba(244, 250, 255, .13);
+  /* SECTION HEADER v2: shared with the Discovery game-details glass. */
+  --section-title-size: clamp(29px, 8vw, 42px);
+  --section-title-weight: 800;
+  --section-caption-size: 11px;
+  --section-caption-gap: 4px;
+  --section-header-height: 54px;
+  --section-header-bottom-gap: 14px;
+  --header-glass-background: linear-gradient(150deg,
+    rgba(14, 19, 32, .46), rgba(16, 24, 41, .43) 52%, rgba(10, 17, 31, .52));
+  --header-glass-filter: blur(12px) saturate(120%);
+  --header-glass-stroke: rgba(255, 255, 255, .13);
+  --header-glass-shadow: 0 9px 20px rgba(3, 8, 20, .12);
 }
 
 * {
@@ -83,14 +90,17 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   min-height: 100dvh;
 }
 .page {
+  --page-top-inset: max(12px, calc(var(--safe-top) + 6px));
+  --page-inline-right: max(18px, calc(var(--safe-right) + 18px));
+  --page-inline-left: max(18px, calc(var(--safe-left) + 18px));
   width: min(100%, 1180px);
   min-height: 100dvh;
   margin: 0 auto;
   padding:
-    max(12px, calc(var(--safe-top) + 6px))
-    max(18px, calc(var(--safe-right) + 18px))
+    var(--page-top-inset)
+    var(--page-inline-right)
     calc(var(--bottom-nav-height) + var(--safe-bottom) + var(--page-bottom-gap))
-    max(18px, calc(var(--safe-left) + 18px));
+    var(--page-inline-left);
 }
 .page--library {
   padding-top: 0;
@@ -2062,11 +2072,14 @@ button:focus-visible, input:focus-visible, select:focus-visible {
     --page-bottom-gap: 34px;
   }
   .page {
+    --page-top-inset: max(28px, calc(var(--safe-top) + 18px));
+    --page-inline-right: max(28px, calc(var(--safe-right) + 28px));
+    --page-inline-left: max(28px, calc(var(--safe-left) + 28px));
     padding:
-      max(28px, calc(var(--safe-top) + 18px))
-      max(28px, calc(var(--safe-right) + 28px))
+      var(--page-top-inset)
+      var(--page-inline-right)
       calc(var(--bottom-nav-height) + var(--page-bottom-gap))
-      max(28px, calc(var(--safe-left) + 28px));
+      var(--page-inline-left);
   }
   .game-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 25px 18px; }
   .game-card__cover-wrap { border-radius: 23px; }
@@ -4106,61 +4119,95 @@ body:has(.auth-shell) .install-prompt { display: none; }
 .detail-similar__track { touch-action: pan-y; }
 
 
-/* Shared floating glass: the page itself remains the scrollport, so the
-   content travels beneath the fixed controls without layout duplication. */
+/* SECTION HEADER v2 — full-width, square and flush to the viewport top.
+   Exactly one translucent glass layer across all sections; inner content
+   uses the same page gutters. CSS vars above form the design contract. */
 .page--viewport:not(.page--discovery) .page-motion :is(
   .topbar, .subpage-header, .detail-toolbar
 ) {
   position: sticky;
   top: 0;
   z-index: 35;
-  margin-inline: -8px;
-  padding: 9px 8px 11px;
-  border: 1px solid var(--header-glass-stroke);
-  border-top-color: rgba(244, 250, 255, .11);
-  border-radius: 0 0 18px 18px;
+  margin: calc(-1 * var(--page-top-inset))
+          calc(-1 * var(--page-inline-right))
+          var(--section-header-bottom-gap)
+          calc(-1 * var(--page-inline-left));
+  min-height: calc(var(--section-header-height) + var(--page-top-inset));
+  padding: calc(var(--page-top-inset) + 5px)
+           var(--page-inline-right)
+           9px
+           var(--page-inline-left);
+  border: 0;
+  border-bottom: 1px solid var(--header-glass-stroke);
+  border-radius: 0;
   background: var(--header-glass-background);
-  -webkit-backdrop-filter: blur(30px) saturate(140%);
-  backdrop-filter: blur(30px) saturate(140%);
+  -webkit-backdrop-filter: var(--header-glass-filter);
+  backdrop-filter: var(--header-glass-filter);
   box-shadow: var(--header-glass-shadow);
 }
-/* Saved Links retains its own caption and matches the shared header inset. */
-.page--viewport .page-motion .saved-links-page .saved-links-header.topbar {
-  margin-inline: -8px;
-}
-.page--viewport .page-motion .profile-topbar { margin-bottom: 16px; }
 
-/* Preserve My Games' scroll-anchored collapse: header, filters and chevron
-   stay one measured sticky surface rather than independent moving panels. */
+/* One typographic scale for root titles, regardless of accent or caption.
+   Collection/detail inner headings deliberately keep their own hierarchy. */
+.page--viewport .page-motion .topbar h1,
+.discover-topbar__title,
+.library-title {
+  font-size: var(--section-title-size);
+  font-weight: var(--section-title-weight);
+  letter-spacing: -.04em;
+  line-height: 1.02;
+}
+.game-database-heading__row {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 0;
+}
+.game-database-powered,
+.saved-links-header p {
+  margin: var(--section-caption-gap) 0 0;
+  color: var(--muted);
+  font-size: var(--section-caption-size);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+.game-database-powered strong {
+  font-size: inherit;
+  letter-spacing: .04em;
+}
+
+/* My Games: the existing sticky stack is ONE continuous glass surface.
+   No contour/stripe between the title, statuses, filters and chevron. */
 .library-sticky-stack {
   background: var(--header-glass-background);
-  -webkit-backdrop-filter: blur(30px) saturate(140%);
-  backdrop-filter: blur(30px) saturate(140%);
+  -webkit-backdrop-filter: var(--header-glass-filter);
+  backdrop-filter: var(--header-glass-filter);
   border-bottom-color: var(--header-glass-stroke);
-  border-radius: 0 0 19px 19px;
+  border-radius: 0;
   box-shadow: var(--header-glass-shadow);
 }
 .library-sticky-stack--collapsed {
-  border-bottom-color: rgba(190, 213, 237, .23);
+  border-bottom-color: var(--header-glass-stroke);
   box-shadow: var(--header-glass-shadow);
 }
-.library-control-dock {
-  border-top: 1px solid rgba(213, 230, 248, .10);
-  padding-top: 3px;
-}
+.library-control-dock { border: 0; padding-top: 0; }
 .library-dock-toggle {
   color: rgba(217, 233, 244, .75);
-  border-radius: 0 0 18px 18px;
+  border-radius: 0;
 }
 .library-dock-toggle:focus-visible { outline-offset: -2px; }
 .library-filter-panel {
-  border-color: rgba(194, 215, 235, .13);
-  background: rgba(35, 46, 63, .40);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
 }
 .library-filter-panel .filter-option { background-color: rgba(20, 28, 40, .57); }
 .library-filter-panel .filter-option--active { background-color: var(--accent); }
 
-/* A lazy screen occupies its final space from the first frame. */
+/* Lazy screens keep their geometry while loading. */
 .viewport-loading {
   display: grid;
   place-items: center;
@@ -4170,6 +4217,6 @@ body:has(.auth-shell) .install-prompt { display: none; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .library-sticky-stack,
   .page--viewport:not(.page--discovery) .page-motion :is(.topbar,.subpage-header,.detail-toolbar) {
-    background: rgba(35, 44, 61, .95);
+    background: rgba(15, 21, 33, .90);
   }
 }
