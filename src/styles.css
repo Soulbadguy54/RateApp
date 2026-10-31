@@ -4408,3 +4408,40 @@ body:has(.auth-shell) .install-prompt { display: none; }
   color: #0b0d12;
   background: rgb(var(--profile-accent-rgb, 140,242,125));
 }
+
+/* Scoping the cloud selector to Profile keeps My Games navigation unmodified.
+   Reuses search, sort, status, filters and the same game grid. */
+.library-cloud-picker .library-topbar {
+  justify-content: flex-start;
+  gap: 9px;
+}
+.library-cloud-picker .library-topbar .library-title {
+  flex: 1;
+  min-width: 0;
+}
+.library-cloud-picker__back {
+  flex: 0 0 35px;
+  width: 35px;
+  height: 35px;
+  border: 1px solid rgba(140,242,125,.22);
+  border-radius: 12px;
+  color: var(--accent);
+  background: rgba(140,242,125,.06);
+}
+.library-cloud-picker .topbar-actions {
+  margin-left: auto;
+}
+.library-cloud-picker__prompt {
+  grid-column: 1 / -1;
+  padding: 10px 13px;
+  border: 1px solid rgba(140,242,125,.20);
+  border-radius: 14px;
+  background: rgba(140,242,125,.075);
+  color: #d6f7cd;
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -.02em;
+}
+.library-cloud-picker .game-card {
+  cursor: pointer;
+}
