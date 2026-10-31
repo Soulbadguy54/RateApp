@@ -4,6 +4,7 @@ Only a deliberately claimed URL is read here. No browser, JS, cookies, proxy,
 file downloads, or arbitrary tool calls; Safe Browsing lookup precedes every hop.
 """
 import html
+import json
 import ipaddress
 import re
 import os
@@ -322,155 +323,197 @@ def _read_text(body: bytes, headers: dict[str, str]) -> str:
 
 
 class _PagePreview(HTMLParser):
-    """Only text metadata. Never interpret HTML or fetch images."""
+    """Universal Open Graph, Twitter, title and JSON-LD metadata extractor.
+
+    Parse bounded inert text only: no JavaScript, HTML rendering or image fetch.
+    The selected image address stays server-side and is never sent to clients.
+    """
+    STRUCTURED_TYPES = {"videoobject", "article", "newsarticle",
+                        "blogposting", "socialmediaposting", "review"}
+    MAX_JSONLD_CHARS = 32_768
+
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.in_title = False
+        self.in_jsonld = False
         self.title_parts: list[str] = []
-        self.og_title = ""
-        self.description = ""
-        self.image = ""
+        self.jsonld_parts: list[str] = []
+        self.jsonld_characters = 0
+        self.fields: dict[str, str] = {}
+        self.structured: dict[str, str] = {}
         self.video_marker = False
 
     def handle_starttag(self, tag, attrs):
         attributes = dict(attrs)
         if tag == "title":
             self.in_title = True
-        if tag != "meta":
-            return
-        name = str(attributes.get("property") or attributes.get("name") or "").lower()
-        value = " ".join(str(attributes.get("content") or "").split())
-        if name in ("og:title", "twitter:title") and not self.og_title:
-            self.og_title = value[:180]
-        if name in ("og:description", "description", "twitter:description") and not self.description:
-            self.description = value[:800]
-        if name in ("og:image", "twitter:image") and not self.image:
-            self.image = str(attributes.get("content") or "")[:2048]
-        if name in ("og:video", "og:video:url", "og:video:secure_url", "og:type") and (
-            name != "og:type" or "video" in value.lower()
-        ):
-            self.video_marker = True
+        elif tag == "script" and str(attributes.get("type") or "").split(";", 1)[0].strip().lower() == "application/ld+json":
+            self.in_jsonld = True
+            self.jsonld_parts = []
+            self.jsonld_characters = 0
+        elif tag == "meta":
+            name = str(attributes.get("property") or attributes.get("name") or "").strip().lower()
+            if name in ("og:title", "twitter:title", "og:description",
+                        "twitter:description", "description", "og:image:secure_url",
+                        "og:image", "twitter:image", "og:type", "twitter:card"):
+                value = " ".join(str(attributes.get("content") or "").split())
+                if value and name not in self.fields:
+                    self.fields[name] = value[:2048]
+            if name in ("og:video", "og:video:url", "og:video:secure_url"):
+                self.video_marker = True
+        elif tag == "link":
+            rel = str(attributes.get("rel") or "").strip().lower()
+            if rel == "image_src" and "image_src" not in self.fields:
+                self.fields["image_src"] = str(attributes.get("href") or "")[:2048]
 
     def handle_endtag(self, tag):
         if tag == "title":
             self.in_title = False
+        elif tag == "script" and self.in_jsonld:
+            self.in_jsonld = False
+            try:
+                if self.jsonld_characters <= self.MAX_JSONLD_CHARS:
+                    self._read_jsonld(json.loads("".join(self.jsonld_parts)))
+            except (ValueError, TypeError, RecursionError):
+                pass
+            self.jsonld_parts = []
+            self.jsonld_characters = 0
 
     def handle_data(self, data):
         if self.in_title and sum(map(len, self.title_parts)) < 200:
             self.title_parts.append(data[:200])
+        if self.in_jsonld:
+            self.jsonld_characters += len(data)
+            if self.jsonld_characters <= self.MAX_JSONLD_CHARS:
+                self.jsonld_parts.append(data)
+
+    def _read_jsonld(self, value):
+        # A JSON-LD @graph often lists site, profile, then actual article.
+        # Only content-specific types qualify; Organization/Person/WebSite do not.
+        if isinstance(value, list):
+            for item in value[:20]:
+                self._read_jsonld(item)
+        elif isinstance(value, dict):
+            types = value.get("@type", ())
+            if isinstance(types, str):
+                types = [types]
+            if isinstance(types, list) and any(
+                str(item).rsplit("/", 1)[-1].lower() in self.STRUCTURED_TYPES
+                for item in types[:8]
+            ):
+                for key, candidates in (
+                    ("title", (value.get("headline"), value.get("name"))),
+                    ("description", (value.get("description"),)),
+                    ("image", (value.get("thumbnailUrl"), value.get("image"))),
+                ):
+                    if key not in self.structured:
+                        for candidate in candidates:
+                            if isinstance(candidate, list):
+                                candidate = candidate[0] if candidate else None
+                            if isinstance(candidate, dict):
+                                candidate = candidate.get("url") or candidate.get("contentUrl")
+                            if isinstance(candidate, str) and candidate.strip():
+                                self.structured[key] = candidate.strip()[:2048]
+                                break
+            for key in ("@graph", "mainEntity"):
+                if key in value:
+                    self._read_jsonld(value[key])
 
     def result(self):
-        title = " ".join((self.og_title or "".join(self.title_parts)).split())[:180]
-        description = " ".join(self.description.split())[:200]
-        return {"title": html.unescape(title), "description": html.unescape(description)}
+        def clean(value, limit):
+            return html.unescape(" ".join(str(value or "").split()))[:limit]
+
+        title = clean(
+            self.structured.get("title") or self.fields.get("og:title")
+            or self.fields.get("twitter:title") or "".join(self.title_parts),
+            180,
+        )
+        description = clean(
+            self.structured.get("description") or self.fields.get("og:description")
+            or self.fields.get("twitter:description") or self.fields.get("description"),
+            200,
+        )
+        # General social-media fallback: when no content-specific title exists,
+        # a quoted caption after a colon can be more useful than the user profile.
+        if not self.structured.get("title") and description and (
+            self.video_marker or "video" in self.fields.get("og:type", "").lower()
+            or "player" in self.fields.get("twitter:card", "").lower()
+        ):
+            caption = re.search(r':\s*["“«](.{8,180}?)["”»]', description)
+            if caption and ("@" in title or not title or title.lower().endswith("on instagram")):
+                title = caption.group(1).strip()
+        image_url = (
+            self.structured.get("image") or self.fields.get("og:image:secure_url")
+            or self.fields.get("og:image") or self.fields.get("twitter:image")
+            or self.fields.get("image_src") or ""
+        )
+        return {"title": title, "description": description, "image_url": image_url}
 
 
-def _instagram_reel_url(url: str) -> bool:
-    parts = urlsplit(url)
-    return (parts.hostname or "").lower().rstrip(".") in (
-        "www.instagram.com", "instagram.com", "m.instagram.com"
-    ) and bool(re.fullmatch(r"/(?:reel|reels|p)/[A-Za-z0-9_-]+/?", parts.path))
-
-
-def _instagram_caption(raw: str) -> str:
-    """Extract a caption, not the generic Instagram account/profile heading."""
-    value = html.unescape(" ".join(raw.split()))
-    if not value:
-        return ""
-    # Public Instagram metadata often looks like:
-    # '1,005 likes, 21 comments - @user on Instagram: "actual reel caption"'
-    match = re.search(r"\bon Instagram\s*:\s*[\\\"“'«](.+?)[\\\"”'»](?:\s*[|·-].*)?$", value, re.I)
-    if match:
-        return match.group(1).strip()[:180]
-    match = re.search(r"\bon Instagram\s*:\s*(.{12,})", value, re.I)
-    if match:
-        return match.group(1).strip(' "“”').strip()[:180]
-    return ""
-
-
-def _instagram_preview_metadata(page: _PagePreview) -> dict[str, str]:
-    caption = (_instagram_caption(page.description) or
-               _instagram_caption(page.og_title))
-    if caption:
-        # Avoid repeating Instagram's likes/comments/account SEO text.
-        return {"title": caption, "description": ""}
-    return {"title": "Видео Instagram", "description": ""}
-
-
-
-def preview_source(url: str) -> dict[str, str]:
-    """Bounded HTML metadata from the same Safe Browsing and pinned reader."""
-    body, headers = _safe_page_response(url)
-    content_type = headers["content-type"].split(";", 1)[0].strip().lower()
+def _parse_page_preview(body: bytes, headers: dict[str, str]) -> dict[str, str]:
+    content_type = headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if content_type not in ("text/html", "application/xhtml+xml"):
-        return {"title": "", "description": ""}
+        return {"title": "", "description": "", "image_url": ""}
     charset = "utf-8"
-    if "charset=" in headers["content-type"].lower():
+    if "charset=" in headers.get("content-type", "").lower():
         candidate = headers["content-type"].lower().split("charset=", 1)[1].split(";", 1)[0].strip(' "\'')
         if candidate in ("utf-8", "windows-1251", "iso-8859-1"):
             charset = candidate
-    page = _PagePreview()
-    page.feed(body.decode(charset, errors="replace")[:MAX_RESPONSE_BYTES])
-    if _instagram_reel_url(url):
-        return _instagram_preview_metadata(page)
-    return page.result()
-
-
-def instagram_thumbnail_source(url: str) -> tuple[bytes, str] | None:
-    """Proxy only a post-specific image from the vetted Instagram CDN.
-
-    A profile avatar/login page is deliberately not used as a Reel preview.
-    This endpoint never follows an unverified URL or returns its address.
-    """
-    if not _instagram_reel_url(url):
-        return None
-    body, headers = _safe_page_response(url)
-    if headers["content-type"].split(";", 1)[0].strip().lower() not in ("text/html", "application/xhtml+xml"):
-        return None
     parser = _PagePreview()
-    parser.feed(body.decode("utf-8", errors="replace"))
-    caption = (_instagram_caption(parser.description) or
-               _instagram_caption(parser.og_title))
-    if not parser.image or not (caption or parser.video_marker):
+    parser.feed(body.decode(charset, errors="replace")[:MAX_RESPONSE_BYTES])
+    return parser.result()
+
+
+def preview_source(url: str) -> dict[str, str]:
+    """Reputation-checked generic text metadata for any public HTTP(S) page."""
+    body, headers = _safe_page_response(url)
+    metadata = _parse_page_preview(body, headers)
+    return {"title": metadata["title"], "description": metadata["description"]}
+
+
+def preview_thumbnail_source(url: str) -> tuple[bytes, str] | None:
+    """Verified same-origin image proxy for any public article or video.
+
+    All source and image redirect hops use the same reputation, public-IP,
+    hostname-pinned TLS and maximum response safeguards as GPT fetching.
+    """
+    body, headers = _safe_page_response(url)
+    metadata = _parse_page_preview(body, headers)
+    if not metadata["image_url"]:
         return None
     try:
-        image_url = canonical_url(parser.image)
+        media_url = canonical_url(urljoin(url, metadata["image_url"]))
     except ValueError:
         return None
-    parts = urlsplit(image_url)
-    host = (parts.hostname or "").lower()
-    if (parts.scheme != "https" or not (
-        host.endswith(".cdninstagram.com") or host == "cdninstagram.com" or
-        host.endswith(".fbcdn.net") or host == "fbcdn.net"
-    )):
+    if urlsplit(media_url).scheme != "https":
         return None
-    check_safe_browsing(image_url, timeout=5)
-    deadline = time.monotonic() + 10
-    status, response_headers, image = _fetch_once(
-        image_url, deadline,
-        accepted_types=("image/jpeg", "image/png", "image/webp"),
-        max_bytes=512_000,
+    mime_types = ("image/jpeg", "image/png", "image/webp")
+    image, image_headers = _safe_page_response(
+        media_url, accepted_types=mime_types, max_bytes=512_000, require_https=True,
     )
-    if status != 200 or len(image) < 20:
-        return None
-    mime = response_headers["content-type"].split(";", 1)[0].strip().lower()
-    signatures = {
-        "image/jpeg": image.startswith(b"\xff\xd8\xff"),
-        "image/png": image.startswith(b"\x89PNG\r\n\x1a\n"),
-        "image/webp": image.startswith(b"RIFF") and image[8:12] == b"WEBP",
-    }
-    if not signatures.get(mime, False):
+    mime = image_headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    valid = (
+        mime == "image/jpeg" and image.startswith(b"\xff\xd8\xff")
+        or mime == "image/png" and image.startswith(b"\x89PNG\r\n\x1a\n")
+        or mime == "image/webp" and image.startswith(b"RIFF") and image[8:12] == b"WEBP"
+    )
+    if not valid or len(image) < 20:
         return None
     return image, mime
 
 
-def _safe_page_response(url: str) -> tuple[bytes, dict[str, str]]:
-    """Shared fail-closed reputation and pinned fetch for preview and GPT."""
+def _safe_page_response(url: str, *,
+                        accepted_types: tuple[str, ...] = ACCEPTED_TYPES,
+                        max_bytes: int = MAX_RESPONSE_BYTES,
+                        require_https: bool = False) -> tuple[bytes, dict[str, str]]:
+    """Shared fail-closed reputation and pinned fetch for preview, images and GPT."""
 
     try:
         current = canonical_url(url)
     except ValueError as exc:
         raise SourceSafetyError("Недопустимый URL.", terminal=True) from exc
+    if require_https and not current.startswith("https://"):
+        raise SourceSafetyError("Для изображения необходим HTTPS.", terminal=True)
     seen: set[str] = set()
     deadline = time.monotonic() + MAX_SECONDS
     for hop in range(MAX_REDIRECTS + 1):
@@ -480,7 +523,9 @@ def _safe_page_response(url: str) -> tuple[bytes, dict[str, str]]:
         if deadline - time.monotonic() <= 0:
             raise SourceSafetyError("Истекло время чтения ссылки.")
         check_safe_browsing(current, timeout=min(5.0, deadline - time.monotonic()))
-        status, headers, body = _fetch_once(current, deadline)
+        status, headers, body = _fetch_once(
+            current, deadline, accepted_types=accepted_types, max_bytes=max_bytes,
+        )
         if status == 200:
             return body, headers
         if hop == MAX_REDIRECTS:
@@ -492,7 +537,7 @@ def _safe_page_response(url: str) -> tuple[bytes, dict[str, str]]:
             next_url = canonical_url(urljoin(current, destination))
         except ValueError as exc:
             raise SourceSafetyError("Опасный адрес перенаправления.", terminal=True) from exc
-        if current.startswith("https://") and not next_url.startswith("https://"):
+        if (require_https or current.startswith("https://")) and not next_url.startswith("https://"):
             raise SourceSafetyError("HTTPS не может перенаправлять на HTTP.", terminal=True)
         current = next_url
     raise SourceSafetyError("Ссылка не может быть обработана.")
