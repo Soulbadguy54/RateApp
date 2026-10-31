@@ -105,7 +105,7 @@
   background: conic-gradient(from -90deg,
     rgba(255, 113, 113, .36) 0deg var(--link-delete-angle),
     transparent var(--link-delete-angle) 360deg);
-  animation: link-delete-wipe 4s linear both;
+  animation: link-delete-wipe 2s linear both;
 }
 .saved-link-card__delete svg { position: relative; z-index: 1; }
 @keyframes link-delete-wipe { from { --link-delete-angle: 0deg; } to { --link-delete-angle: 360deg; } }
@@ -151,7 +151,7 @@
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  overscroll-behavior-x: contain;
+  overscroll-behavior-x: auto;
   touch-action: pan-x pan-y;
 }
 .saved-link-card__matched-track::-webkit-scrollbar { display: none; }

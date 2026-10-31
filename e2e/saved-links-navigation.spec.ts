@@ -35,14 +35,17 @@ test('my links: quiet layout, delayed cancellation, long-press bulk delete and n
   await expect(page).toHaveURL(/tab=links/)
   await expect(page.getByRole('heading', { name: 'Мои ссылки' })).toHaveCSS('color', 'rgb(140, 242, 125)')
   await expect(page.getByText('Сохранённые ссылки из других источников')).toBeVisible()
-  await expect(page.getByPlaceholder('example.com')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Добавить ссылку' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Обновить список ссылок' })).toHaveCount(0)
   await expect(page.getByText('Личная подборка')).toHaveCount(0)
   await expect(page.getByText('Добавь статью, обзор или подборку — всё будет под рукой.')).toBeVisible()
 
   const addLink = async (address: string) => {
-    await page.getByLabel('Добавить ссылку').fill(address)
-    await page.getByRole('button', { name: 'Сохранить ссылку' }).click()
+    if (!await page.getByPlaceholder('Введите ссылку').isVisible()) {
+      await page.getByRole('button', { name: 'Добавить ссылку' }).click()
+    }
+    await page.getByPlaceholder('Введите ссылку').fill(address)
+    await page.getByPlaceholder('Введите ссылку').press('Enter')
   }
   await addLink('example.com/' + nickname + '/one')
   await expect(page.locator('.saved-link-card')).toHaveCount(1)
@@ -62,7 +65,7 @@ test('my links: quiet layout, delayed cancellation, long-press bulk delete and n
   await page.waitForTimeout(750)
   await page.getByRole('button', { name: /Отменить удаление ссылки/ }).click()
   await expect(page.locator('.saved-link-card__radial-timer')).toHaveCount(0)
-  await page.waitForTimeout(4050)
+  await page.waitForTimeout(2250)
   expect(singleDeletes).toHaveLength(0)
   await expect(page.locator('.saved-link-card')).toHaveCount(1)
 

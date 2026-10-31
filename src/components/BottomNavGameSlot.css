@@ -68,7 +68,7 @@
 
 .bottom-nav__liquid-path {
   fill: rgba(11, 13, 18, .92);
-  stroke: var(--line);
+  stroke: rgba(var(--igdb-accent-rgb), .48);
   stroke-width: 1.25px;
   vector-effect: non-scaling-stroke;
 }
@@ -77,8 +77,8 @@
    disappears so the settled surface stays in the bottom-nav's palette. */
 .bottom-nav__liquid-rim {
   fill: none;
-  stroke: rgba(var(--igdb-accent-rgb), .34);
-  stroke-width: 2.4px;
+  stroke: rgba(var(--igdb-accent-rgb), .0);
+  stroke-width: 0;
   vector-effect: non-scaling-stroke;
   /* A plain stroke stays cheap to rasterize as the path changes. */
 }
@@ -189,7 +189,10 @@
   background: rgba(140,242,125,.075);
 }
 .bottom-nav__slot--collections .bottom-nav__liquid-rim {
-  stroke: rgba(140,242,125,.34);
+  stroke: transparent;
+}
+.bottom-nav__slot--collections .bottom-nav__liquid-path {
+  stroke: rgba(140, 242, 125, .5);
 }
 .bottom-nav__slot--collections .bottom-nav__bubble-choice:focus-visible {
   outline-color: var(--accent);

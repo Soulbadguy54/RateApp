@@ -23,7 +23,14 @@ test('My Links: top-right plus, keyboard submit, newest first and reload cache',
       list = [newItem, ...list]
       await json(newItem, 201)
     } else if (pathname.endsWith('/preview')) {
-      await json({ title: null, description: null })
+      if (pathname.includes('/62/')) {
+        // Server GET revalidates while this new link's metadata is still
+        // running. The request must not be cancelled by a list re-render.
+        await new Promise(resolve => setTimeout(resolve, 320))
+        await json({ title: 'Актуальный заголовок статьи', description: 'Текст описания' })
+      } else {
+        await json({ title: null, description: null })
+      }
     } else if (pathname.endsWith('/thumbnail')) {
       await route.fulfill({ status: 204, body: '' })
     } else await json({})
@@ -40,13 +47,15 @@ test('My Links: top-right plus, keyboard submit, newest first and reload cache',
   await page.getByPlaceholder('Введите ссылку').fill('example.org/second')
   await page.getByPlaceholder('Введите ссылку').press('Enter')
   await expect(page.locator('.saved-link-card')).toHaveCount(2)
-  await expect(page.locator('.saved-link-card').first()).toContainText('Новый обзор')
+  await expect(page.locator('.saved-link-card').first()).toContainText('Актуальный заголовок статьи')
+  await expect(page.locator('.saved-link-card').first()).toContainText('Актуальный заголовок статьи')
+  await expect(page.locator('.saved-link-card').first()).toContainText('Текст описания')
   await expect(page.getByText('Ссылка добавлена.')).toHaveCount(0)
   await expect(page.getByPlaceholder('Введите ссылку')).toBeVisible()
   await expect(page.getByPlaceholder('Введите ссылку')).toHaveValue('')
   await expect(page.getByRole('button', { name: 'Закрыть ввод ссылки' })).toBeVisible()
   await page.reload()
-  await expect(page.locator('.saved-link-card').first()).toContainText('Новый обзор')
+  await expect(page.locator('.saved-link-card').first()).toContainText('Актуальный заголовок статьи')
   await expect(page.locator('.saved-link-card')).toHaveCount(2)
 })
 
@@ -91,8 +100,9 @@ test('Game detail from links: IGDB ID, similar covers, and wishlist hold toast',
   await page.getByRole('button', { name: 'Открыть игру SOMA' }).click()
   await expect(page).toHaveURL(/game=9727/)
   await expect(page.getByRole('heading', { name: 'SOMA' })).toBeVisible()
-  const dismissInstall = page.getByRole('button', { name: 'Закрыть предложение установки' })
-  if (await dismissInstall.isVisible()) await dismissInstall.click()
+  // This test verifies game gestures, not the asynchronous install banner.
+  // Avoid a banner mounting/unmounting over the lower game cover during click.
+  await page.addStyleTag({ content: '.install-prompt { display: none !important; pointer-events: none !important; }' })
   await expect(page.getByRole('button', { name: 'Открыть похожую игру Disco Elysium' })).toBeVisible()
   const collection = page.getByRole('button', { name: 'Коллекции', exact: true }).first()
   // Mobile touch events must survive native contextmenu/pointercancel.
@@ -120,8 +130,7 @@ test('Game detail from links: IGDB ID, similar covers, and wishlist hold toast',
   expect(added).toBe(1)
   await expect(page.locator('.detail-collection-picker')).toHaveCount(0)
   // PWA install overlay appears on a delay on some mobile engines.
-  const lateInstall = page.getByRole('button', { name: 'Закрыть предложение установки' })
-  if (await lateInstall.isVisible()) await lateInstall.click()
+
   await page.getByRole('button', { name: 'Открыть похожую игру Disco Elysium' }).click()
   await expect(page).toHaveURL(/game=26472/)
 })

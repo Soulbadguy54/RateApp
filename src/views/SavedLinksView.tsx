@@ -17,7 +17,7 @@ type SavedLink = {
 }
 type LinksPage = { items: SavedLink[]; nextBefore: number | null }
 
-const DELETE_DELAY_MS = 4000
+const DELETE_DELAY_MS = 2000
 const HOLD_DELAY_MS = 480
 const META_TTL_MS = 24 * 60 * 60 * 1000
 const LINKS_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -159,27 +159,28 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
     if (addOpen) addInputRef.current?.focus({ preventScroll: true })
   }, [addOpen])
 
-  // Preview fetches happen separately from the fast URL save. The API checks
-  // Safe Browsing, DNS, redirects and TLS; never load unverified remote images.
+  // Keep requests alive across the rapid list revalidations after POST.
+  // Previously a new item was marked attempted, its effect was cancelled by
+  // the background GET, and the item's title stayed a hostname until reload.
   useEffect(() => {
-    let cancelled = false
-    const candidates = items.slice(0, 8).filter(item =>
+    const candidates = items.slice(0, 12).filter(item =>
       !previewAttemptedRef.current.has(item.id) &&
       (!previews[item.id] || Date.now() - previews[item.id].at >= META_TTL_MS))
     for (const item of candidates) previewAttemptedRef.current.add(item.id)
-    const load = async () => {
-      for (const item of candidates) {
-        if (cancelled) return
-        try {
-          const response = await sessionFetch('/api/saved-links/' + item.id + '/preview', { method: 'POST' })
-          if (!response.ok || cancelled) continue
+    for (const item of candidates) {
+      void sessionFetch('/api/saved-links/' + item.id + '/preview', { method: 'POST' })
+        .then(async response => {
+          if (!response.ok) throw new Error('Preview unavailable')
           const info = await response.json() as { title: string | null; description: string | null }
-          if (!cancelled) setPreviews(previous => ({ ...previous, [item.id]: { ...info, at: Date.now() } }))
-        } catch { /* A failed safety check leaves the local fallback preview. */ }
-      }
+          setPreviews(previous => ({ ...previous, [item.id]: { ...info, at: Date.now() } }))
+        })
+        .catch(() => {
+          // A transient failure is retryable on the next list refresh.
+          previewAttemptedRef.current.delete(item.id)
+        })
     }
-    void load()
-    return () => { cancelled = true }
+    // Requests are independent of subsequent list renders. Do not abort them
+    // just because the list was replaced by an authoritative GET response.
   }, [items])
 
   // Native Android Back and Safari edge-swipe dismiss transient UI first,
