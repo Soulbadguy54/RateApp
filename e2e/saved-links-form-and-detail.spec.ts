@@ -102,6 +102,9 @@ test('Game detail from links: IGDB ID, similar covers, and wishlist hold toast',
   await expect(page.getByText('Добавлено в «Хочу пройти»')).toBeVisible()
   expect(added).toBe(1)
   await expect(page.locator('.detail-collection-picker')).toHaveCount(0)
+  // PWA install overlay appears on a delay on some mobile engines.
+  const lateInstall = page.getByRole('button', { name: 'Закрыть предложение установки' })
+  if (await lateInstall.isVisible()) await lateInstall.click()
   await page.getByRole('button', { name: 'Открыть похожую игру Disco Elysium' }).click()
   await expect(page).toHaveURL(/game=26472/)
 })
