@@ -56,6 +56,11 @@ class ProfileAppearanceTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/profile/avatar").content, png)
         self.assertEqual(self.client.get("/api/profile").json()["profileTint"], "blue")
         self.assertNotIn("avatarData", self.client.get("/api/profile").json())
+        response = self.client.post("/api/profile/appearance", json={"tint": "coral"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["profileTint"], "coral")
+        self.assertEqual(response.json()["avatarVersion"], 1)
+        self.assertEqual(self.client.get("/api/profile/avatar").content, png)
         response = self.client.post("/api/profile/appearance", json={
             "tint": "default", "updateAvatar": True, "avatarData": None,
         })
