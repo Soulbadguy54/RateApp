@@ -395,7 +395,7 @@ function App() {
   const [wishlistToastGameId, setWishlistToastGameId] = useState<number | null>(null)
   const wishlistToastTimerRef = useRef<number | null>(null)
   const wishlistHoldRef = useRef<{ pointerId: number; x: number; y: number; timer: number } | null>(null)
-  const suppressWishlistClickRef = useRef(false)
+  const suppressWishlistClickRef = useRef<number>(0)
   const cancelWishlistHold = () => {
     if (wishlistHoldRef.current) window.clearTimeout(wishlistHoldRef.current.timer)
     wishlistHoldRef.current = null
@@ -2060,11 +2060,11 @@ function App() {
               onPointerDown={event => {
                 if (event.button !== 0 || !event.isPrimary) return
                 cancelWishlistHold()
-                suppressWishlistClickRef.current = false
+                suppressWishlistClickRef.current = 0
                 const timer = window.setTimeout(() => {
                   if (wishlistHoldRef.current?.pointerId !== event.pointerId) return
                   wishlistHoldRef.current = null
-                  suppressWishlistClickRef.current = true
+                  suppressWishlistClickRef.current = Date.now()
                   setCollectionPickerOpen(false)
                   void wishlistQuickAdd(selectedGame)
                 }, 530)
@@ -2082,10 +2082,12 @@ function App() {
               onPointerLeave={event => { if (event.pointerType === 'mouse') cancelWishlistHold() }}
               onContextMenu={event => { event.preventDefault(); cancelWishlistHold() }}
               onClick={() => {
-                if (suppressWishlistClickRef.current) {
-                  suppressWishlistClickRef.current = false
+                if (suppressWishlistClickRef.current &&
+                    Date.now() - suppressWishlistClickRef.current < 1300) {
+                  suppressWishlistClickRef.current = 0
                   return
                 }
+                suppressWishlistClickRef.current = 0
                 setCollectionPickerOpen(open => !open)
               }}
             >
