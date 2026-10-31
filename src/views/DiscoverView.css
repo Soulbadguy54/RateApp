@@ -1,7 +1,7 @@
 /* Discovery is a full-bleed replacement of the catalog CONTENT, between its existing top and bottom navigation. */
 .game-database-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .game-database-heading__row{min-width:0}
-.game-database-heading h1{font-size:clamp(25px,7vw,34px)}
+.game-database-heading h1{font-size:var(--section-title-size)}
 
 /* No inherited .page side padding, bottom gap, max-width or scroll: these
    caused the previous inset “picture in picture” poster. Navigation remains
@@ -20,13 +20,13 @@
   overflow:hidden;color:#f6f7ff;
 }
 .discover-topbar{
-  display:flex;align-items:center;gap:9px;flex:0 0 calc(54px + var(--safe-top));
+  display:flex;align-items:center;gap:9px;flex:0 0 calc(var(--section-header-height) + 12px + var(--safe-top));
   margin:0;padding:var(--safe-top) max(12px,var(--safe-right)) 0 max(12px,var(--safe-left));
   background:var(--header-glass-background);z-index:11;
   border-bottom:1px solid var(--header-glass-stroke);
-  border-radius:0 0 18px 18px;
-  -webkit-backdrop-filter:blur(30px) saturate(140%);
-  backdrop-filter:blur(30px) saturate(140%);
+  border-radius:0;
+  -webkit-backdrop-filter:var(--header-glass-filter);
+  backdrop-filter:var(--header-glass-filter);
   box-shadow:var(--header-glass-shadow);
 }
 .discover-icon-button{display:grid;place-items:center;flex:0 0 auto;width:42px;height:42px;border:1px solid var(--line-strong);border-radius:13px;background:linear-gradient(145deg,#242936,#11141c);color:#fff}
@@ -55,7 +55,7 @@
 
 /* Bottom-anchored glass is independent of the top poster. It can overlay a
    tall poster; with a shorter poster, the gap stays the regular app background. */
-.discover-sheet{position:absolute;z-index:3;left:0;right:0;top:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;border-top:1px solid rgba(255,255,255,.29);border-left:1px solid rgba(255,255,255,.13);border-right:1px solid rgba(255,255,255,.13);border-radius:22px 22px 0 0;background:linear-gradient(150deg,rgba(14,19,32,.46),rgba(16,24,41,.43) 52%,rgba(10,17,31,.52));-webkit-backdrop-filter:blur(12px) saturate(120%);backdrop-filter:blur(12px) saturate(120%);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 -4px 20px rgba(3,8,20,.16);will-change:transform}
+.discover-sheet{position:absolute;z-index:3;left:0;right:0;top:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;border-top:1px solid rgba(255,255,255,.29);border-left:1px solid rgba(255,255,255,.13);border-right:1px solid rgba(255,255,255,.13);border-radius:22px 22px 0 0;background:var(--header-glass-background);-webkit-backdrop-filter:var(--header-glass-filter);backdrop-filter:var(--header-glass-filter);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 -4px 20px rgba(3,8,20,.16);will-change:transform}
 .discover-sheet::before{position:absolute;inset:0;pointer-events:none;content:'';background:linear-gradient(125deg,rgba(255,255,255,.055) 0%,transparent 32%,rgba(255,255,255,.016) 65%,transparent 100%)}
 .discover-sheet__handle{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:center;width:100%;height:33px;padding:7px 0 0;border:0;background:transparent;touch-action:none;cursor:grab}
 .discover-sheet__handle:active{cursor:grabbing}
@@ -158,8 +158,8 @@
   margin: 0;
   flex: 0 0 auto;
   color: var(--igdb-accent);
-  font-size: clamp(23px, 6vw, 29px);
+  font-size: var(--section-title-size);
   line-height: 1.02;
   letter-spacing: -.04em;
-  font-weight: 850;
+  font-weight: var(--section-title-weight);
 }
