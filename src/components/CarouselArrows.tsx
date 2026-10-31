@@ -100,7 +100,7 @@ export default function CarouselArrows({
     let frames = 0
     // A decisive flick should continue to the far end; a measured gesture
     // settles naturally with friction so users can inspect nearby cards.
-    const rush = Math.abs(speed) >= 1.25
+    const rush = Math.abs(speed) >= 1.05
     const startLeft = el.scrollLeft
     const destination = speed > 0 ? max : 0
     const duration = Math.min(1300, 780 + Math.abs(destination - startLeft) * .27)
@@ -114,7 +114,7 @@ export default function CarouselArrows({
         const eased = 1 - Math.pow(1 - fraction, 3)
         target = startLeft + (destination - startLeft) * eased
       } else {
-        velocity *= Math.pow(.973, dt / 16)
+        velocity *= Math.pow(.979, dt / 16)
         target = el.scrollLeft + velocity * dt
       }
       const clamped = Math.max(0, Math.min(max, target))
