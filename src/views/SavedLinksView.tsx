@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import CarouselArrows from '../components/CarouselArrows'
 import { createPortal } from 'react-dom'
 import Icon from '../components/Icon'
 import { sessionFetch } from '../sessionFetch'
@@ -219,7 +220,6 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
       if (!response.ok) throw new Error(await responseError(response, 'Не удалось сохранить ссылку.'))
       const added = await response.json() as SavedLink
       setUrl('')
-      setAddOpen(false)
       setFreshlyAddedId(added.id)
       setItems(current => [added, ...current.filter(link => link.id !== added.id)])
       void fetchLinks()
@@ -405,6 +405,7 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
       )}
 
       <div className="saved-links-list">
+        <AnimatePresence initial={false}>
         {!loading && items.map((link, index) => (
           <motion.article
             key={link.id}
@@ -435,9 +436,14 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
             }}
             onClick={event => cardClick(link, event)}
             onKeyDown={event => cardKeyDown(link, event)}
-            initial={reduceMotion ? false : { opacity: 0, y: link.id === freshlyAddedId ? -15 : 12 }}
+            layout={reduceMotion ? false : 'position'}
+            initial={reduceMotion ? false : { opacity: 0, y: link.id === freshlyAddedId ? -17 : 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: .24, delay: Math.min(index, 7) * .04 }}
+            exit={reduceMotion ? undefined : { opacity: 0, height: 0, marginBottom: 0 }}
+            transition={{
+              layout: { type: 'spring', stiffness: 350, damping: 34 },
+              opacity: { duration: .3 }, y: { duration: .3 },
+            }}
           >
             <div className="saved-link-card__body">
               <div className="saved-link-card__thumbnail" aria-hidden="true">
@@ -485,8 +491,8 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
                 onClick={event => event.stopPropagation()}
                 onPointerDown={event => event.stopPropagation()}
                 onContextMenu={event => event.stopPropagation()}>
-                <div className="saved-link-card__matched-track" role="list"
-                  aria-label="Найденные игры, прокрутка по горизонтали">
+                <CarouselArrows className="saved-link-card__matched-track"
+                  label="Найденные игры, прокрутка по горизонтали">
                   {link.games.map(game => (
                     <div className="saved-link-card__matched-item" role="listitem" key={game.id}>
                       <button className="saved-link-card__game-tile" type="button"
@@ -504,11 +510,12 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
                       </button>
                     </div>
                   ))}
-                </div>
+                </CarouselArrows>
               </motion.section>
             )}
           </motion.article>
         ))}
+        </AnimatePresence>
       </div>
 
       {!loading && nextBefore != null && (
