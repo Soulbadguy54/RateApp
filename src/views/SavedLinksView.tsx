@@ -44,7 +44,7 @@ function displayHost(url: string) {
 /** A lightweight UI guard; the server remains the canonical URL validator. */
 function normalizedLinkInput(value: string): string | null {
   const raw = value.trim()
-  if (!raw || /[\\\\\s\u0000-\u001f]/.test(raw)) return null
+  if (!raw || /\s/.test(raw) || raw.includes('\\') || /[\x00-\x1f]/.test(raw)) return null
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && !/^https?:\/\//i.test(raw)) return null
   const normalized = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw
   try {
