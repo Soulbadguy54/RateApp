@@ -3978,3 +3978,54 @@ body:has(.auth-shell) .install-prompt { display: none; }
   text-align: center; white-space: nowrap; pointer-events: none;
 }
 .detail-wishlist-toast svg { color: #ffa2ca; flex: 0 0 auto; }
+
+
+/* Stable, non-shifting game shelves: wait for covers before showing real cards. */
+.detail-similar__loading-track {
+  display: flex; gap: 10px; overflow: hidden; margin-top: 12px;
+  min-height: 169px; pointer-events: none;
+}
+.detail-similar__skeleton-item { flex: 0 0 101px; }
+.detail-similar__skeleton-cover {
+  height: 132px; width: 101px; border-radius: 10px;
+  border: 1px solid var(--line);
+  background: linear-gradient(110deg, #202630 15%, #303b40 43%, #202630 72%);
+  background-size: 220% 100%;
+  animation: game-shelf-shimmer 1.6s ease-in-out infinite;
+}
+.detail-similar__skeleton-title {
+  width: 80px; height: 11px; border-radius: 5px;
+  margin-top: 9px; background: #252c33;
+}
+@keyframes game-shelf-shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+/* Fade only opted-in covers, preserving the established Cover markup. */
+.cover--smooth { position: relative; }
+.cover--smooth .cover__image { opacity: 0; transition: opacity .3s ease-out; }
+.cover--smooth.cover--image-ready .cover__image { opacity: 1; }
+.cover--smooth:not(.cover--image-ready):has(.cover__image)::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(110deg, #222b33 15%, #354049 45%, #222b33 75%);
+  background-size: 220% 100%;
+  animation: game-shelf-shimmer 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.detail-catalog-icon--collections {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+.detail-collection-picker {
+  overflow: hidden;
+  transform-origin: top;
+}
+.detail-collection-picker__grid .collection-card__mosaic {
+  background: rgba(23, 29, 38, .85);
+}
+@media (prefers-reduced-motion: reduce) {
+  .detail-similar__skeleton-cover,
+  .cover--smooth:not(.cover--image-ready):has(.cover__image)::after { animation: none; }
+  .cover--smooth .cover__image { transition: none; }
+}
