@@ -21,8 +21,9 @@
 /* Horizontal gestures are controlled by the shared pointer physics, not the
    browser's early scroll-snap stop. Vertical diagonal scrolling stays native. */
 .game-carousel-shell { touch-action: pan-y; }
-.game-carousel-shell > [role="list"] {
+ .game-carousel-shell > [role="list"] {
   touch-action: pan-y;
+  scroll-snap-type: none;
   -webkit-overflow-scrolling: touch;
   cursor: grab;
 }
