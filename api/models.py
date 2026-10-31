@@ -24,6 +24,8 @@ class User(Base):
     profile_tint: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'default'"))
     avatar_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     avatar_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    profile_cloud_game_ids: Mapped[list[int | None]] = mapped_column(
+        ARRAY(Integer), nullable=False, server_default=text("ARRAY[NULL,NULL,NULL]::integer[]"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
