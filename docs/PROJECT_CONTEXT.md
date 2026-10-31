@@ -543,3 +543,9 @@ Existing ChatGPT automation для staging включена ежечасно и 
 
 Steam-placeholder в профиле берёт существующий локальный логотип `/brand/steam.svg`, изображение остаётся приглушённым серым и недоступным для фокуса/нажатия. Независимая CSS-анимация `profile-steam-cloud-drift` с циклом 8,3 с (противофазный старт −3,1 с) задаёт небольшой сдвиг/поворот, как у игровых облаков; `prefers-reduced-motion: reduce` выключает оба вида анимации. Данные/эндпоинты/миграции не изменены. Для архитектуры PK см. ADR-001: `games.id` локальный FK-target, `games.igdb_id` уникальный внешний идентификатор в API. Не путать их в запросах к базе.
 
+
+## 1 ноября 2026 — адаптивная раскладка смартфонов (PR #133, develop/staging)
+
+Ревью и реализация: [docs/RESPONSIVE_AUDIT_2026-11-01.md](RESPONSIVE_AUDIT_2026-11-01.md), код `src/styles.css`, `src/views/ProfileView.css`/`.tsx`, `src/views/DiscoverView.css`, `src/collectionCards.css`. Телефоны 320–480 CSS px — приоритет; планшетный/desktop режим не переделывался. Bounded `clamp()` для общего header (54–68px), nav (62–74px), полей, профильного аватара (124–176px), облаков и коллекционных мозаик; сохранены safe areas, минимальные tap-зоны, 100dvh scrolling, фиксированные размеры управляющих SVG и независимая анимация Steam.
+
+`ProfileView.tsx` использует `ResizeObserver` для фактического diametра crop при перемещении, масштабировании и сохранении 256px PNG; прежнее жёсткое значение 142px — только fallback до измерения. Стабильная относительная граница игр/Steam вокруг круглого аватара. Добавлен `e2e/responsive-layout.spec.ts` с 6 размерами × Android Chromium/iPhone WebKit, проверкой 6 корней и resize crop; полные E2E и staging **ещё не подтверждены**. Никаких изменений API/БД; PR на `develop`, production требует отдельной приёмки и release gate.
