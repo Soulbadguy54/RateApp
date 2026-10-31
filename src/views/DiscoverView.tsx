@@ -608,6 +608,7 @@ export default function DiscoverView({
   return (
     <section className="discover-screen" aria-label="Персональные рекомендации игр">
       <header className="discover-topbar">
+        <h1 className="discover-topbar__title">Для тебя</h1>
         {history.length > 0 && !expanded && (
           <button type="button" className="discover-icon-button discover-icon-button--undo"
             aria-label="Отменить последний свайп" title="Отменить последний свайп"
@@ -615,7 +616,6 @@ export default function DiscoverView({
         )}
         <button type="button" className="discover-icon-button discover-icon-button--info"
           aria-label="Показать обучение" onClick={() => setHelpOpen(true)}>i</button>
-        <h1 className="discover-topbar__title">Для тебя</h1>
       </header>
 
       <div className="discover-stage" ref={stageRef} aria-live="polite"
