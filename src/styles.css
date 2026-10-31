@@ -4029,3 +4029,29 @@ body:has(.auth-shell) .install-prompt { display: none; }
   .cover--smooth:not(.cover--image-ready):has(.cover__image)::after { animation: none; }
   .cover--smooth .cover__image { transition: none; }
 }
+
+/* Single outlined warning shape. Never mistake server Web Push configuration
+   failures for a browser permission problem; only missing permission is a CTA. */
+.push-settings__warning {
+  display: flex; align-items: flex-start; gap: 9px;
+  width: 100%; padding: 11px 12px; margin: 12px 0 0;
+  border: 1px solid rgba(251, 99, 108, .32);
+  border-radius: 12px; background: rgba(219, 55, 69, .085);
+  color: #ffacb5; font-size: 11px; line-height: 1.55;
+  text-align: left;
+}
+.push-settings__warning svg { flex: 0 0 auto; color: #ff7584; margin-top: 1px; }
+.push-settings__warning--action {
+  cursor: pointer; font: inherit; font-size: 11px; line-height: 1.55;
+  transition: border-color .18s ease, background .18s ease;
+}
+.push-settings__warning--action:hover,
+.push-settings__warning--action:focus-visible {
+  border-color: rgba(255, 117, 132, .9);
+  background: rgba(219, 55, 69, .16);
+  outline: none;
+}
+.push-settings__warning--action:disabled { cursor: wait; opacity: .55; }
+@media (prefers-reduced-motion: reduce) {
+  .push-settings__warning--action { transition: none; }
+}
