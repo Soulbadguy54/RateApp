@@ -160,3 +160,11 @@ QA: iPhone/Android повторное открытие профиля и avatar 
 
 Три persist cloudGameIds (null = auto) находятся в users.profile_cloud_game_ids. Manual pins имеют приоритет, auto fills идут из рейтинга completed/dropped и не дублируют закрепления. Переход в обычную библиотеку и открытие game detail после отмены picker — регрессионный инвариант. Проверять также 0/1/2/3 найденных игр, запрет чужих или повторённых game IDs, адаптивные отступы и reduced-motion.
 
+
+
+## Корректировка стандартного profile-cloud picker (01.11.2026, staging)
+
+- Облака 53×58px (cover 39×49) в левом промежутке до центрального аватара 142px, slot top: 0,72,144 в hero210px, у оценок opaque 16px pill; сохранять их читаемыми при короткой анимации.
+- Справа использовать настоящий Steam brand asset `/brand/steam.svg`, полупрозрачный серый, без onClick/фокуса/URL. Не рисовать Steam вручную через похожие круги.
+- Выбор облака переиспользует «Мои игры» с центральной надписью **«Выбери игру!»** (с !). Для всех стрелок назад единый `icon-button app-back-button`: 42×42, border radius14, stroke19px. Никакой отдельной уменьшенной кнопки в picker.
+- Сохранение `cloudGameIds` использует внешние **IGDB IDs** (`Game.igdb_id`), потому что bootstrap `gameId` — не внутренний `UserGame.game_id`. Сервер делает JOIN с таблицей игр и проверяет owner + playthrough, не требует оценки. Ошибка INVALID_CLOUD_GAME — только API диагностика, без красной подписи в форме. Существующие backend/E2E тесты должны специально использовать разные публичные и локальные ID и проверять Control Resonant playing и RDR2 rated.
