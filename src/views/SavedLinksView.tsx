@@ -392,16 +392,16 @@ export default function SavedLinksView({ onOpenGame }: { onOpenGame: (gameId: nu
           >
             <div className="saved-link-card__body">
               <div className="saved-link-card__thumbnail" aria-hidden="true">
-                {link.games?.[0]?.coverUrl
-                  ? <img src={link.games[0].coverUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
-                  : isInstagramPost(link.url)
-                    ? <>
-                        <Icon name="link" size={23} />
-                        <img className="saved-link-card__instagram-cover"
-                          src={'/api/saved-links/' + link.id + '/thumbnail'} alt=""
-                          loading="lazy" referrerPolicy="no-referrer"
-                          onError={event => { event.currentTarget.style.display = 'none' }} />
-                      </>
+                {isInstagramPost(link.url)
+                  ? <>
+                      <Icon name="link" size={23} />
+                      <img className="saved-link-card__instagram-cover"
+                        src={'/api/saved-links/' + link.id + '/thumbnail'} alt=""
+                        loading="lazy" referrerPolicy="no-referrer"
+                        onError={event => { event.currentTarget.style.display = 'none' }} />
+                    </>
+                  : link.games?.[0]?.coverUrl
+                    ? <img src={link.games[0].coverUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
                     : <Icon name="link" size={23} />}
               </div>
               <div className="saved-link-card__copy">
