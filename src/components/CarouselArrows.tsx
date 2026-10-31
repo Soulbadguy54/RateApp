@@ -16,8 +16,8 @@ export default function CarouselArrows({
 }) {
   const track = useRef<HTMLDivElement>(null)
   const reduceMotion = useReducedMotion()
-  const gestureRef = useRef<{ id: number; x: number; left: number; lastX: number;
-    lastT: number; velocity: number; moved: boolean } | null>(null)
+  const gestureRef = useRef<{ id: number; kind: string; x: number; y: number;
+    left: number; moved: boolean; samples: { x: number; time: number }[] } | null>(null)
   const momentumRef = useRef<number | null>(null)
   const ignoreClickRef = useRef(false)
   const clickResetRef = useRef<number | null>(null)
@@ -31,75 +31,103 @@ export default function CarouselArrows({
     if (clickResetRef.current !== null) window.clearTimeout(clickResetRef.current)
   }, [])
   const onDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
-    // Phones already have native inertia and edge elasticity.
-    if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary ||
+    if (event.button !== 0 || !event.isPrimary ||
         (event.target as HTMLElement).closest('.game-carousel-arrow')) return
     const el = track.current
     if (!el || el.scrollWidth <= el.clientWidth) return
     stopMomentum()
     ignoreClickRef.current = false
     if (clickResetRef.current !== null) window.clearTimeout(clickResetRef.current)
-    gestureRef.current = { id: event.pointerId, x: event.clientX, left: el.scrollLeft,
-      lastX: event.clientX, lastT: performance.now(), velocity: 0, moved: false }
+    gestureRef.current = {
+      id: event.pointerId, kind: event.pointerType, x: event.clientX,
+      y: event.clientY, left: el.scrollLeft, moved: false,
+      samples: [{ x: event.clientX, time: performance.now() }],
+    }
   }
   const onDragMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const g = gestureRef.current
     const el = track.current
     if (!g || !el || g.id !== event.pointerId) return
-    if (!g.moved && Math.abs(event.clientX - g.x) < 7) return
+    const dx = event.clientX - g.x
+    const dy = event.clientY - g.y
+    // Accept mild diagonals. Vertical scrolling still belongs to the page.
+    if (!g.moved && (Math.abs(dx) < 8 ||
+        Math.abs(dx) < Math.abs(dy) * .48)) return
     if (!g.moved) {
       g.moved = true
       el.style.scrollSnapType = 'none'
       try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* no capture */ }
     }
     const now = performance.now()
-    g.velocity = Math.max(-3, Math.min(3, -(event.clientX - g.lastX) / Math.max(1, now - g.lastT)))
-    g.lastX = event.clientX
-    g.lastT = now
-    el.scrollLeft = g.left - (event.clientX - g.x)
+    g.samples.push({ x: event.clientX, time: now })
+    while (g.samples.length > 2 && now - g.samples[0].time > 120) g.samples.shift()
+    // A light drag is deliberately less direct than the fingertip: weighted
+    // movement creates the feeling of a shelf with physical mass.
+    el.scrollLeft = g.left - dx * .83
     if (event.cancelable) event.preventDefault()
   }
-  const onDragEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const onDragEnd = (event: ReactPointerEvent<HTMLDivElement>, cancelled = false) => {
     const g = gestureRef.current
     gestureRef.current = null
     if (!g || g.id !== event.pointerId || !g.moved) return
     ignoreClickRef.current = true
-    // Some browsers omit the synthetic click after a drag. Do not swallow a
-    // subsequent independent tap on a card in that case.
     clickResetRef.current = window.setTimeout(() => {
       ignoreClickRef.current = false
       clickResetRef.current = null
-    }, 80)
+    }, 120)
     const el = track.current
     if (!el) return
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId)
-    if (reduceMotion || Math.abs(g.velocity) < .11) {
+    if (cancelled || reduceMotion) {
       el.style.scrollSnapType = ''
       return
     }
-    let velocity = g.velocity
+    const current = g.samples[g.samples.length - 1]
+    const first = g.samples[0]
+    // Release velocity is computed over the last ~120 ms, not from the
+    // last noisy touch event. Fast flings can cross the whole remaining shelf.
+    const speed = -.83 * (current.x - first.x) /
+      Math.max(16, current.time - first.time)
+    const max = Math.max(0, el.scrollWidth - el.clientWidth)
+    let velocity = Math.max(-3.8, Math.min(3.8, speed * 1.65))
+    if (Math.abs(speed) < .16) {
+      el.style.scrollSnapType = ''
+      return
+    }
     let last = performance.now()
+    let elapsed = 0
     let frames = 0
+    // A decisive flick should continue to the far end; a measured gesture
+    // settles naturally with friction so users can inspect nearby cards.
+    const rush = Math.abs(speed) >= 1.25
+    const startLeft = el.scrollLeft
+    const destination = speed > 0 ? max : 0
+    const duration = Math.min(1300, 780 + Math.abs(destination - startLeft) * .27)
     const tick = (now: number) => {
-      const dt = Math.min(35, now - last)
+      const dt = Math.min(40, now - last)
       last = now
-      velocity *= Math.pow(.91, dt / 16)
-      const max = Math.max(0, el.scrollWidth - el.clientWidth)
-      const target = el.scrollLeft + velocity * dt
-      if (target < 0 || target > max) {
-        el.scrollLeft = Math.max(0, Math.min(max, target))
-        const offset = Math.min(15, Math.abs(target - el.scrollLeft))
-        el.animate([{ transform: 'translateX(0px)' },
-          { transform: 'translateX(' + (target < 0 ? offset : -offset) + 'px)' },
-          { transform: 'translateX(0px)' }],
-        { duration: 270, easing: 'cubic-bezier(.22,.8,.2,1)' })
-        el.style.scrollSnapType = ''
-        momentumRef.current = null
-        return
+      elapsed += dt
+      let target: number
+      if (rush) {
+        const fraction = Math.min(1, elapsed / duration)
+        const eased = 1 - Math.pow(1 - fraction, 3)
+        target = startLeft + (destination - startLeft) * eased
+      } else {
+        velocity *= Math.pow(.973, dt / 16)
+        target = el.scrollLeft + velocity * dt
       }
-      el.scrollLeft = target
-      if (++frames > 48 || Math.abs(velocity) < .07) {
+      const clamped = Math.max(0, Math.min(max, target))
+      el.scrollLeft = clamped
+      const edge = target !== clamped || (rush && elapsed >= duration)
+      if (edge || ++frames > 150 || (!rush && Math.abs(velocity) < .035)) {
+        if (target !== clamped && !reduceMotion) {
+          const offset = Math.min(17, Math.abs(target - clamped) + 5)
+          el.animate([{ transform: 'translateX(0px)' },
+            { transform: 'translateX(' + (target < 0 ? offset : -offset) + 'px)' },
+            { transform: 'translateX(0px)' }],
+          { duration: 360, easing: 'cubic-bezier(.2,.8,.25,1)' })
+        }
         el.style.scrollSnapType = ''
         momentumRef.current = null
         return
@@ -152,7 +180,7 @@ export default function CarouselArrows({
       onClickCapture={onDragClick}
       onPointerDown={event => { event.stopPropagation(); onDragStart(event) }}
       onPointerMove={onDragMove} onPointerUp={onDragEnd}
-      onPointerCancel={event => { onDragEnd(event); stopMomentum() }}>
+      onPointerCancel={event => { onDragEnd(event, true); stopMomentum() }}>
       <div ref={track} className={className} role="list" aria-label={label}
         onScroll={measure} onLoadCapture={measure}>
         {children}
