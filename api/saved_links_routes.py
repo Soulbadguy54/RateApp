@@ -235,7 +235,7 @@ def saved_link_thumbnail(link_id: int, request: Request) -> Response:
                     "Cache-Control": "private, max-age=60", "X-Content-Type-Options": "nosniff",
                 })
             return Response(content=body, media_type=mime, headers={
-                "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff",
+                "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff",
             })
     try:
         image = preview_thumbnail_source(url)
@@ -254,7 +254,7 @@ def saved_link_thumbnail(link_id: int, request: Request) -> Response:
             "Cache-Control": "private, max-age=60", "X-Content-Type-Options": "nosniff",
         })
     return Response(content=body, media_type=mime, headers={
-        "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff",
     })
 
 
