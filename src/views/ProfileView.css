@@ -83,9 +83,9 @@
   height: 49px;
   pointer-events: none;
 }
-.profile-top-games__item:nth-child(1) { top: 0; left: max(0px, calc(100% - 52px)); }
-.profile-top-games__item:nth-child(2) { top: 61px; left: 0; }
-.profile-top-games__item:nth-child(3) { top: 122px; left: max(0px, calc(100% - 52px)); }
+.profile-top-games__item[data-slot="0"] { top: 0; left: max(0px, calc(100% - 52px)); }
+.profile-top-games__item[data-slot="1"] { top: 61px; left: 0; }
+.profile-top-games__item[data-slot="2"] { top: 122px; left: max(0px, calc(100% - 52px)); }
 .profile-top-game,
 .profile-steam-cloud {
   position: relative;
@@ -109,8 +109,8 @@
   animation: profile-cloud-drift 6.5s ease-in-out var(--cloud-delay, 0s) infinite alternate;
   will-change: transform;
 }
-.profile-top-games__item:nth-child(2) .profile-top-game { animation-name: profile-cloud-drift-middle; animation-duration: 7.4s; }
-.profile-top-games__item:nth-child(3) .profile-top-game { animation-name: profile-cloud-drift-low; animation-duration: 6.9s; }
+.profile-top-games__item[data-slot="1"] .profile-top-game { animation-name: profile-cloud-drift-middle; animation-duration: 7.4s; }
+.profile-top-games__item[data-slot="2"] .profile-top-game { animation-name: profile-cloud-drift-low; animation-duration: 6.9s; }
 .profile-top-game::before, .profile-top-game::after,
 .profile-steam-cloud::before, .profile-steam-cloud::after {
   content: '';
@@ -213,8 +213,8 @@
   to { transform: translate3d(-1px, 1px, 0) rotate(2deg); }
 }
 @media (max-width: 360px) {
-  .profile-top-games__item:nth-child(1),
-  .profile-top-games__item:nth-child(3) { left: max(0px, calc(100% - 47px)); }
+  .profile-top-games__item[data-slot="0"],
+  .profile-top-games__item[data-slot="2"] { left: max(0px, calc(100% - 47px)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .profile-top-game { animation: none !important; will-change: auto; }
