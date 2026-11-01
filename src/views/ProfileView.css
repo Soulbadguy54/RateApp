@@ -661,7 +661,7 @@
    never reset at the hand-off. Reduced-motion disables both layers. */
 .profile-glass-header__hero { --profile-cloud-width: clamp(49px, 16vw, 67px); }
 .profile-top-games__item {
-  animation: profile-cloud-emerge .82s cubic-bezier(.20, .85, .34, 1) both;
+  animation: profile-cloud-emerge .82s cubic-bezier(.22, 1, .36, 1) both;
   will-change: transform;
 }
 .profile-top-games__item[data-slot="1"] {
@@ -691,7 +691,7 @@
   width: var(--profile-cloud-width);
   height: var(--profile-cloud-height);
   pointer-events: none;
-  animation: profile-steam-emerge .87s cubic-bezier(.20, .85, .34, 1) .16s both;
+  animation: profile-steam-emerge .87s cubic-bezier(.22, 1, .36, 1) .16s both;
   will-change: transform;
 }
 .profile-steam-cloud {
@@ -702,22 +702,18 @@
 }
 @keyframes profile-cloud-emerge {
   0% { transform: translate3d(55px, 54px, 0) scale(.28); opacity: 0; }
-  75% { transform: translate3d(-4px, -3px, 0) scale(1.045); opacity: 1; }
   100% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
 }
 @keyframes profile-cloud-emerge-middle {
   0% { transform: translate3d(80px, 0, 0) scale(.28); opacity: 0; }
-  75% { transform: translate3d(-4px, 0, 0) scale(1.045); opacity: 1; }
   100% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
 }
 @keyframes profile-cloud-emerge-low {
   0% { transform: translate3d(55px, -54px, 0) scale(.28); opacity: 0; }
-  75% { transform: translate3d(-4px, 3px, 0) scale(1.045); opacity: 1; }
   100% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
 }
 @keyframes profile-steam-emerge {
   0% { transform: translate3d(-60px, 0, 0) scale(.28); opacity: 0; }
-  75% { transform: translate3d(4px, -2px, 0) scale(1.045); opacity: 1; }
   100% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
 }
 @keyframes profile-cloud-drift {

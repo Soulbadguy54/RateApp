@@ -68,19 +68,8 @@
 
 .bottom-nav__liquid-path {
   fill: rgba(11, 13, 18, .92);
-  stroke: rgba(var(--igdb-accent-rgb), .48);
-  stroke-width: 1.25px;
-  vector-effect: non-scaling-stroke;
-}
-
-/* Brief specular rim makes the morph legible over the dark page, then
-   disappears so the settled surface stays in the bottom-nav's palette. */
-.bottom-nav__liquid-rim {
-  fill: none;
-  stroke: rgba(var(--igdb-accent-rgb), .0);
-  stroke-width: 0;
-  vector-effect: non-scaling-stroke;
-  /* A plain stroke stays cheap to rasterize as the path changes. */
+  /* The only visible border is the settled panel's neutral gray border. */
+  stroke: none;
 }
 
 .bottom-nav__bubble {
@@ -94,11 +83,12 @@
   padding: 7px;
   /* The SVG supplies the liquid silhouette; the nearly transparent blurred
      content layer fades in late in the morph and makes choices readable. */
-  border: 0;
-  border-radius: 21px;
-  background: rgba(12, 18, 31, .34);
-  -webkit-backdrop-filter: var(--header-glass-filter);
-  backdrop-filter: var(--header-glass-filter);
+  border: 1px solid rgba(175, 187, 204, .27);
+  border-radius: 16px;
+  background: rgba(10, 15, 27, .76);
+  -webkit-backdrop-filter: blur(38px) saturate(145%) brightness(.72);
+  backdrop-filter: blur(38px) saturate(145%) brightness(.72);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .27), inset 0 1px 0 rgba(255,255,255,.055);
   pointer-events: auto;
 }
 
@@ -187,12 +177,6 @@
 .bottom-nav__slot--collections .bottom-nav__bubble-highlight {
   border-color: rgba(140,242,125,.12);
   background: rgba(140,242,125,.075);
-}
-.bottom-nav__slot--collections .bottom-nav__liquid-rim {
-  stroke: transparent;
-}
-.bottom-nav__slot--collections .bottom-nav__liquid-path {
-  stroke: rgba(140, 242, 125, .5);
 }
 .bottom-nav__slot--collections .bottom-nav__bubble-choice:focus-visible {
   outline-color: var(--accent);
