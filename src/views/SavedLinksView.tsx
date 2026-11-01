@@ -1,22 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import CarouselArrows from '../components/CarouselArrows'
 import ContentLoading from '../components/ContentLoading'
 import { createPortal } from 'react-dom'
 import Icon from '../components/Icon'
 import { sessionFetch } from '../sessionFetch'
 import './SavedLinksView.css'
 
-type SavedGame = { id: number; igdbId: number; title: string; coverUrl?: string | null }
 type SavedLink = {
   id: number
   url: string
   title: string | null
   createdAt: string
-  status?: 'pending' | 'processing' | 'ready' | 'failed'
-  error?: string | null
-  games: SavedGame[]
 }
 type LinksPage = { items: SavedLink[]; nextBefore: number | null }
 
@@ -81,8 +76,7 @@ async function responseError(response: Response, fallback: string) {
   return fallback
 }
 
-export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
-  onOpenGame: (gameIgdbId: number) => void
+export default function SavedLinksView({ cacheNamespace }: {
   cacheNamespace: string
 }) {
   const cacheKey = 'rateapp:saved-links:v3:' + cacheNamespace
@@ -172,16 +166,6 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
 
   useEffect(() => { void fetchLinks() }, [fetchLinks])
 
-  // Background workers update saved links independently of this mounted view.
-  // Revalidate only while unresolved records exist, and when the tab returns.
-  useEffect(() => {
-    if (!items.some(link => link.status === 'pending' || link.status === 'processing')) return
-    const refresh = () => { if (document.visibilityState === 'visible') void fetchLinks() }
-    const timer = window.setInterval(refresh, 90_000)
-    document.addEventListener('visibilitychange', refresh)
-    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh) }
-  }, [items, fetchLinks])
-
   useEffect(() => {
     try {
       const previous = cachedLinks(cacheKey)
@@ -237,6 +221,34 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
     return () => window.removeEventListener('rateapp:cancel-transient', dismiss)
   }, [bulkConfirmOpen, selectedIds, pendingDeleteId])
 
+  // Handle an incoming installed-PWA Android Share Target once per navigation.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (!params.has('shared_url') && !params.has('text')) return
+    const direct = params.get('shared_url') || ''
+    const text = params.get('text') || ''
+    const candidate = direct || text.match(/https?:\/\/[^\s<>"']+/i)?.[0] || ''
+    const normalized = normalizedLinkInput(candidate)
+    if (!normalized) { setError('Из меню «Поделиться» пришла некорректная ссылка.'); return }
+    let cancelled = false
+    setSaving(true)
+    void sessionFetch('/api/saved-links', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: normalized }),
+    }).then(async response => {
+      if (!response.ok) throw new Error(await responseError(response, 'Не удалось сохранить ссылку.'))
+      if (cancelled) return
+      setNotice('Ссылка сохранена из меню «Поделиться».')
+      const clean = new URL(window.location.href)
+      for (const key of ['shared_url', 'text', 'title']) clean.searchParams.delete(key)
+      window.history.replaceState(window.history.state, '', clean.pathname + clean.search + clean.hash)
+      void fetchLinks()
+    }).catch((cause: unknown) => {
+      if (!cancelled) setError(cause instanceof Error ? cause.message : 'Не удалось сохранить ссылку.')
+    }).finally(() => { if (!cancelled) setSaving(false) })
+    return () => { cancelled = true }
+  }, [fetchLinks])
+
   const addLink = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (saving || deleting) return
@@ -264,17 +276,6 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
       setError(cause instanceof Error ? cause.message : 'Не удалось сохранить ссылку.')
     } finally {
       setSaving(false)
-    }
-  }
-
-  const retryFailedLink = async (id: number) => {
-    setError('')
-    try {
-      const response = await sessionFetch('/api/saved-links/' + id + '/retry', { method: 'POST' })
-      if (!response.ok) throw new Error(await responseError(response, 'Не удалось поставить ссылку на повторную проверку.'))
-      await fetchLinks()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Не удалось повторить проверку.')
     }
   }
 
@@ -516,25 +517,6 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
                 <h3>{previews[link.id]?.title || link.title || displayHost(link.url)}</h3>
                 <p className="saved-link-card__host">{previews[link.id]?.description || displayHost(link.url)}</p>
                 <time dateTime={link.createdAt}>{readableDate(link.createdAt)}</time>
-                {link.status !== 'ready' && link.status && (
-                  <span className="saved-link-card__state-line">
-                    <span className={'saved-link-card__state saved-link-card__state--' + link.status}
-                      role="status" title={link.error || undefined}>
-                      {link.status === 'failed' ? 'Не удалось проверить'
-                        : link.status === 'processing' ? 'Ищем игры…' : 'Ожидает проверки'}
-                    </span>
-                    {link.status === 'failed' && selectedIds.length === 0 && (
-                      <button type="button" className="saved-link-card__retry"
-                        aria-label={'Повторить проверку ссылки ' + link.id}
-                        onClick={event => { event.stopPropagation(); void retryFailedLink(link.id) }}
-                        onPointerDown={event => event.stopPropagation()}>
-                        Повторить
-                      </button>
-                    )}
-                  </span>
-                )}
-                {link.status === 'failed' && link.error &&
-                  <small className="saved-link-card__state-error">{link.error}</small>}
               </div>
               <div className="saved-link-card__actions">
                 {selectedIds.length ? (
@@ -560,37 +542,6 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
                 )}
               </div>
             </div>
-            {link.games?.length > 0 && selectedIds.length === 0 && (
-              <motion.section className="saved-link-card__matched"
-                aria-label={'Игры из ссылки: ' + link.games.length}
-                initial={reduceMotion ? false : { height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                transition={{ duration: .24, ease: 'easeOut' }}
-                onClick={event => event.stopPropagation()}
-                onPointerDown={event => event.stopPropagation()}
-                onContextMenu={event => event.stopPropagation()}>
-                <CarouselArrows className="saved-link-card__matched-track"
-                  label="Найденные игры, прокрутка по горизонтали">
-                  {link.games.map(game => (
-                    <div className="saved-link-card__matched-item" role="listitem" key={game.id}>
-                      <button className="saved-link-card__game-tile" type="button"
-                        onClick={event => {
-                          event.stopPropagation()
-                          onOpenGame(game.igdbId)
-                        }}
-                        aria-label={'Открыть игру ' + game.title}>
-                        <div className="saved-link-card__game-cover">
-                          {game.coverUrl
-                            ? <img src={game.coverUrl} alt="" loading="lazy" />
-                            : <Icon name="gamepad" size={25} />}
-                        </div>
-                        <span title={game.title}>{game.title}</span>
-                      </button>
-                    </div>
-                  ))}
-                </CarouselArrows>
-              </motion.section>
-            )}
           </motion.article>
         ))}
         </AnimatePresence>
