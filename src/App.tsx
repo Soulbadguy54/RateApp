@@ -1,10 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import GameCard, { Cover } from './components/GameCard'
 import CarouselArrows from './components/CarouselArrows'
 import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
 import BottomNavGameSlot from './components/BottomNavGameSlot'
+import type { SteamResumeState } from './components/SteamIntegrationCloud'
 import { profileTintOption } from './profilePalette'
 import { profileTopGames, resolveProfileClouds } from './profileTopGames'
 import RatingWheel, { closestHalfPoint } from './components/RatingWheel'
@@ -571,6 +573,9 @@ function App() {
 
   const [addQuery, setAddQuery] = useState('')
   const [pendingSteamMatch, setPendingSteamMatch] = useState<{ name: string; appid: number } | null>(null)
+  // Keep Steam preview in memory across the in-flow Database route; no new
+  // sync request is needed to return to the original unresolved games.
+  const steamResumeRef = useRef<SteamResumeState | null>(null)
   const steamSearchActiveRef = useRef(false)
   const [steamMatchPrompt, setSteamMatchPrompt] = useState<{
     sourceName: string; appid: number; gameId: number; gameTitle: string
@@ -695,7 +700,7 @@ function App() {
     exitGateDepthRef.current = gate.appDepth!
   }
 
-  const navigateTo = (view: AppView, options?: { replace?: boolean; restoreLibrary?: boolean }) => {
+  const navigateTo = (view: AppView, options?: { replace?: boolean; restoreLibrary?: boolean; inFlowRoot?: boolean }) => {
     if (keyForAppView(currentViewRef.current) === keyForAppView(view)) return
 
     captureCurrentView()
@@ -716,7 +721,7 @@ function App() {
     showAppView(view, entry)
     // Every root screen is an exit boundary, not just Discovery. On a new
     // bottom-nav selection this gate prevents Back from reopening another tab.
-    if (isRootScreen(view)) pushRootExitGate(view, entry)
+    if (isRootScreen(view) && !options?.inFlowRoot) pushRootExitGate(view, entry)
   }
 
   const goBackOr = (fallback: AppView) => {
@@ -1446,6 +1451,7 @@ function App() {
     // Only bottom-tab switching ends the manual Steam search. Returning from
     // a game detail via native Back keeps the search and its matching context.
     setPendingSteamMatch(null)
+    steamResumeRef.current = null
     if (steamSearchActiveRef.current) {
       steamSearchActiveRef.current = false
       addSearchGenerationRef.current += 1
@@ -1491,6 +1497,7 @@ function App() {
   const resetTab = (tab: Tab) => {
     steamSearchActiveRef.current = false
     setPendingSteamMatch(null)
+    steamResumeRef.current = null
     if (cloudPickerSnapshotRef.current) closeProfileCloudPicker()
     const view: AppView = { tab, gameId: null, collectionId: null, formGameId: null }
     // Resetting an active tab from a nested screen must also establish a root
@@ -1641,7 +1648,8 @@ function App() {
       gameId: game.id, gameTitle: game.title,
     })
     setSteamMatchError('')
-    setPendingSteamMatch(null)
+    // A declined candidate must not consume the original Steam game: the
+    // user may try a second Rate APP game without resynchronizing Steam.
   }
 
   const answerManualSteamMatch = async (confirmed: boolean) => {
@@ -1664,6 +1672,18 @@ function App() {
       const gameId = steamMatchPrompt.gameId
       setEntries(current => current.map(entry =>
         entry.gameId === gameId ? { ...entry, steamLinked: true } : entry))
+      // The confirmed game should not remain in the restored Steam preview.
+      if (steamResumeRef.current) {
+        const remembered = steamResumeRef.current
+        const withoutMatch = (items: { appid: number; name: string; reason?: string }[]) =>
+          items.filter(item => item.appid !== steamMatchPrompt.appid)
+        steamResumeRef.current = {
+          ...remembered,
+          preview: remembered.preview ? { ...remembered.preview, unresolved: withoutMatch(remembered.preview.unresolved) } : null,
+          result: remembered.result ? { ...remembered.result, unresolved: withoutMatch(remembered.result.unresolved) } : null,
+        }
+      }
+      setPendingSteamMatch(null)
       setSteamMatchPrompt(null)
     } catch {
       setSteamMatchError('Игра добавлена, но связь со Steam установить не удалось. Попробуйте еще раз.')
@@ -3710,11 +3730,20 @@ function App() {
         Array.from({ length: 3 }, (_, index) => authUser?.profileCloudGameIds?.[index] ?? null))}
       onChooseCloud={beginProfileCloudPicker}
       onOpenGame={openGame}
-      onFindSteamGame={(name, appid) => {
-        openTab('add')
+      steamResume={steamResumeRef.current}
+      onSteamResumeDismiss={() => {
+        steamResumeRef.current = null
+        setPendingSteamMatch(null)
+        steamSearchActiveRef.current = false
+      }}
+      onFindSteamGame={(name, appid, snapshot) => {
+        steamResumeRef.current = snapshot
         steamSearchActiveRef.current = true
         setAddQuery(name.slice(0, 100))
         setPendingSteamMatch({ name, appid })
+        // This is an in-flow search, not a bottom-nav switch. Native Back
+        // should return to the preserved Steam preview, not exit the app.
+        navigateTo({ tab: 'add', gameId: null, collectionId: null, formGameId: null }, { inFlowRoot: true })
       }}
       onSteamSynced={() => {
         void sessionFetch('/api/library', { cache: 'no-store' }).then(async response => {
@@ -3837,11 +3866,7 @@ function App() {
                 {activeTab === 'profile' && (
                   <>
                     <div hidden={profileCloudPickerSlot !== null}>{renderProfile()}</div>
-                    {profileCloudPickerSlot !== null && (
-                      <div className="library-cloud-picker" aria-label="Выбор игры для облака">
-                        {renderLibrary(true)}
-                      </div>
-                    )}
+
                   </>
                 )}
               </>
@@ -3849,6 +3874,13 @@ function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+      {profileCloudPickerSlot !== null && createPortal(
+        <section className="page page--library library-cloud-picker library-cloud-picker--screen"
+          aria-label="Выбор игры для облака" role="dialog" aria-modal="true">
+          {renderLibrary(true)}
+        </section>,
+        document.body,
+      )}
 
       <AnimatePresence>
       {steamMatchPrompt && (
