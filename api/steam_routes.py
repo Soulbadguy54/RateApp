@@ -165,9 +165,17 @@ def finish_steam_link(request: Request):
         return _back("unavailable")
 
     with _session() as session:
-        user = _current_user(request, session)
+        # The external provider check happens outside the DB transaction.
+        # Revalidate the *same* Rate APP identity/session after that request;
+        # an expired/revoked or switched account must never receive the link.
+        try:
+            final_user, final_session_hash = _current_auth(request, session)
+        except HTTPException:
+            return _back("session")
+        if final_user.id != user.id or final_session_hash != session_hash:
+            return _back("session")
         existing = session.scalar(select(SteamConnection).where(
-            SteamConnection.user_id == user.id,
+            SteamConnection.user_id == final_user.id,
         ))
         if existing is None:
             session.add(SteamConnection(user_id=user.id, steam_id64=steam_id))
