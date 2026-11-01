@@ -385,6 +385,8 @@ test('manual Steam search saves playthrough before asking consent, links only on
   expect(saved).toBe(1)
   expect(previews).toBe(1)
   // Returning from manual matching never triggers another Steam preview POST.
+  // Explicitly close the restored modal before interacting with bottom nav.
+  await panel.getByRole('button', { name: 'Закрыть подключение Steam' }).click()
   // A bottom-tab switch must end the Steam lookup; navigation within the
   // lookup (search -> game -> Back) keeps its state until that explicit switch.
   await page.getByRole('button', { name: 'Профиль', exact: true }).click()
