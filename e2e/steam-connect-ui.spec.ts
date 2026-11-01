@@ -235,12 +235,10 @@ test('Steam sync button acknowledges click with continuous activity state', asyn
   await expect(panel).toHaveAttribute('data-mode', 'compact')
   const compactHeight = await panel.evaluate(element => element.getBoundingClientRect().height)
   await sync.click()
-  await expect(panel).toHaveAttribute('data-mode', 'expanded')
+  // Sync starts the spinner only. An empty result must never expand the glass.
+  await expect(panel).toHaveAttribute('data-mode', 'compact')
   await expect.poll(async () => panel.evaluate(element => element.getBoundingClientRect().height))
-    .toBeGreaterThan(compactHeight + 150)
-  const screenHeight = page.viewportSize()!.height
-  const expandedHeight = await panel.evaluate(element => element.getBoundingClientRect().height)
-  expect(expandedHeight).toBeGreaterThan(screenHeight * .85)
+    .toBeCloseTo(compactHeight, 0)
   await expect(panel).toHaveCSS('scrollbar-width', 'none')
   await expect(panel.getByRole('button', { name: 'Проверяем библиотеку…' })).toBeDisabled()
   await expect(sync.locator('.steam-integration__sync-icon')).toHaveCSS('animation-name', 'steam-sync-turn')
@@ -248,6 +246,9 @@ test('Steam sync button acknowledges click with continuous activity state', asyn
   await expect(sync.locator('.steam-integration__sync-icon')).toHaveCSS('animation-name', 'steam-sync-turn')
   releasePreview?.()
   await expect(panel).toContainText('Это предпросмотр, игры еще не синхронизированы')
+  await expect(panel).toHaveAttribute('data-mode', 'compact')
+  const afterEmpty = await panel.evaluate(element => element.getBoundingClientRect().height)
+  expect(Math.abs(afterEmpty - compactHeight)).toBeLessThan(2)
   await expect(panel.getByRole('button', { name: 'Синхронизировать' })).toBeEnabled()
 })
 
@@ -548,3 +549,71 @@ test('Steam compact dialog reserves space while overview loads and never navigat
   await dialog.getByRole('button', { name: 'Закрыть подключение Steam' }).click()
   await expect(dialog).toHaveCount(0)
 })
+
+
+for (const count of [2, 26]) {
+  test('Steam dialog sizes to returned games (' + count + ') and caps long lists at viewport', async ({ page }) => {
+    let releasePreview: (() => void) | undefined
+    await page.route('**/api/**', async route => {
+      const path = new URL(route.request().url()).pathname
+      if (path === '/api/steam/preview') {
+        await new Promise<void>(resolve => { releasePreview = resolve })
+        await route.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify({
+            token: 'preview-12345678901234567890123456',
+            items: [], unresolved: Array.from({ length: count }, (_, i) => ({
+              appid: 550000 + i, name: 'Несопоставленная игра № ' + (i + 1),
+            })),
+            nextSyncAt: new Date(Date.now() + 30000).toISOString(),
+          }),
+        })
+        return
+      }
+      const data = path === '/api/bootstrap'
+        ? { user: { id: 820 + count, nickname: 'sizing_qa', email: 'steam@example.test',
+            avatarVersion: 0, profileTint: 'blue', createdAt: '2026-11-01T00:00:00Z' },
+            library: [], collections: [] }
+        : path === '/api/steam/connection' ? { connected: true, steamId64: '76561198012345678' }
+        : path === '/api/steam/overview' ? {
+          steamId64: '76561198012345678', configured: true,
+          profile: { name: 'Steam QA', avatarUrl: null, profilePublic: true,
+            profileUrl: 'https://steamcommunity.com/profiles/76561198012345678/' },
+          gameCount: count, canSync: true, redFlags: [], lastSyncedAt: null,
+        }
+        : path === '/api/push/config' ? { enabled: false, publicKey: '', devices: 0 } : {}
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
+    })
+    await page.goto('/?tab=profile')
+    const cloud = page.getByRole('button', { name: 'Steam подключен, открыть настройки' })
+    await cloud.focus()
+    await page.keyboard.press('Enter')
+    const panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
+    await expect(panel).toHaveAttribute('data-mode', 'compact')
+    const before = await panel.evaluate(el => el.getBoundingClientRect().height)
+    await panel.getByRole('button', { name: 'Синхронизировать' }).click()
+    await expect(panel).toHaveAttribute('data-mode', 'compact')
+    await expect(panel.getByRole('button', { name: 'Проверяем библиотеку…' })).toBeDisabled()
+    const during = await panel.evaluate(el => el.getBoundingClientRect().height)
+    expect(Math.abs(during - before)).toBeLessThan(2)
+    releasePreview?.()
+    await expect(panel).toHaveAttribute('data-mode', 'results')
+    await expect(panel).toContainText('Нужно найти в Rate APP: ' + count)
+    const viewport = page.viewportSize()!.height
+    await expect.poll(async () => panel.evaluate(el => el.getBoundingClientRect().height))
+      .toBeGreaterThan(before + 8)
+    const after = await panel.evaluate(el => el.getBoundingClientRect().height)
+    expect(after).toBeLessThanOrEqual(viewport)
+    if (count === 26) {
+      expect(after).toBeGreaterThan(viewport * .86)
+      const scrollable = await panel.evaluate(el => el.scrollHeight > el.clientHeight + 50)
+      expect(scrollable).toBe(true)
+      await expect(panel).toHaveCSS('scrollbar-width', 'none')
+      await panel.evaluate(el => { el.scrollTop = el.scrollHeight })
+      await expect(panel.getByRole('button', { name: 'Больше не показывать: Несопоставленная игра № 26' })).toBeVisible()
+    } else {
+      expect(after).toBeLessThan(viewport * .9)
+    }
+    await expect(page).toHaveURL(/tab=profile/)
+  })
+}
