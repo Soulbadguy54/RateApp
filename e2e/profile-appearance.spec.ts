@@ -218,6 +218,10 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   await picker.getByRole('button', { name: 'Открыть поиск' }).click()
   await picker.getByRole('textbox', { name: 'Поиск в библиотеке' }).fill('My Playing')
   await expect(picker.locator('.game-card')).toHaveCount(1)
+  // The native PWA install banner is unrelated to cloud selection and may
+  // appear while the keyboard search is active on iPhone WebKit.
+  const closeInstall = page.getByRole('button', { name: 'Закрыть предложение установки' })
+  if (await closeInstall.isVisible()) await closeInstall.click()
   await picker.locator('.game-card').click()
   await expect(save).toBeVisible()
   await expect(page.getByRole('button', { name: 'Изменить игру в облаке 2' })).toBeVisible()
