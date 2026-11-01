@@ -242,7 +242,9 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   await expect(page.locator('.library-cloud-picker')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Добавить игру' })).toBeVisible()
   await expect(page.locator('.game-card')).toHaveCount(4)
-  await page.locator('.game-card').filter({ hasText: 'Other Pick' }).click()
+  // The library keeps its entrance/layout Motion; force-click the visible
+  // card's current position instead of waiting for a frozen bounding box.
+  await page.locator('.game-card').filter({ hasText: 'Other Pick' }).click({ force: true })
   await expect(page).toHaveURL(/game=504/)
   expect(saves).toBe(1)
   await page.locator('.bottom-nav__item--profile').click()
