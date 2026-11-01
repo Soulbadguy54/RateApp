@@ -1,0 +1,51 @@
+# Steam → Rate APP: исследование интеграции (01.11.2026, план, НЕ реализовано)
+
+Статус: исследование официальных публичных API и предложение UX/архитектуры. **Этот документ не означает, что Steam OAuth/OpenID, импорт или синхронизация реализованы**. Никаких ключей, пользователей и Steam-ссылок не использовали. Сначала отдельный staging PR после согласования пользовательского сценария.
+
+## 1. Что реально умеет официальная интеграция
+
+1. Steam как OpenID 2.0 identity provider, URL `https://steamcommunity.com/openid/`: пользователь авторизуется **на стороне Steam**; Rate APP после серверной проверки assertion получает `SteamID64`. OpenID не предоставляет нам пароль, email или OAuth-доступ к закрытой библиотеке. Это именно привязка Steam к уже авторизованному пользователю Rate APP; не замена текущему аккаунту Rate APP.
+2. `IPlayerService/GetOwnedGames/v1` по SteamID64 и **серверному** Steam Web API user key: при доступных game details возвращает owned AppID, `playtime_forever` (минуты), опционально названия/иконки (`include_appinfo=1`); `include_played_free_games=1` добавляет бесплатные игры с игровой активностью. **Это не обязательно все элементы клиента Steam**: приватные игры, чужие семейные доступы, отдельные DLC/tools, недоступные подписки, скрытое время игры и некоторые free-to-play могут отличаться.
+3. `GetRecentlyPlayedGames` — отдельно недавно запущенные игры; подходит для будущей функции «последняя активность», но **не** надёжная замена полному owned-list и не используется при первичном импорте.
+4. `ISteamUser/GetPlayerSummaries/v2` возвращает публичную информацию профиля, аватар, видимость и профильный URL; нельзя объявлять библиотеку доступной лишь по public summary.
+5. IGDB `external_games`: связь `uid` (Steam AppID в виде строки), `external_game_source` (новый справочник Steam) и `game` (IGDB ID). Поле `category=1` — прежний **deprecated** enum Steam: не закреплять новую реализацию на deprecated field. При неоднозначном соответствии показывать пользователю варианты. Не связывать приложения по одному только имени. Держать Steam AppID независимо от IGDB ID.
+
+Официальные источники:
+- Steam OpenID: https://steamcommunity.com/developer/contentguidelines и https://partner.steamgames.com/doc/features/auth
+- Steam library/playtime: https://partner.steamgames.com/doc/webapi/IPlayerService
+- Steam Web API keys: https://partner.steamgames.com/doc/webapi_overview/auth
+- Приватность Game Details: https://help.steampowered.com/faqs/view/588C-C67D-0251-C276 и https://store.steampowered.com/news/posts/?appids=593110&enddate=1528828991
+- Steam private games: https://help.steampowered.com/en/faqs/view/1150-C06F-4D62-4966
+- IGDB external_games: https://api-docs.igdb.com/
+
+## 2. UX: «Подключить Steam» без неожиданного импорта
+
+1. Из облака Steam в профиле открыть **информационную шторку**: что импортируется, зачем, приватность, ссылка «Настройки приватности Steam», шаги: мой профиль → Редактировать профиль → Настройки приватности → **Профиль: открытый; Сведения об играх: открытые; не скрывать общее время игры**. Пользователь сам меняет настройки на сайте Steam; никакого сбора его логина/пароля в Rate APP.
+2. Кнопка «Войти через Steam» перенаправляет на Steam OpenID и обратно. Callback только server-side, CSRF/state/nonce, verified `return_to`, проверка Steam-ответа `check_authentication`, anti-replay, сопоставление точного `SteamID64`. При возвращении отобразить аккаунт Steam и статус доступности GetOwnedGames.
+3. Показать **предпросмотр, без записи**: сколько найдено, >0 минут → предлагается «Сейчас прохожу», ровно 0 → «Хочу пройти», неопределённые часы → требуют решения; сколько уже есть, сколько не найдены в IGDB, сколько пропущено. Содержимое приватного профиля нельзя трактовать как «0 игр».
+4. Выбрать или подтвердить импорт. Обязательно сохранить существующие пользовательские статусы (completed/dropped/rated/playing), оценки, даты, обзоры, коллекции. Не превращать ранее завершённую игру в «Прохожу». Для игры, уже существующей в Rate APP, добавляем provenance Steam, но не дублируем membership.
+5. После подтверждения выполнить **идемпотентный** импорт в одной ограниченной транзакции/порциями с отчётом. «Хочу пройти» — уже существующий системный wishlist slug, а не новая папка/status. Значок Steam на обложках выводить из привязки импорта к данной игре, не из общей таблицы games; badge с доступным title, не перебивать нажатие на обложку.
+6. Отдельная кнопка «Обновить библиотеку Steam», «Отключить Steam», «Удалить метаданные Steam»; **без** автоудаления пользовательских записей, если Steam перестал возвращать игру.
+
+## 3. Правила обработки часов
+
+- `playtime_forever > 0` минут: *предложение* «Сейчас прохожу» (в Rate APP статус `playing`). Эти часы — **суммарные**, не «запущено сейчас» и не доказательство незавершённого прохождения. В UI предупреждаем, что Steam не знает, завершена ли игра.
+- `playtime_forever === 0` именно при достоверно доступном времени: *предложение* добавить в системную коллекцию `wishlist` («Хочу пройти»).
+- `playtime_forever` отсутствует или библиотека недоступна: не приравнивать к 0. Показывать «Часы скрыты / недоступны» и давать возможность отложить/назначить вручную.
+- При разных appid для deluxe, demo, soundtrack, DLC, family sharing, tool — не создавать автоматически фальшивую игровую карточку, вести отдельный unresolved список. При нескольких Steam AppID для одного IGDB game не создавать два `user_games`.
+- В дальнейшем добавить optional новые синхронизации/правила только с явным подтверждением пользователя; никаких автоматических перезаписей.
+
+## 4. Эскиз схемы и API (не реализованы)
+
+- `steam_connections`: `user_id UNIQUE FK`, `steam_id64 UNIQUE`, `connected_at`, `last_synced_at`, `status`; ключ Steam **не** хранить здесь, только серверная env-secret.
+- `steam_import_items`: `user_id`, `steam_appid`, `igdb_id nullable`, `playtime_minutes nullable`, `imported_to_library boolean`, `imported_to_wishlist boolean`, `last_seen_at`; UNIQUE(`user_id`, `steam_appid`). Provenance badge читается из этого отношения с игрой.
+- `GET /api/integrations/steam/connect` → signed state; `GET /api/integrations/steam/callback` (строгая проверка host/return_to/claimed_id, bind to current session); `GET /api/integrations/steam/preview`, `POST /api/integrations/steam/import`, `POST /api/integrations/steam/sync`, `DELETE /api/integrations/steam`. CSRF защита, authorization per-user, idempotency key, ограниченный размер, pagination, retry/backoff, audit без PII.
+- Использовать существующий сервис IGDB для `external_games`, кеш `SteamAppID→IGDB ID`, квалифицированное совпадение по ID в приоритете. Не заводить в `games` сырые неизвестные AppID, если наш каталог опирается на IGDB.
+
+## 5. Риски и gating перед разработкой
+
+- Валидация коммерческого лицензирования Steam Web API и лимитов по актуальным Steam terms; учёт ключа только в server secrets, не в браузере и не в GitHub.
+- На dev и prod разные OpenID realms/return URLs, проверка HTTPS и корректности callback. Проверять реальный сценарий Steam login из Android/iOS PWA на тестовом Steam-аккаунте; Steam может переключать браузер/приложение.
+- Тестовые данные/фикстуры и отдельный staging пользователь; не импортировать реальные библиотеки без разрешения.
+- **Не** запускать cron или автоматические периодические подтягивания до явного UX решения и согласованной политики; сначала только явная кнопка «Импортировать».
+- Критерии готовности: успешно привязан SteamID, доступная библиотека с часами, карточки при наличии IGDB mapping, отчёт несопоставленных игр, повтор без дублей, существующие оценки не меняются, Steam бейдж виден лишь у импортированных игр, отключение без потери личной коллекции.
