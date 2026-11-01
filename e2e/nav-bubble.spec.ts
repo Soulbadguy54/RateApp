@@ -61,11 +61,12 @@ test('game nav: tap priority, hold-and-drag bubble, swipe-only pinning, history 
   // The actual liquid SVG background (not a faded box) shares the nav glass
   // color; the two options reuse the same icon/label and absolute cell size.
   const glass = await page.locator('.bottom-nav').evaluate(el => getComputedStyle(el).backdropFilter)
-  expect(glass).toContain('blur(12px)')
+  expect(glass).toContain('blur(32px)')
   const liquid = page.locator('.bottom-nav__liquid-path')
-  await expect(liquid).toHaveCSS('fill', 'rgba(16, 24, 41, 0.5)')
-  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('background-color', 'rgba(10, 15, 27, 0.76)')
-  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('backdrop-filter', /blur\(38px\)/)
+  await expect(liquid).toHaveCSS('fill', 'rgba(16, 24, 41, 0.82)')
+  const sameGlass = await page.locator('.bottom-nav').evaluate(el => getComputedStyle(el).backgroundImage)
+  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('background-image', sameGlass)
+  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('backdrop-filter', /blur\(32px\)/)
   await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('border-radius', '16px')
   await expect(page.locator('.bottom-nav__liquid-path')).toHaveCSS('stroke', 'none')
   await expect(page.locator('.bottom-nav__liquid-rim')).toHaveCount(0)
