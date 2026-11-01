@@ -3708,7 +3708,7 @@ function App() {
                 {activeTab === 'collections' && renderCollections()}
                 {activeTab === 'links' && (
                   <Suspense fallback={<div className="viewport-loading"><ContentLoading tone="green" text="Открываем ссылки…" /></div>}>
-                    <SavedLinksView onOpenGame={openGame} cacheNamespace={String(authUser.id)} />
+                    <SavedLinksView cacheNamespace={String(authUser.id)} />
                   </Suspense>
                 )}
                 {activeTab === 'profile' && (
