@@ -2,6 +2,12 @@ import { expect, test } from '@playwright/test'
 
 test.use({ serviceWorkers: 'block' })
 
+// Cloud-picker tests are not installation-prompt tests: suppress the system
+// install invitation so it cannot cover game cards during mobile taps.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('rateapp-install-confirmed', 'yes'))
+})
+
 test('profile keeps nickname, avatar and tint inside one sticky glass panel', async ({ page }) => {
   let avatarVersion = 0
   let tint = 'default'
