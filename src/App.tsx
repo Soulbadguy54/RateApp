@@ -3887,8 +3887,7 @@ function App() {
 
       {/* A separate full-screen My Games picker, not a list under the profile
           Keep ProfileView mounted to preserve the unsaved avatar/cloud draft */}
-      <AnimatePresence mode="wait">
-        {activeTab === 'profile' && profileCloudPickerSlot !== null && (
+      {activeTab === 'profile' && profileCloudPickerSlot !== null && (
           <motion.div className="library-cloud-picker library-cloud-picker--screen"
             role="region" aria-label="Выбор игры для облака"
             initial={shouldReduceMotion ? false : { opacity: 0, x: 22 }}
