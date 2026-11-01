@@ -374,7 +374,7 @@ export default function ProfileView({
                 <strong>Перед подключением проверь приватность</strong>
                 <p>В Steam открой доступ к профилю и разделу «Сведения об играх», а также разреши показывать время игры. Отдельно скрытые игры не попадут в будущий импорт.</p>
                 <a href="https://steamcommunity.com/my/edit/settings/" target="_blank" rel="noopener noreferrer">
-                  Открыть настройки приватности Steam <Icon name="external-link" size={15} />
+                  Открыть настройки приватности Steam <Icon name="link" size={15} />
                 </a>
               </div>
               <p className="profile-steam-dialog__hint">После подключения мы пока не импортируем игры. В следующем этапе покажем предварительный список, сохраним существующие оценки и отдельно отметим только игры, действительно добавленные из Steam.</p>
