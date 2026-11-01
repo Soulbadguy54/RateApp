@@ -33,10 +33,16 @@ for (const connected of [false, true]) {
     await steam.click({ force: true })
     const panel = page.getByRole('dialog', { name: connected ? 'Подключенный аккаунт Steam' : 'Подключение Steam' })
     await expect(panel).toBeVisible()
+    await expect(panel).toHaveAttribute('data-mode', 'compact')
+    await expect(panel).toHaveCSS('scrollbar-width', 'none')
+    await expect(page).toHaveURL(/tab=profile/)
+    await expect(steam).toHaveCSS('pointer-events', 'auto')
     await expect(panel).toContainText(connected ? 'Игры синхронизируются только по вашему запросу.' : 'Привяжите Steam, чтобы импортировать библиотеку в Rate APP.')
     if (connected) {
       const profile = panel.getByRole('link', { name: 'Открыть профиль Steam' })
       await expect(profile).toHaveAttribute('href', 'https://steamcommunity.com/profiles/76561198012345678/')
+      await expect(profile).toHaveAttribute('target', '_blank')
+      await expect(profile.locator('svg')).toBeVisible()
       await expect(profile).toContainText('Steam QA')
       await expect(profile).toContainText('Steam ID: 76561198012345678')
       await expect(panel).not.toContainText('Игр доступно:')
@@ -226,7 +232,16 @@ test('Steam sync button acknowledges click with continuous activity state', asyn
   await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click({ force: true })
   const panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
   const sync = panel.getByRole('button', { name: 'Синхронизировать' })
+  await expect(panel).toHaveAttribute('data-mode', 'compact')
+  const compactHeight = await panel.evaluate(element => element.getBoundingClientRect().height)
   await sync.click()
+  await expect(panel).toHaveAttribute('data-mode', 'expanded')
+  await expect.poll(async () => panel.evaluate(element => element.getBoundingClientRect().height))
+    .toBeGreaterThan(compactHeight + 150)
+  const screenHeight = page.viewportSize()!.height
+  const expandedHeight = await panel.evaluate(element => element.getBoundingClientRect().height)
+  expect(expandedHeight).toBeGreaterThan(screenHeight * .85)
+  await expect(panel).toHaveCSS('scrollbar-width', 'none')
   await expect(panel.getByRole('button', { name: 'Проверяем библиотеку…' })).toBeDisabled()
   await expect(sync.locator('.steam-integration__sync-icon')).toHaveCSS('animation-name', 'steam-sync-turn')
   await page.waitForTimeout(1300)
@@ -486,4 +501,50 @@ test('Steam modal consumes Back and empty preview has no new-game block', async 
   })
   await expect(modal).toHaveCount(0)
   await expect(page).toHaveURL(/tab=profile/)
+})
+
+
+test('Steam compact dialog reserves space while overview loads and never navigates on cloud tap', async ({ page }) => {
+  let finishOverview: (() => void) | undefined
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/steam/overview') {
+      await new Promise<void>(resolve => { finishOverview = resolve })
+      await route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          steamId64: '76561198012345678', configured: true,
+          profile: { name: 'Мой Steam', avatarUrl: null, profilePublic: true,
+            profileUrl: 'https://steamcommunity.com/profiles/76561198012345678/' },
+          gameCount: 1, canSync: true, redFlags: [], lastSyncedAt: '2026-10-31T12:00:00Z',
+        }) })
+      return
+    }
+    const data = path === '/api/bootstrap'
+      ? { user: { id: 819, nickname: 'steady_qa', email: 'steam@example.test',
+          avatarVersion: 0, profileTint: 'rose', createdAt: '2026-11-01T00:00:00Z' },
+          library: [], collections: [] }
+      : path === '/api/steam/connection' ? { connected: true, steamId64: '76561198012345678' }
+      : path === '/api/push/config' ? { enabled: false, publicKey: '', devices: 0 } : {}
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
+  })
+  await page.goto('/?tab=profile')
+  const cloud = page.getByRole('button', { name: 'Steam подключен, открыть настройки' })
+  await expect(cloud).toBeVisible()
+  await cloud.focus()
+  await page.keyboard.press('Enter')
+  const dialog = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toHaveAttribute('data-mode', 'compact')
+  await expect(dialog).toContainText('Проверяем подключение и вашу библиотеку')
+  await expect(dialog.locator('.steam-integration__status-space')).toHaveCSS('min-height', '28px')
+  const initialHeight = await dialog.evaluate(el => el.getBoundingClientRect().height)
+  finishOverview?.()
+  await expect(dialog.locator('.steam-integration__brand h2')).toHaveText('Steam подключен', { timeout: 8000 })
+  await expect(dialog).toContainText('Последняя синхронизация:')
+  const loadedHeight = await dialog.evaluate(el => el.getBoundingClientRect().height)
+  expect(Math.abs(loadedHeight - initialHeight)).toBeLessThan(2)
+  await expect(dialog).toHaveAttribute('data-mode', 'compact')
+  await expect(page).toHaveURL(/tab=profile/)
+  await dialog.getByRole('button', { name: 'Закрыть подключение Steam' }).click()
+  await expect(dialog).toHaveCount(0)
 })
