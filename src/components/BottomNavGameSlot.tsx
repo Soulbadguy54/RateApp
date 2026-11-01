@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import type { PointerEvent as ReactPointerEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { AnimatePresence, animate, motion, useMotionValue, usePresence, useReducedMotion, useTransform } from 'motion/react'
@@ -45,7 +46,7 @@ const LIQUID_VANISH_PROGRESS = -.36
 
 
 /**
- * Shape, rim AND clickable choices share a single lifecycle/progress value.
+ * Shape and clickable choices share a single lifecycle/progress value.
  * The former two AnimatePresence trees raced one another on close: the
  * choices faded/remounted independently while the SVG was still collapsing.
  * Keep them mounted together until the final invisible drop frame.
@@ -56,13 +57,11 @@ function LiquidMorph({ reduceMotion, children, ariaLabel }: { reduceMotion: bool
   const shape = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .46, 1], [
     LIQUID_VANISH, LIQUID_DROP, LIQUID_STRETCH, LIQUID_PANEL,
   ])
-  // The extra exit phase tapers the last droplet to zero opacity as well as
-  // zero area. Opening still starts at progress 0 with the original droplet.
-  // The morph is visible while expanding but clears the settled panel: the
-  // native CSS backdrop blur must sample the PAGE rather than an opaque SVG.
-  const surfaceOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .62, .92, 1], [0, 1, 1, .28, 0])
-  // Content fades with the returning surface, not on an unrelated timeline.
-  const choicesOpacity = useTransform(progress, [0, .34, .6, 1], [0, 0, .8, 1])
+  // Keep the real liquid silhouette visible for almost the entire expansion.
+  // Previously the rectangular backdrop became visible at 34%, hiding the
+  // opening morph. Reverse these same values for a visible close morph.
+  const surfaceOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .85, .98, 1], [0, 1, 1, .14, 0])
+  const choicesOpacity = useTransform(progress, [0, .79, .89, 1], [0, 0, .25, 1])
 
   useEffect(() => {
     if (reduceMotion) {
@@ -145,6 +144,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate, group 
   const [menuOpen, setMenuOpen] = useState(false)
   const [hovered, setHovered] = useState<GameNavTab | null>(null)
   const [navItemSize, setNavItemSize] = useState({ width: 92, height: 44 })
+  const [floatingRect, setFloatingRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const pressRef = useRef<Press | null>(null)
   // Ignore only the click belonging to the handled gesture, not a later tap.
   const ignoreGestureClickRef = useRef(false)
@@ -153,6 +153,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate, group 
   const pinnedRef = useRef<GameNavTab>(pinned)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const bubbleAnchorRef = useRef<HTMLDivElement>(null)
+  const floatingRef = useRef<HTMLDivElement>(null)
 
   // Measure a real sibling nav button. SVG size alone does NOT define the
   // overall tap target; fonts, line height and platform metrics also matter.
@@ -173,6 +174,29 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate, group 
     observer.observe(reference)
     return () => observer.disconnect()
   }, [])
+  // The bottom bar itself uses backdrop-filter, creating a backdrop root.
+  // A nested popup cannot sample/blur the page behind that root, even with
+  // identical CSS tokens. Portal the popup out to <body> but keep its measured
+  // anchor and React gesture handlers associated with the original nav slot.
+  useLayoutEffect(() => {
+    if (!menuOpen) return
+    const sync = () => {
+      const r = bubbleAnchorRef.current?.getBoundingClientRect()
+      if (!r) return
+      setFloatingRect(prev => prev && prev.left === r.left && prev.top === r.top &&
+        prev.width === r.width && prev.height === r.height ? prev : {
+          left: r.left, top: r.top, width: r.width, height: r.height,
+        })
+    }
+    sync()
+    window.addEventListener('resize', sync)
+    window.addEventListener('scroll', sync, true)
+    return () => {
+      window.removeEventListener('resize', sync)
+      window.removeEventListener('scroll', sync, true)
+    }
+  }, [menuOpen, navItemSize.width, navItemSize.height])
+
   const option = options.find(item => item.id === pinned) ?? options[0]
 
   useEffect(() => {
@@ -314,7 +338,7 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate, group 
       event.preventDefault()
       setMenuOpen(true)
       window.requestAnimationFrame(() => {
-        bubbleAnchorRef.current?.querySelector<HTMLButtonElement>('[data-game-nav-choice], [data-collection-nav-choice]')?.focus()
+        floatingRef.current?.querySelector<HTMLButtonElement>('[data-game-nav-choice], [data-collection-nav-choice]')?.focus()
       })
     } else if (event.key === 'Escape') {
       event.preventDefault()
@@ -375,46 +399,58 @@ export default function BottomNavGameSlot({ nickname, active, onNavigate, group 
           '--game-nav-item-width': `${navItemSize.width}px`,
           '--game-nav-item-height': `${navItemSize.height}px`,
         } as CSSProperties}
-      >
-        <AnimatePresence initial={false}>
-          {menuOpen && (
-            <LiquidMorph key="liquid" reduceMotion={Boolean(reduceMotion)} ariaLabel={group === 'games' ? "Выбрать раздел базы игр" : "Выбрать Коллекции или Мои ссылки"}>
-              {options.map(choice => (
-                <button
-                  key={choice.id}
-                  type="button"
-                  className="bottom-nav__item bottom-nav__bubble-choice"
-                  {...(group === 'games' ? { 'data-game-nav-choice': choice.id } : { 'data-collection-nav-choice': choice.id })}
-                  data-highlighted={hovered === choice.id}
-                  onPointerEnter={() => { if (!pressRef.current) setHovered(choice.id) }}
-                  onPointerLeave={() => { if (!pressRef.current) setHovered(null) }}
-                  onClick={() => {
-                    select(choice.id)
-                    buttonRef.current?.focus()
-                  }}
-                  onKeyDown={event => {
-                    if (event.key === 'Escape') {
-                      event.preventDefault()
-                      dismiss()
+      />
+      {floatingRect && createPortal(
+        <div
+          ref={floatingRef}
+          className={'bottom-nav__bubble-floating' + (group === 'collections' ? ' bottom-nav__bubble-floating--collections' : '')}
+          data-nav-popup={group}
+          style={{
+            ...floatingRect,
+            '--game-nav-item-width': `${navItemSize.width}px`,
+            '--game-nav-item-height': `${navItemSize.height}px`,
+          } as CSSProperties}
+        >
+          <AnimatePresence initial={false}>
+            {menuOpen && (
+              <LiquidMorph key="liquid" reduceMotion={Boolean(reduceMotion)}
+                ariaLabel={group === 'games' ? "Выбрать раздел базы игр" : "Выбрать Коллекции или Мои ссылки"}>
+                {options.map(choice => (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    className="bottom-nav__item bottom-nav__bubble-choice"
+                    {...(group === 'games' ? { 'data-game-nav-choice': choice.id } : { 'data-collection-nav-choice': choice.id })}
+                    data-highlighted={hovered === choice.id}
+                    onPointerEnter={() => { if (!pressRef.current) setHovered(choice.id) }}
+                    onPointerLeave={() => { if (!pressRef.current) setHovered(null) }}
+                    onClick={() => {
+                      select(choice.id)
                       buttonRef.current?.focus()
-                    }
-                  }}
-                >
-                  {hovered === choice.id && (
-                    // The highlight doesn't perform a second shared-layout
-                    // animation while the SVG is collapsing.
-                    <span className="bottom-nav__active-surface bottom-nav__bubble-highlight" />
-                  )}
-                  <span className="bottom-nav__content bottom-nav__bubble-choice-content">
-                    <Icon name={choice.icon} />
-                    <span>{choice.label}</span>
-                  </span>
-                </button>
-              ))}
-            </LiquidMorph>
-          )}
-        </AnimatePresence>
-      </div>
+                    }}
+                    onKeyDown={event => {
+                      if (event.key === 'Escape') {
+                        event.preventDefault()
+                        dismiss()
+                        buttonRef.current?.focus()
+                      }
+                    }}
+                  >
+                    {hovered === choice.id && (
+                      <span className="bottom-nav__active-surface bottom-nav__bubble-highlight" />
+                    )}
+                    <span className="bottom-nav__content bottom-nav__bubble-choice-content">
+                      <Icon name={choice.icon} />
+                      <span>{choice.label}</span>
+                    </span>
+                  </button>
+                ))}
+              </LiquidMorph>
+            )}
+          </AnimatePresence>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
