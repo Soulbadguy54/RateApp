@@ -20,7 +20,7 @@
 }
 .profile-steam-cloud__status--pending { background: #9da8b7; box-shadow: none; }
 .profile-glass-header__hero .profile-steam-cloud--connected { opacity: 1; color: #fff; filter: none; }
-.profile-steam-cloud--connected img {
+.profile-glass-header__hero .profile-steam-cloud--connected img {
   opacity: 1;
   /* Steam's original vector is black. Illuminate it on the dark glass. */
   filter: brightness(0) invert(1) drop-shadow(0 0 5px rgba(188,224,255,.75));
