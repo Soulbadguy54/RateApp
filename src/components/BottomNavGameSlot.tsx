@@ -59,8 +59,9 @@ function LiquidMorph({ reduceMotion, children, ariaLabel }: { reduceMotion: bool
   // The extra exit phase tapers the last droplet to zero opacity as well as
   // zero area. Opening still starts at progress 0 with the original droplet.
   // Keep the actual expanding/retracting silhouette throughout both transitions.
-  // Fade the SVG only in the final ~1.5% once the real glass panel is visible.
-  const surfaceOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .88, .985, 1], [0, 1, 1, 1, 0])
+  // Fade the SVG only in the last 5-14% once the real glass panel is visible;
+  // WebKit need not report an exact progress value of 1 for the rim to clear.
+  const surfaceOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .86, .95, 1], [0, 1, 1, 0, 0])
   // Content fades with the returning surface, not on an unrelated timeline.
   const choicesOpacity = useTransform(progress, [0, .34, .6, 1], [0, 0, .8, 1])
 
