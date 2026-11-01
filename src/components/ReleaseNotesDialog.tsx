@@ -107,7 +107,6 @@ export default function ReleaseNotesDialog({ open, tint, onClose }: Props) {
           >
             <header className="release-notes__header">
               <div className="release-notes__heading-wrap">
-                <span className="release-notes__eyebrow">Rate APP</span>
                 <h2 id="release-notes-heading">История обновлений</h2>
               </div>
               <button
