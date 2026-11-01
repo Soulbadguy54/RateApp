@@ -375,6 +375,14 @@ test('manual Steam search saves playthrough before asking consent, links only on
   expect(linked).toBe(1)
   await expect(page.locator('.detail-hero__steam-badge')).toBeVisible()
   await expect(page.locator('.detail-hero__steam-badge')).toHaveCSS('width', '18px')
+  await page.goBack()
+  await expect(page.getByRole('textbox', { name: 'Поиск по базе игр' })).toHaveValue('Call of Duty Deluxe')
+  await page.goBack()
+  await expect(page).toHaveURL(/tab=profile/)
+  await expect(panel).toBeVisible()
+  await expect(panel).toContainText('Нужно найти в Rate APP: 0')
+  expect(saved).toBe(1)
+  // Returning from manual matching never triggers another Steam preview POST.
   // A bottom-tab switch must end the Steam lookup; navigation within the
   // lookup (search -> game -> Back) keeps its state until that explicit switch.
   await page.getByRole('button', { name: 'Профиль', exact: true }).click()
@@ -467,7 +475,25 @@ for (const scenario of [
       await expect(page.locator('.detail-hero__steam-badge')).toBeVisible()
     } else {
       await expect(page.locator('.detail-hero__steam-badge')).toHaveCount(0)
+      // Declining one candidate leaves the Steam AppID context intact.
+      // A second collection membership must offer the same match again.
+      await page.locator('.detail-toolbar__actions').getByRole('button', { name: 'Коллекции' }).click()
+      await page.getByRole('button', {
+        name: 'Добавить «Call of Duty: Modern Warfare» в «Хочу пройти»',
+      }).click()
+      await expect(consent).toContainText('Call of Duty Deluxe')
+      await consent.getByRole('button', { name: 'Нет, не связывать игры' }).click()
+      await expect(consent).toHaveCount(0)
+      expect(linked).toBe(0)
     }
+    await page.goBack()
+    await expect(search).toHaveValue('Call of Duty')
+    await page.goBack()
+    await expect(page).toHaveURL(/tab=profile/)
+    await expect(panel).toBeVisible()
+    await expect(panel).toContainText(scenario.accept
+      ? 'Нужно найти в Rate APP: 0'
+      : 'Нужно найти в Rate APP: 1')
   })
 }
 
