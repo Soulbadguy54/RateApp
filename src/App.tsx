@@ -401,6 +401,24 @@ function App() {
       index === slot ? gameId : id === gameId ? null : id))
     closeProfileCloudPicker()
   }
+  useEffect(() => {
+    if (profileCloudPickerSlot === null) return
+    // The portal is a separate screen and receives initial keyboard focus;
+    // editing state stays mounted beneath it until Back or selection.
+    const frame = window.requestAnimationFrame(() =>
+      document.querySelector<HTMLButtonElement>('.library-cloud-picker--screen .app-back-button')?.focus())
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeProfileCloudPicker()
+      }
+    }
+    document.addEventListener('keydown', onEscape)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      document.removeEventListener('keydown', onEscape)
+    }
+  }, [profileCloudPickerSlot])
   const [librarySearchOpen, setLibrarySearchOpen] = useState(false)
   const librarySearchInputRef = useRef<HTMLInputElement>(null)
   const focusLibrarySearchOnOpen = useRef(false)
