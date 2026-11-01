@@ -313,6 +313,7 @@ test('manual Steam search saves playthrough before asking consent, links only on
     accent: '#336699', accent2: '#223344', glyph: 'C' }
   let saved = 0
   let linked = 0
+  let previews = 0
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname
     let data: unknown = {}
@@ -329,10 +330,10 @@ test('manual Steam search saves playthrough before asking consent, links only on
       profile: { name: 'Steam QA', avatarUrl: null, profilePublic: true,
         profileUrl: 'https://steamcommunity.com/profiles/76561198012345678/' },
       gameCount: 1, canSync: true, redFlags: [], lastSyncedAt: null }
-    else if (path === '/api/steam/preview') data = {
+    else if (path === '/api/steam/preview') { previews++ ; data = {
       token: 'preview-12345678901234567890123456', items: [],
       unresolved: [{ appid: 809010, name: 'Call of Duty Deluxe' }],
-      nextSyncAt: new Date(Date.now() + 30000).toISOString() }
+      nextSyncAt: new Date(Date.now() + 30000).toISOString() } }
     else if (path === '/api/games/search') data = { items: [game], hasMore: false, nextOffset: null }
     else if (path === '/api/library/889' && route.request().method() === 'PUT') {
       saved++
@@ -382,6 +383,7 @@ test('manual Steam search saves playthrough before asking consent, links only on
   await expect(panel).toBeVisible()
   await expect(panel).toContainText('Нужно найти в Rate APP: 0')
   expect(saved).toBe(1)
+  expect(previews).toBe(1)
   // Returning from manual matching never triggers another Steam preview POST.
   // A bottom-tab switch must end the Steam lookup; navigation within the
   // lookup (search -> game -> Back) keeps its state until that explicit switch.
