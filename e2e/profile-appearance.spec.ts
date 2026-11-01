@@ -226,7 +226,7 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   const picker = page.locator('.library-cloud-picker')
   await expect(picker).toBeVisible()
   await expect(picker).toHaveCSS('position', 'fixed')
-  await expect(picker).toHaveCSS('z-index', '24')
+  await expect(picker).toHaveCSS('z-index', '2400')
   const geometry = await picker.boundingBox()
   expect(geometry).not.toBeNull()
   expect(geometry!.y).toBeLessThan(2)
