@@ -97,6 +97,9 @@ test('long-press drag and release still selects a floating portal choice', async
   for (const [group, targetId, resultTab] of [
     ['games', 'discovery', 'discovery'], ['collections', 'links', 'links'],
   ] as const) {
+    // Discovery has a different navigation surface; return to the profile
+    // before exercising the independent Collections/Links slot.
+    await page.goto('/?tab=profile')
     const slot = page.locator('[data-nav-slot="' + group + '"] > button')
     const rect = await slot.boundingBox()
     if (!rect) throw new Error('Missing slot ' + group)
