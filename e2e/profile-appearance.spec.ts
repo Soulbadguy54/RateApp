@@ -149,9 +149,9 @@ test('floating cloud cards only use personal completed/dropped scores and open t
   await expect(page.locator('.profile-top-game__score')).toHaveText(['9.8', '9.7', '9.5'])
   await expect(page.locator('.profile-glass-header__hero')).toBeVisible()
   await expect(page.locator('.profile-top-game__score svg')).toHaveCount(0)
-  const steam = page.getByRole('img', { name: 'Steam — интеграция пока не подключена' })
+  const steam = page.getByRole('button', { name: 'Подключить Steam' })
   await expect(steam).toBeVisible()
-  await expect(page.getByRole('button', { name: /Steam/ })).toHaveCount(0)
+  await expect(steam.locator('.profile-steam-cloud__status')).toBeVisible()
   await expect(steam).toHaveCSS('animation-name', 'profile-steam-cloud-drift')
   await expect(steam).toHaveCSS('animation-duration', '6.1s')
   // Launch and drift must not write transform on the same element.
@@ -331,6 +331,6 @@ test('Control Resonant playing and rated RDR2 both pin via public IGDB IDs, not 
   await expect(page.locator('.profile-top-game').nth(0)).toHaveAttribute('aria-label', 'Control Resonant')
   await expect(page.locator('.profile-top-game').nth(1)).toHaveAttribute('aria-label',
     'Red Dead Redemption 2, личная оценка 9.7 из 10')
-  const steam = page.getByRole('img', { name: 'Steam — интеграция пока не подключена' })
+  const steam = page.getByRole('button', { name: 'Подключить Steam' })
   await expect(steam.locator('img')).toHaveAttribute('src', '/brand/steam.svg')
 })
