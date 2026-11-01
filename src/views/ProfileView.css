@@ -892,7 +892,7 @@
 body > .app-build-version {
   position: fixed;
   z-index: 19;
-  bottom: calc(var(--bottom-nav-height, 62px) + var(--safe-bottom, 0px) + 2px);
+  bottom: calc(var(--bottom-nav-height, 62px) + var(--safe-bottom, 0px) + 8px);
   left: 0; right: 0;
   margin: 0; padding: 0; text-align: center;
   pointer-events: none;
