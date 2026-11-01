@@ -5,6 +5,7 @@ Revises: 20261101_09
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
 
 revision = "20261101_10"
@@ -14,9 +15,12 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column("users", sa.Column(
-        "profile_cloud_game_ids", postgresql.ARRAY(sa.Integer()), nullable=False,
-        server_default=sa.text("ARRAY[NULL,NULL,NULL]::integer[]")))
+    # Empty test databases bootstrap the current ORM schema at baseline.
+    names = {column["name"] for column in inspect(op.get_bind()).get_columns("users")}
+    if "profile_cloud_game_ids" not in names:
+        op.add_column("users", sa.Column(
+            "profile_cloud_game_ids", postgresql.ARRAY(sa.Integer()), nullable=False,
+            server_default=sa.text("ARRAY[NULL,NULL,NULL]::integer[]")))
 
 
 def downgrade():
