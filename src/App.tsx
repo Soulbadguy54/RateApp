@@ -4018,7 +4018,7 @@ function App() {
                 else openTab(item.id)
               }}
               className={'bottom-nav__item' + (item.id === 'profile' ? ' bottom-nav__item--profile' : '') +
-                (activeTab === item.id ? ' bottom-nav__item--active' : '')}
+                (navActiveTab === item.id ? ' bottom-nav__item--active' : '')}
               style={item.id === 'profile'
                 ? { '--profile-accent-rgb': profileTintOption(authUser.profileTint).accentRgb } as CSSProperties
                 : undefined}
