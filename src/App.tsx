@@ -38,6 +38,7 @@ import {
 } from './data'
 
 import ReleaseNotesDialog from './components/ReleaseNotesDialog'
+import type { SteamSearchSnapshot } from './components/SteamIntegrationCloud'
 import { CURRENT_RELEASE_VERSION } from './releaseNotes'
 
 const ProfileView = lazy(() => import('./views/ProfileView'))
@@ -572,6 +573,8 @@ function App() {
   const [addQuery, setAddQuery] = useState('')
   const [pendingSteamMatch, setPendingSteamMatch] = useState<{ name: string; appid: number } | null>(null)
   const steamSearchActiveRef = useRef(false)
+  const steamSearchSnapshotRef = useRef<SteamSearchSnapshot | null>(null)
+  const [steamReturnSnapshot, setSteamReturnSnapshot] = useState<SteamSearchSnapshot | null>(null)
   const [steamMatchPrompt, setSteamMatchPrompt] = useState<{
     sourceName: string; appid: number; gameId: number; gameTitle: string
   } | null>(null)
@@ -716,7 +719,7 @@ function App() {
     showAppView(view, entry)
     // Every root screen is an exit boundary, not just Discovery. On a new
     // bottom-nav selection this gate prevents Back from reopening another tab.
-    if (isRootScreen(view)) pushRootExitGate(view, entry)
+    if (isRootScreen(view) && !(view.tab === 'add' && steamSearchActiveRef.current)) pushRootExitGate(view, entry)
   }
 
   const goBackOr = (fallback: AppView) => {
@@ -814,6 +817,11 @@ function App() {
         window.history.pushState(gate, '', urlForAppView(active))
         exitGateDepthRef.current = gate.appDepth!
         return
+      }
+      if (steamSearchActiveRef.current && active.tab === 'add' && entry.view.tab === 'profile') {
+        steamSearchActiveRef.current = false
+        setPendingSteamMatch(null)
+        setSteamReturnSnapshot(steamSearchSnapshotRef.current)
       }
       showAppView(entry.view, entry)
     }
@@ -1446,6 +1454,8 @@ function App() {
     // Only bottom-tab switching ends the manual Steam search. Returning from
     // a game detail via native Back keeps the search and its matching context.
     setPendingSteamMatch(null)
+    steamSearchSnapshotRef.current = null
+    setSteamReturnSnapshot(null)
     if (steamSearchActiveRef.current) {
       steamSearchActiveRef.current = false
       addSearchGenerationRef.current += 1
@@ -1490,6 +1500,8 @@ function App() {
   // starts that tab from scratch without logging out or reloading the PWA.
   const resetTab = (tab: Tab) => {
     steamSearchActiveRef.current = false
+    steamSearchSnapshotRef.current = null
+    setSteamReturnSnapshot(null)
     setPendingSteamMatch(null)
     if (cloudPickerSnapshotRef.current) closeProfileCloudPicker()
     const view: AppView = { tab, gameId: null, collectionId: null, formGameId: null }
@@ -1641,7 +1653,7 @@ function App() {
       gameId: game.id, gameTitle: game.title,
     })
     setSteamMatchError('')
-    setPendingSteamMatch(null)
+    // Declining one candidate preserves the Steam source for the next one
   }
 
   const answerManualSteamMatch = async (confirmed: boolean) => {
@@ -3710,11 +3722,20 @@ function App() {
         Array.from({ length: 3 }, (_, index) => authUser?.profileCloudGameIds?.[index] ?? null))}
       onChooseCloud={beginProfileCloudPicker}
       onOpenGame={openGame}
-      onFindSteamGame={(name, appid) => {
-        openTab('add')
+      onFindSteamGame={(name, appid, snapshot) => {
         steamSearchActiveRef.current = true
+        steamSearchSnapshotRef.current = snapshot
+        setSteamReturnSnapshot(null)
         setAddQuery(name.slice(0, 100))
         setPendingSteamMatch({ name, appid })
+        // Preserve the profile in native history; this is not a bottom-tab tap
+        exitGateDepthRef.current = null
+        navigateTo({ tab: 'add', gameId: null, collectionId: null, formGameId: null })
+      }}
+      steamReturnSnapshot={steamReturnSnapshot}
+      onSteamReturnClosed={() => {
+        setSteamReturnSnapshot(null)
+        steamSearchSnapshotRef.current = null
       }}
       onSteamSynced={() => {
         void sessionFetch('/api/library', { cache: 'no-store' }).then(async response => {
@@ -3836,12 +3857,7 @@ function App() {
                 )}
                 {activeTab === 'profile' && (
                   <>
-                    <div hidden={profileCloudPickerSlot !== null}>{renderProfile()}</div>
-                    {profileCloudPickerSlot !== null && (
-                      <div className="library-cloud-picker" aria-label="Выбор игры для облака">
-                        {renderLibrary(true)}
-                      </div>
-                    )}
+                    {renderProfile()}
                   </>
                 )}
               </>
@@ -3849,6 +3865,21 @@ function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {/* A separate full-screen My Games picker, not a list under the profile
+          Keep ProfileView mounted to preserve the unsaved avatar/cloud draft */}
+      <AnimatePresence>
+        {activeTab === 'profile' && profileCloudPickerSlot !== null && (
+          <motion.div className="library-cloud-picker library-cloud-picker--screen"
+            role="region" aria-label="Выбор игры для облака"
+            initial={shouldReduceMotion ? false : { opacity: 0, x: 22 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={shouldReduceMotion ? undefined : { opacity: 0, x: 18 }}
+            transition={{ duration: shouldReduceMotion ? 0 : .25, ease: [0.22, 1, 0.36, 1] }}>
+            {renderLibrary(true)}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
       {steamMatchPrompt && (
