@@ -4555,3 +4555,23 @@ body:has(.auth-shell) .install-prompt { display: none; }
   .page--viewport .page-motion .subpage-header,
   .page--viewport .page-motion .detail-toolbar { padding-bottom: 6px; }
 }
+
+
+/* Steam provenance decorates the artwork only; it must not affect scores,
+   gameplay statuses, collection membership, or any library filtering. */
+.game-card__steam-badge,
+.detail-hero__steam-badge {
+  position: absolute; z-index: 5; top: 10px; right: 10px;
+  display: grid; place-items: center;
+  width: 31px; height: 31px; padding: 5px;
+  border-radius: 9px; border: 1px solid rgba(255,255,255,.3);
+  background: rgba(11,16,27,.87); box-shadow: 0 1px 7px rgba(0,0,0,.35);
+  backdrop-filter: blur(12px); pointer-events: none;
+}
+.game-card__steam-badge--below-score { top: 47px; }
+.game-card__steam-badge img,
+.detail-hero__steam-badge img {
+  display: block; width: 100%; height: 100%; object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+.detail-hero__steam-badge { top: 12px; right: 12px; width: 36px; height: 36px; }

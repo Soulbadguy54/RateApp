@@ -24,14 +24,14 @@ for (const connected of [false, true]) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
     })
     await page.goto('/?tab=profile')
-    const steam = page.getByRole('button', { name: connected ? 'Steam подключён, открыть настройки' : 'Подключить Steam' })
+    const steam = page.getByRole('button', { name: connected ? 'Steam подключен, открыть настройки' : 'Подключить Steam' })
     await expect(steam).toBeVisible()
     const dot = steam.locator('.profile-steam-cloud__status')
     await expect(dot).toBeVisible()
     await expect(dot).toHaveCSS('background-color', connected ? 'rgb(94, 241, 155)' : 'rgb(255, 92, 102)')
     if (connected) await expect(steam.locator('img')).toHaveCSS('filter', /invert\(1\)/)
     await steam.click({ force: true })
-    const panel = page.getByRole('dialog', { name: connected ? 'Подключённый аккаунт Steam' : 'Подключение Steam' })
+    const panel = page.getByRole('dialog', { name: connected ? 'Подключенный аккаунт Steam' : 'Подключение Steam' })
     await expect(panel).toBeVisible()
     await expect(panel).toContainText(connected ? 'Игры синхронизируются только по вашему запросу.' : 'Привяжите Steam, чтобы импортировать библиотеку в Rate APP.')
     if (connected) {
@@ -73,9 +73,10 @@ test('Steam redirect result opens link dialog and can be dismissed', async ({ pa
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/?tab=profile&steam=connected')
-  const dialog = page.getByRole('dialog', { name: 'Подключённый аккаунт Steam' })
+  const dialog = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
   await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText('Steam успешно подключён')
+  await expect(dialog).toContainText('Steam подключен')
+  await expect(dialog).not.toContainText('Steam успешно подключен')
   await expect(page).not.toHaveURL(/steam=connected/)
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
@@ -109,13 +110,16 @@ test('Steam preview requires a second Sync click and shows only new and unknown 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/?tab=profile')
-  await page.getByRole('button', { name: 'Steam подключён, открыть настройки' }).click({ force: true })
-  const panel = page.getByRole('dialog', { name: 'Подключённый аккаунт Steam' })
+  await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click({ force: true })
+  const panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
   const sync = panel.getByRole('button', { name: 'Синхронизировать' })
   await expect(sync).toBeEnabled()
   await sync.click()
-  await expect(panel).toContainText('Будут добавлены')
+  await expect(panel).toContainText('Будут добавлены:')
+  await expect(panel).toContainText('Не удалось найти:')
+  await expect(panel).toContainText('Это предпросмотр, игры еще не синхронизированы')
   await expect(panel).toContainText('Cyberpunk 2077')
+  await expect(panel).not.toContainText('Steam #')
   await expect(panel.getByRole('button', { name: /Unknown Steam Game/ })).toBeVisible()
   expect(previews).toBe(1)
   expect(commits).toBe(0)
@@ -145,8 +149,8 @@ test('privacy red flag shows actionable instructions, not internal API details',
     route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+dRTsAAAAASUVORK5CYII=', 'base64') }))
   await page.goto('/?tab=profile')
-  await page.getByRole('button', { name: 'Steam подключён, открыть настройки' }).click({ force: true })
-  const panel = page.getByRole('dialog', { name: 'Подключённый аккаунт Steam' })
+  await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click({ force: true })
+  const panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
   await expect(panel.getByRole('link', { name: 'Открыть профиль Steam' })).toContainText('Steam Player')
   await expect(panel.locator('.steam-integration__profile > img')).toBeVisible()
   await expect(panel).toContainText('Проверьте настройки приватности Steam')
@@ -179,11 +183,49 @@ test('server setup failures never appear as API key instructions in Steam UI', a
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/?tab=profile')
-  await page.getByRole('button', { name: 'Steam подключён, открыть настройки' }).click({ force: true })
-  const panel = page.getByRole('dialog', { name: 'Подключённый аккаунт Steam' })
+  await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click({ force: true })
+  const panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
   await expect(panel).toContainText('Пока не удаётся проверить доступ к библиотеке Steam')
   await expect(panel.getByRole('button', { name: 'Синхронизировать' })).toBeDisabled()
   await expect(panel).not.toContainText('STEAM_WEB_API_KEY')
   await expect(panel).not.toContainText('Администратору')
   await expect(panel.locator('.steam-integration__panel')).toHaveCSS('--steam-accent', '#719be4')
+})
+
+test('Steam sync button acknowledges click with continuous activity state', async ({ page }) => {
+  let releasePreview: (() => void) | undefined
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/steam/preview') {
+      await new Promise<void>(resolve => { releasePreview = resolve })
+      await route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ token: 'preview-12345678901234567890123456', items: [], unresolved: [],
+          nextSyncAt: new Date(Date.now() + 120000).toISOString() }) })
+      return
+    }
+    const payload = path === '/api/bootstrap'
+      ? { user: { id: 715, nickname: 'spinner_qa', email: 'steam@example.test',
+          profileTint: 'default', avatarVersion: 0, createdAt: '2026-11-01T00:00:00Z' },
+          library: [], collections: [] }
+      : path === '/api/steam/connection' ? { connected: true, steamId64: '76561198012345678' }
+      : path === '/api/steam/overview'
+        ? { steamId64: '76561198012345678', configured: true,
+            profile: { name: 'Steam QA', avatarUrl: null, profilePublic: true,
+              profileUrl: 'https://steamcommunity.com/profiles/76561198012345678/' },
+            gameCount: 8, canSync: true, redFlags: [], lastSyncedAt: null }
+      : path === '/api/push/config' ? { enabled: false, publicKey: '', devices: 0 } : {}
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) })
+  })
+  await page.goto('/?tab=profile')
+  await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click({ force: true })
+  const panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
+  const sync = panel.getByRole('button', { name: 'Синхронизировать' })
+  await sync.click()
+  await expect(panel.getByRole('button', { name: 'Проверяем библиотеку…' })).toBeDisabled()
+  await expect(sync.locator('.steam-integration__sync-icon')).toHaveCSS('animation-name', 'steam-sync-turn')
+  await page.waitForTimeout(1300)
+  await expect(sync.locator('.steam-integration__sync-icon')).toHaveCSS('animation-name', 'steam-sync-turn')
+  releasePreview?.()
+  await expect(panel).toContainText('Это предпросмотр, игры еще не синхронизированы')
+  await expect(panel.getByRole('button', { name: 'Синхронизировать' })).toBeEnabled()
 })

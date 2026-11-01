@@ -37,6 +37,8 @@ export type LibraryEntry = {
   technologyScore?: number
   gameplayScore?: number
   review?: string
+  /** Steam provenance, never used to infer gameplay status or ratings. */
+  steamLinked?: boolean
   collectionIds: string[]
   collectionAddedAt?: Record<string, string>
   /** Timestamp of the most recent transition into completed, dropped, or playing. */
@@ -72,7 +74,7 @@ export const collections: GameCollection[] = [
   {
     id: '2026',
     title: '2026',
-    description: 'Что прошёл и прохожу в этом году.',
+    description: 'Что прошел и прохожу в этом году.',
     mark: '26',
   },
   {
@@ -280,7 +282,7 @@ export const initialLibrary: LibraryEntry[] = [
     platform: 'PS5',
     completedAt: '2026-05-18',
     score: 8.9,
-    review: 'Быстрый, жёсткий и очень хорошо отполированный экшен.',
+    review: 'Быстрый, жесткий и очень хорошо отполированный экшен.',
     collectionIds: ['best', '2026'],
     addedAt: '2026-05-18',
   },

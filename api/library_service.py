@@ -114,6 +114,7 @@ def _serialize_entry(
         "technologyScore": float(entry.technology_score) if entry.technology_score is not None else None,
         "gameplayScore": float(entry.gameplay_score) if entry.gameplay_score is not None else None,
         "review": entry.review,
+        "steamLinked": isinstance(entry.steam_data, dict) and bool(entry.steam_data.get("apps")),
         "collectionIds": collection_ids if collection_ids is not None else _collection_slugs(session, entry.id),
         "collectionAddedAt": collection_added_at,
         "addedAt": entry.added_at.date().isoformat(),

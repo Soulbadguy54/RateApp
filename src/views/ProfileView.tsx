@@ -181,7 +181,7 @@ export default function ProfileView({
   const save = async () => {
     if (saving) return
     const baked = photo ? bakeAvatar() : null
-    if (photo && !baked) { setError('Изображение ещё не готово.'); return }
+    if (photo && !baked) { setError('Изображение еще не готово.'); return }
     setSaving(true)
     setError('')
     try {

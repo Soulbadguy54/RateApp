@@ -191,3 +191,20 @@
 @media (prefers-reduced-motion: reduce) {
   .steam-integration__backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* Explicit click acknowledgment and continuous progress for slow Steam/IGDB requests. */
+.steam-integration__connect { transition: transform .12s ease, filter .15s ease, opacity .15s ease; }
+.steam-integration__connect:active:not(:disabled) { transform: scale(.975); filter: brightness(1.08); }
+.steam-integration__connect--busy { filter: saturate(.85); }
+.steam-integration__sync-icon { width: 20px; height: 20px; display: inline-grid; place-items: center; flex-shrink: 0; }
+.steam-integration__connect--busy .steam-integration__sync-icon { animation: steam-sync-turn 1.15s linear infinite; }
+@keyframes steam-sync-turn { to { transform: rotate(360deg); } }
+.steam-integration__close { border: 0; background: transparent; box-shadow: none; }
+.steam-integration__close:hover { background: rgba(255,255,255,.045); }
+.steam-integration__disconnect { color: #ff707e !important; }
+.steam-integration__unresolved { justify-content: space-between; }
+.steam-integration__unresolved > span { flex: 1; min-width: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .steam-integration__connect--busy .steam-integration__sync-icon { animation: steam-sync-fade 1s ease-in-out infinite alternate; }
+  @keyframes steam-sync-fade { from { opacity: .5; } to { opacity: 1; } }
+}

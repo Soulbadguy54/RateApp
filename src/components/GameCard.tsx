@@ -144,6 +144,12 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
         {entry.score != null && (
           <span className="score-badge">{entry.score.toFixed(1)}</span>
         )}
+        {entry.steamLinked && (
+          <span className={'game-card__steam-badge' + (entry.score != null ? ' game-card__steam-badge--below-score' : '')}
+            aria-label="Добавлено через Steam" title="Добавлено через Steam">
+            <img src="/brand/steam.svg" alt="" />
+          </span>
+        )}
         {isPlaythrough(entry) && (
           <span className={`status-badge status-badge--${entry.status}`}>
             <Icon name={statusIcons[entry.status]} size={12} />

@@ -94,12 +94,12 @@ export default function AuthScreen({
       }
 
       if (!response.ok) {
-        setError(apiErrorDetail(data) ?? `Ошибка сервера (${response.status}). Попробуйте ещё раз.`)
+        setError(apiErrorDetail(data) ?? `Ошибка сервера (${response.status}). Попробуйте еще раз.`)
         return
       }
 
       if (!data || typeof data !== 'object' || !('id' in data)) {
-        setError('Сервер вернул некорректный ответ. Попробуйте ещё раз.')
+        setError('Сервер вернул некорректный ответ. Попробуйте еще раз.')
         return
       }
 
@@ -119,7 +119,7 @@ export default function AuthScreen({
       setError(
         healthAvailable
           ? 'Сервер доступен, но запрос входа блокируется браузером или PWA. Полностью закрой приложение и открой снова.'
-          : 'Не удалось связаться с сервером. Проверь соединение и попробуй ещё раз.',
+          : 'Не удалось связаться с сервером. Проверь соединение и попробуй еще раз.',
       )
     } finally {
       setBusy(false)
@@ -258,7 +258,7 @@ export default function AuthScreen({
         </form>
 
         <p className="auth-security">
-          PIN хранится только в виде защищённого хэша. После входа браузер получает защищённую сессию.
+          PIN хранится только в виде защищенного хэша. После входа браузер получает защищенную сессию.
         </p>
       </section>
     </main>

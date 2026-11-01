@@ -1619,7 +1619,7 @@ function App() {
       })
 
       if (!response.ok) {
-        window.alert('Не удалось сохранить игру. Попробуйте ещё раз.')
+        window.alert('Не удалось сохранить игру. Попробуйте еще раз.')
         return
       }
       const savedPayload = await response.json() as ApiLibraryEntry
@@ -1641,7 +1641,7 @@ function App() {
         }
       }
     } catch {
-      window.alert('Не удалось сохранить игру. Проверьте соединение и попробуйте ещё раз.')
+      window.alert('Не удалось сохранить игру. Проверьте соединение и попробуйте еще раз.')
       return
     }
 
@@ -1683,7 +1683,7 @@ function App() {
         ),
         current,
       ))
-      window.alert('Не удалось обновить коллекции. Попробуйте ещё раз.')
+      window.alert('Не удалось обновить коллекции. Попробуйте еще раз.')
     } finally {
       collectionUpdatesRef.current.delete(gameId)
       update.syncing = false
@@ -1712,7 +1712,7 @@ function App() {
     setDeleteCollectionError('')
     try {
       const response = await sessionFetch('/api/library/' + game.id, { method: 'DELETE' })
-      if (!response.ok) throw new Error('Не удалось удалить прохождение. Попробуйте ещё раз.')
+      if (!response.ok) throw new Error('Не удалось удалить прохождение. Попробуйте еще раз.')
       setEntries((current) => current.flatMap((entry) => {
         if (entry.gameId !== game.id) return [entry]
         return entry.collectionIds.length > 0
@@ -1837,7 +1837,7 @@ function App() {
     setDeleteCollectionError('')
     try {
       const response = await sessionFetch(`/api/collections/${encodeURIComponent(collection.id)}`, { method: 'DELETE' })
-      if (!response.ok) throw new Error('Не удалось удалить коллекцию. Попробуйте ещё раз.')
+      if (!response.ok) throw new Error('Не удалось удалить коллекцию. Попробуйте еще раз.')
       setCollections((current) => current.filter((item) => item.id !== collection.id))
       setEntries((current) => current.flatMap((entry) => {
         const ids = entry.collectionIds.filter((id) => id !== collection.id)
@@ -2115,7 +2115,7 @@ function App() {
       setEntries(current => withCollectionMembership(current, game.id, WISHLIST_COLLECTION_ID, !included))
       showWishlistToast(game.id, !included)
     } catch {
-      window.alert('Не удалось изменить список «Хочу пройти». Попробуй ещё раз.')
+      window.alert('Не удалось изменить список «Хочу пройти». Попробуй еще раз.')
     } finally {
       wishlistToggleInFlightRef.current.delete(game.id)
     }
@@ -2358,6 +2358,11 @@ function App() {
         <section className="detail-hero">
           <div className={selectedGame.coverUrl ? 'detail-hero__cover detail-hero__cover--image' : 'detail-hero__cover'}>
             <Cover game={selectedGame} priority />
+            {selectedEntry?.steamLinked && (
+              <span className="detail-hero__steam-badge" title="Игра связана со Steam" aria-label="Игра связана со Steam">
+                <img src="/brand/steam.svg" alt="" />
+              </span>
+            )}
           </div>
           <div className="detail-hero__info">
             <h1>{selectedGame.title}</h1>
@@ -2446,7 +2451,7 @@ function App() {
 
         {isPlaythrough(selectedEntry) && (
           <section className="info-card">
-            <span className="eyebrow detail-section-eyebrow">МОЁ ПРОХОЖДЕНИЕ</span>
+            <span className="eyebrow detail-section-eyebrow">МОЕ ПРОХОЖДЕНИЕ</span>
             <div className="info-list">
               <div><span><Icon name="gamepad" size={17} />Платформа</span><strong>{selectedEntry.platform ?? 'Не указана'}</strong></div>
               <div>
@@ -2970,7 +2975,7 @@ function App() {
                 <select value={addPlatform} onChange={(event) => setAddPlatform(event.target.value)}>
                   <option value="" disabled>Выберите платформу</option>
                   {addPlatform && !addGame.platforms.includes(addPlatform) && (
-                    <option value={addPlatform}>{addPlatform} (из сохранённого прохождения)</option>
+                    <option value={addPlatform}>{addPlatform} (из сохраненного прохождения)</option>
                   )}
                   {addGame.platforms.map((platform) => <option key={platform} value={platform}>{platform}</option>)}
                 </select>
@@ -3007,7 +3012,7 @@ function App() {
                     <div className="rating-builder__summary">
                       <span>Итоговая оценка</span>
                       <strong>{calculatedAddScore.toFixed(1)}</strong>
-                      <small>среднее четырёх критериев</small>
+                      <small>среднее четырех критериев</small>
                     </div>
                     <div className="rating-builder__wheels">
                       <RatingWheel label="Атмосфера" value={addAtmosphereScore} onChange={setAddAtmosphereScore} />
@@ -3122,13 +3127,6 @@ function App() {
           </div>
         </header>
 
-        {pendingSteamMatch && (
-          <div className="game-database-error" role="status">
-            <span>Поиск игры из Steam: {pendingSteamMatch.name} (AppID {pendingSteamMatch.appid}).
-              Выберите игру и добавьте её — связь сохранится после подтверждения.</span>
-            <button type="button" onClick={() => setPendingSteamMatch(null)}>Отменить связь</button>
-          </div>
-        )}
         <section className="search-results">
           {addResults.map((game, index) => (
             <button
@@ -3182,7 +3180,7 @@ function App() {
               whileTap={shouldReduceMotion ? undefined : { scale: .975 }}
             >
               <span className="game-database-deep-search__text">
-                <strong>Не нашёл нужную игру?</strong>
+                <strong>Не нашел нужную игру?</strong>
                 <small>Попробуй более глубокий поиск по всей базе IGDB.</small>
               </span>
               <span className="game-database-deep-search__action">
@@ -3244,7 +3242,7 @@ function App() {
               onClick={() => { void createCollection() }}
               disabled={!collectionTitle.trim() || collectionSaving}
             >
-              {collectionSaving ? 'Создаём…' : 'Создать коллекцию'}
+              {collectionSaving ? 'Создаем…' : 'Создать коллекцию'}
             </button>
           </section>
         </div>
@@ -3444,10 +3442,10 @@ function App() {
 
           {editing && (
             <div className="collection-edit-hint">
-              <span>Нажми <b>×</b> на игре, чтобы убрать её из коллекции. Данные прохождения сохранятся.</span>
+              <span>Нажми <b>×</b> на игре, чтобы убрать ее из коллекции. Данные прохождения сохранятся.</span>
               {removedCollectionGameIds.length > 0 && (
                 <button type="button" onClick={() => setRemovedCollectionGameIds([])}>
-                  Вернуть удалённые ({removedCollectionGameIds.length})
+                  Вернуть удаленные ({removedCollectionGameIds.length})
                 </button>
               )}
             </div>
