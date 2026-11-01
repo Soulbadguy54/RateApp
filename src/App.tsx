@@ -3992,7 +3992,10 @@ function App() {
           Нажми или свайпни «Назад» повторно, чтобы выйти
         </div>
       )}
-      <nav className="bottom-nav" aria-label="Основная навигация">
+      {/* The navigation is fixed while My Games scrolls the window and the other
+          tabs scroll within .page--viewport. Keep Motion's shared active
+          surface in fixed coordinates through that scroll-root switch. */}
+      <motion.nav layoutRoot className="bottom-nav" aria-label="Основная навигация">
           {nav.map((item) => item.id === 'add' || item.id === 'collections' ? (
             <BottomNavGameSlot
               key={item.id}
@@ -4008,7 +4011,6 @@ function App() {
             />
           ) : (
             <motion.button
-              layout
               key={item.id}
               onClick={() => {
                 if (activeTab === item.id) resetTab(item.id)
@@ -4043,7 +4045,7 @@ function App() {
               </span>
             </motion.button>
           ))}
-      </nav>
+      </motion.nav>
     </div>
   )
 }
