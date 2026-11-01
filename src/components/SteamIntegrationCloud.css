@@ -22,7 +22,8 @@
 .profile-glass-header__hero .profile-steam-cloud--connected { opacity: 1; color: #fff; filter: none; }
 .profile-steam-cloud--connected img {
   opacity: 1;
-  filter: none;
+  /* Steam's original vector is black. Illuminate it on the dark glass. */
+  filter: brightness(0) invert(1) drop-shadow(0 0 5px rgba(188,224,255,.75));
 }
 .steam-integration__backdrop {
   position: fixed;
@@ -53,7 +54,7 @@
 }
 .steam-integration__heading { display: flex; justify-content: space-between; align-items: center; }
 .steam-integration__brand { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #d7e5f8; font-weight: 750; }
-.steam-integration__brand img { width: 23px; height: 23px; }
+.steam-integration__brand img { width: 23px; height: 23px; filter: brightness(0) invert(1); }
 .steam-integration__close { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid rgba(255,255,255,.12); border-radius: 11px; color: #e8effb; background: rgba(255,255,255,.05); }
 .steam-integration__panel h2 { margin: 5px 0 7px; font-size: clamp(22px,6vw,28px); line-height: 1.1; letter-spacing: -.04em; }
 .steam-integration__intro { color: #b9c6d7; line-height: 1.5; font-size: 13px; margin: 0 0 15px; }
