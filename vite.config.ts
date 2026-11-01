@@ -55,6 +55,12 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
+        share_target: {
+          action: '/?tab=links',
+          method: 'GET',
+          enctype: 'application/x-www-form-urlencoded',
+          params: { title: 'title', text: 'text', url: 'shared_url' },
+        },
         icons: [
           {
             src: '/rateapp-icon-192.png',
