@@ -208,3 +208,79 @@
   .steam-integration__connect--busy .steam-integration__sync-icon { animation: steam-sync-fade 1s ease-in-out infinite alternate; }
   @keyframes steam-sync-fade { from { opacity: .5; } to { opacity: 1; } }
 }
+
+/* The header belongs to the modal's scroll surface: content scrolls behind
+   its opaque backing, without a second liquid-glass or backdrop-blur layer. */
+.steam-integration__heading {
+  position: sticky;
+  z-index: 15;
+  top: calc(-1 * clamp(18px, 4.5vw, 24px));
+  margin: calc(-1 * clamp(18px, 4.5vw, 24px)) calc(-1 * clamp(18px, 4.5vw, 24px)) 0;
+  padding: clamp(18px, 4.5vw, 24px) clamp(18px, 4.5vw, 24px) 13px;
+  min-height: 76px;
+  background: #20283a;
+  border-bottom: 1px solid rgba(210,225,246,.10);
+}
+.steam-integration__brand { min-width: 0; }
+.steam-integration__brand h2 { font-size: clamp(17px, 5.2vw, 22px); white-space: nowrap; }
+.steam-integration__brand img { transform-origin: center; }
+.steam-integration__brand img.steam-integration__logo--checking {
+  animation: steam-connection-check 1.1s ease-in-out both;
+}
+@keyframes steam-connection-check {
+  0%, 100% { transform: scale(1) rotate(0); filter: brightness(0) invert(1); }
+  25% { transform: scaleX(1.16) scaleY(.70) rotate(-12deg); }
+  50% { transform: scaleX(.82) scaleY(1.20) rotate(8deg); }
+  76% { transform: scaleX(1.08) scaleY(.92) rotate(-4deg); }
+}
+.steam-integration__close {
+  border: 1px solid rgba(214,228,248,.23);
+  background: rgba(235,242,253,.045);
+  color: #dce5f4;
+  box-shadow: none;
+}
+.steam-integration__close:hover { border-color: rgba(214,228,248,.4); background: rgba(235,242,253,.085); }
+
+/* A raised, satin-finish primary action with legible tactile affordances. */
+.steam-integration__connect {
+  border: 1px solid rgba(255,255,255,.38);
+  border-radius: 15px;
+  min-height: 52px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--steam-accent) 80%, white),
+    var(--steam-accent) 63%, color-mix(in srgb, var(--steam-accent) 82%, black));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.44),
+    0 8px 22px rgba(var(--steam-accent-rgb,140,242,125),.22), 0 5px 15px rgba(0,0,0,.23);
+}
+.steam-integration__connect:hover:not(:disabled) { filter: brightness(1.08); }
+.steam-integration__connect:active:not(:disabled) { transform: translateY(1px) scale(.985); box-shadow: inset 0 2px 5px rgba(0,0,0,.16); }
+.steam-integration__connect:disabled { box-shadow: none; }
+.steam-integration__unresolved {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 0; min-width: 0;
+  color: #e5ecf6;
+}
+.steam-integration__unresolved-title {
+  flex: 1; min-width: 0; font-weight: 650;
+  color: #e5ecf6; font-size: 12px; line-height: 1.45;
+  text-decoration: none; overflow-wrap: anywhere;
+}
+.steam-integration__unresolved-title:hover { color: var(--steam-accent); text-decoration: underline; }
+.steam-integration__unresolved-actions { display: flex; gap: 9px; flex: 0 0 auto; align-items: center; }
+.steam-integration__unresolved-actions button {
+  display: grid; place-items: center; flex: 0 0 35px;
+  width: 35px; height: 35px; padding: 0;
+  border: 1px solid rgba(203,219,243,.35);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(65,82,109,.7), rgba(22,33,53,.7));
+  color: #e0ebf8;
+  box-shadow: inset 0 1px rgba(255,255,255,.06);
+  cursor: pointer;
+}
+.steam-integration__unresolved-actions button:active { transform: scale(.94); }
+.steam-integration__unresolved-actions button:hover { border-color: var(--steam-accent); }
+.steam-integration__unresolved-actions button:disabled { opacity: .45; cursor: wait; }
+
+@media (prefers-reduced-motion: reduce) {
+  .steam-integration__brand img.steam-integration__logo--checking { animation: steam-logo-pulse 1.1s ease-in-out both; }
+  @keyframes steam-logo-pulse { 0%,100% { opacity: 1 } 50% { opacity: .65 } }
+}

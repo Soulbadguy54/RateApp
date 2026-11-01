@@ -38,6 +38,22 @@ const messages: Record<string, string> = {
 
 const displayStatus = (status: 'playing' | 'wishlist') => status === 'playing' ? 'Прохожу' : 'Хочу пройти'
 
+function relativeSyncTime(iso: string, now: number): string {
+  const elapsed = Math.max(1, Math.floor((now - Date.parse(iso)) / 60000))
+  const unit = elapsed < 60 ? 'минут' : elapsed < 1440 ? 'часов' : elapsed < 43200 ? 'дней' : elapsed < 525600 ? 'месяцев' : 'лет'
+  const count = elapsed < 60 ? elapsed : elapsed < 1440 ? Math.floor(elapsed / 60) : elapsed < 43200 ? Math.floor(elapsed / 1440) : elapsed < 525600 ? Math.floor(elapsed / 43200) : Math.floor(elapsed / 525600)
+  const forms: Record<string, [string, string, string]> = {
+    минут: ['минуту', 'минуты', 'минут'],
+    часов: ['час', 'часа', 'часов'],
+    дней: ['день', 'дня', 'дней'],
+    месяцев: ['месяц', 'месяца', 'месяцев'],
+    лет: ['год', 'года', 'лет'],
+  }
+  const [single, few, many] = forms[unit]
+  const form = count % 10 === 1 && count % 100 !== 11 ? single : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? few : many
+  return count + ' ' + form + ' назад'
+}
+
 function PrivacyChecklist({ compact = false }: { compact?: boolean }) {
   return (
     <div className={'steam-integration__requirements' + (compact ? ' steam-integration__requirements--compact' : '')}>
@@ -71,11 +87,14 @@ export default function SteamIntegrationCloud({
   const [avatarFailed, setAvatarFailed] = useState(false)
   const [overviewError, setOverviewError] = useState(false)
   const [checking, setChecking] = useState(false)
+  const [dismissBusy, setDismissBusy] = useState<number | null>(null)
+  const [dismissed, setDismissed] = useState<number[]>([])
   const [syncing, setSyncing] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
   const [secondsNow, setSecondsNow] = useState(() => Date.now())
   const [nextSyncAt, setNextSyncAt] = useState<string | null>(null)
   const pendingRef = useRef(false)
+  const checkingGeneration = useRef(0)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [result, setResult] = useState<SyncResult | null>(null)
   const cloudRef = useRef<HTMLButtonElement>(null)
@@ -96,19 +115,45 @@ export default function SteamIntegrationCloud({
   }
 
   const refreshOverview = async () => {
+    const generation = ++checkingGeneration.current
+    const began = Date.now()
     setChecking(true)
     setOverviewError(false)
     try {
       const response = await sessionFetch('/api/steam/overview', { cache: 'no-store' })
       if (!response.ok) throw new Error('Не удалось проверить библиотеку Steam.')
       const data = await response.json() as Overview
+      if (generation !== checkingGeneration.current) return
       setOverview(data)
       setNextSyncAt(data.nextSyncAt ?? null)
       setAvatarFailed(false)
     } catch {
-      setOverviewError(true)
+      if (generation === checkingGeneration.current) setOverviewError(true)
     } finally {
-      setChecking(false)
+      // Complete at least one full logo animation. Avoid a mid-keyframe snap
+      // even when Steam answers much faster than the motion cycle.
+      const remaining = Math.max(0, 1150 - (Date.now() - began))
+      await new Promise(resolve => window.setTimeout(resolve, remaining))
+      if (generation === checkingGeneration.current) setChecking(false)
+    }
+  }
+
+  const dismissApp = async (appid: number) => {
+    if (dismissBusy !== null) return
+    setDismissBusy(appid)
+    setError('')
+    try {
+      const response = await sessionFetch('/api/steam/ignored', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appid }),
+      })
+      if (!response.ok) throw new Error()
+      setDismissed(previous => previous.includes(appid) ? previous : [...previous, appid])
+    } catch {
+      setError('Не удалось скрыть игру. Повторите попытку.')
+    } finally {
+      setDismissBusy(null)
     }
   }
 
@@ -155,6 +200,7 @@ export default function SteamIntegrationCloud({
     if (bounds) setOrigin({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 })
     setPreview(null)
     setResult(null)
+    setDismissed([])
     setError('')
     setOpen(true)
   }
@@ -177,7 +223,7 @@ export default function SteamIntegrationCloud({
       if (!response.ok) {
         // API details are diagnostic, not display copy (may contain internals).
         if (response.status === 429) {
-          const seconds = Math.max(1, Number(response.headers.get('Retry-After') || '120'))
+          const seconds = Math.max(1, Number(response.headers.get('Retry-After') || '30'))
           setNextSyncAt(new Date(Date.now() + seconds * 1000).toISOString())
           throw new Error('Повторная проверка будет доступна через несколько минут.')
         }
@@ -193,7 +239,7 @@ export default function SteamIntegrationCloud({
       } else {
         const data = await response.json() as Preview
         setPreview(data)
-        setNextSyncAt(data.nextSyncAt ?? new Date(Date.now() + 120000).toISOString())
+        setNextSyncAt(data.nextSyncAt ?? new Date(Date.now() + 30000).toISOString())
         setResult(null)
       }
     } catch (cause) {
@@ -238,7 +284,8 @@ export default function SteamIntegrationCloud({
   const x = origin.x ? origin.x - window.innerWidth / 2 : 0
   const y = origin.y ? origin.y - window.innerHeight / 2 : 0
   const items = preview?.items ?? result?.created ?? []
-  const unresolved = preview?.unresolved ?? result?.unresolved ?? []
+  const unresolved = (preview?.unresolved ?? result?.unresolved ?? []).filter(item => !dismissed.includes(item.appid))
+  const newCount = items.length
   const cooldownLeft = nextSyncAt ? Math.max(0, Math.ceil((Date.parse(nextSyncAt) - secondsNow) / 1000)) : 0
   const cooldownLabel = cooldownLeft > 0 ? Math.floor(cooldownLeft / 60) + ':' + String(cooldownLeft % 60).padStart(2, '0') : null
 
@@ -276,8 +323,8 @@ export default function SteamIntegrationCloud({
                 }}>
                 <div className="steam-integration__heading">
                   <div className="steam-integration__brand">
-                    <img src="/brand/steam.svg" alt="" />
-                    <h2>{connected ? 'Steam подключен' : 'Подключить Steam'}</h2>
+                    <img src="/brand/steam.svg" alt="" className={checking ? 'steam-integration__logo--checking' : ''} />
+                    <h2 aria-live="polite">{connected ? checking ? 'Проверка соединения' : 'Steam подключен' : 'Подключить Steam'}</h2>
                   </div>
                   <button ref={closeRef} type="button" aria-label="Закрыть подключение Steam"
                     className="steam-integration__close" onClick={() => setOpen(false)}>
@@ -303,15 +350,14 @@ export default function SteamIntegrationCloud({
                         <strong>{overview?.profile?.name || 'Профиль Steam'}</strong>
                         <small>Steam ID: {connection?.steamId64}</small>
                       </span>
-                      <Icon name="arrow" size={17} />
+                      {!preview && !result && <Icon name="external-link" size={17} />}
                     </a>
-                    {checking && <p className="steam-integration__muted" role="status">Проверяем доступность библиотеки…</p>}
-                    {overview && (
+                    {newCount > 0 && (
                       <div className="steam-integration__stats">
-                        <p>Игр доступно: <strong>{overview.gameCount}</strong></p>
-                        <p>Последняя синхронизация: <strong>{overview.lastSyncedAt
-                          ? new Date(overview.lastSyncedAt).toLocaleString('ru-RU')
-                          : '—'}</strong></p>
+                        <p>Новых игр найдено: <strong>{newCount}</strong></p>
+                        {overview?.lastSyncedAt && (
+                          <p>Последняя синхронизация: <strong>{relativeSyncTime(overview.lastSyncedAt, secondsNow)}</strong></p>
+                        )}
                       </div>
                     )}
                     {showAccessHelp && (
@@ -339,16 +385,27 @@ export default function SteamIntegrationCloud({
                             <div><strong>{item.title}</strong><span>{displayStatus(item.status)}</span></div>
                           </div>
                         ))}
-                        <h3>Не удалось найти: {unresolved.length}</h3>
-                        {unresolved.length === 0 && <p>Все доступные игры сопоставлены.</p>}
-                        {unresolved.length > 0 && <p>Нажмите на название, чтобы найти игру в базе Rate APP и добавить вручную.</p>}
+                        <h3>Нужно найти в Rate APP: {unresolved.length}</h3>
+                        {unresolved.length > 0 && <p>Попробуйте добавить игру вручную.</p>}
                         {unresolved.map(item => (
-                          <button type="button" key={item.appid} className="steam-integration__unresolved"
-                            title="Найти игру в базе Rate APP"
-                            onClick={() => { onFindUnmatched?.(item.name, item.appid); setOpen(false) }}>
-                            <span>{item.name}</span> {item.reason === 'playtime_unavailable' && <small>Нет данных о времени игры</small>}
-                            <Icon name="arrow" size={14} />
-                          </button>
+                          <div key={item.appid} className="steam-integration__unresolved">
+                            <a className="steam-integration__unresolved-title"
+                              href={'https://store.steampowered.com/app/' + item.appid + '/'}
+                              target="_blank" rel="noopener noreferrer" title="Открыть страницу игры в Steam">
+                              {item.name}
+                            </a>
+                            <div className="steam-integration__unresolved-actions">
+                              <button type="button" aria-label={'Найти в базе Rate APP: ' + item.name}
+                                title="Найти в Rate APP" onClick={() => { onFindUnmatched?.(item.name, item.appid); setOpen(false) }}>
+                                <Icon name="search" size={17} />
+                              </button>
+                              <button type="button" aria-label={'Больше не показывать: ' + item.name}
+                                title="Не показывать при будущих синхронизациях"
+                                disabled={dismissBusy !== null} onClick={() => void dismissApp(item.appid)}>
+                                <Icon name="x" size={17} />
+                              </button>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     )}

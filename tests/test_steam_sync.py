@@ -254,3 +254,59 @@ class SteamDatabaseSyncTests(unittest.TestCase):
             self.assertEqual(with_meta[0]["status"], original_status)
             self.assertEqual(float(with_meta[0]["score"]), float(original_score))
             self.assertNotIn("steam_data", with_meta[0])
+
+    def test_ignore_unknown_app_persists_per_steam_account_and_removes_from_future_preview(self):
+        from api.database import SessionLocal
+        from api.models import SteamIgnoredApp
+        from sqlalchemy import select
+        headers = {"Origin": "https://testserver"}
+        bad = self.client.post("/api/steam/ignored", headers={"Origin": "https://evil.example"},
+                               json={"appid": 104})
+        self.assertEqual(bad.status_code, 403)
+        ignored = self.client.post("/api/steam/ignored", headers=headers, json={"appid": 104})
+        self.assertEqual(ignored.status_code, 200, ignored.text)
+        # Repeated user actions are idempotent.
+        self.assertEqual(self.client.post("/api/steam/ignored", headers=headers,
+                                          json={"appid": 104}).status_code, 200)
+        with SessionLocal() as db:
+            rows = db.scalars(select(SteamIgnoredApp).where(SteamIgnoredApp.user_id == self.user_id)).all()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].steam_id64, "76561198012345678")
+        with (
+            patch.object(steam_sync, "_resolve_mappings", return_value={}),
+            patch.object(steam_sync, "_ensure_games", return_value={}),
+        ):
+            matched, unknown = steam_sync._prepare(self.user_id, "76561198012345678",
+                [{"appid": 104, "name": "Hidden", "minutes": 5},
+                 {"appid": 105, "name": "Visible", "minutes": 10}])
+            self.assertEqual(matched, [])
+            self.assertEqual([x["appid"] for x in unknown], [105])
+            # Hidden app is account-specific and does not leak to a different Steam ID.
+            matched, unknown = steam_sync._prepare(self.user_id, "76561198099999999",
+                [{"appid": 104, "name": "Hidden", "minutes": 5}])
+            self.assertEqual([x["appid"] for x in unknown], [104])
+
+    def test_confirmed_manual_match_prevents_repeat_and_preserves_user_game(self):
+        from api.database import SessionLocal
+        from api.models import UserGame
+        from sqlalchemy import select
+        headers = {"Origin": "https://testserver"}
+        with patch.object(steam_sync, "_owned_games", return_value=(
+            [{"appid": 5080, "name": "Steam Call of Duty", "minutes": 55}], None,
+        )):
+            response = self.client.post("/api/steam/manual-match", headers=headers,
+                json={"appid": 5080, "igdbId": 700001})
+        self.assertEqual(response.status_code, 200, response.text)
+        with SessionLocal() as db:
+            entry = db.scalar(select(UserGame).where(UserGame.user_id == self.user_id))
+            self.assertEqual(entry.status, "completed")
+            self.assertEqual(float(entry.score), 8)
+            self.assertEqual(entry.steam_data["apps"][0]["appid"], 5080)
+            self.assertFalse(entry.steam_data["imported"])
+        with (
+            patch.object(steam_sync, "_resolve_mappings", return_value={}),
+            patch.object(steam_sync, "_ensure_games", return_value={}),
+        ):
+            _, unresolved = steam_sync._prepare(self.user_id, "76561198012345678",
+                [{"appid": 5080, "name": "Steam Call of Duty", "minutes": 55}])
+        self.assertEqual(unresolved, [])
