@@ -20,6 +20,17 @@ test('public version number opens business-only notes and arrows browse producti
   const version = page.getByRole('button', { name: 'История обновлений, версия 26.11.001' })
   await expect(version).toBeVisible()
   await expect(version.locator('span')).toHaveText('26.11.001')
+  const header = page.locator('.profile-glass-header.topbar')
+  await expect(header).toHaveCSS('border-top-width', '0px')
+  await expect(header).toHaveCSS('border-top-left-radius', '0px')
+  await page.locator('.page--viewport').evaluate(node => { node.scrollTop = node.scrollHeight })
+  const footerGap = await page.evaluate(() => {
+    const version = document.querySelector('.app-build-version__trigger')!.getBoundingClientRect()
+    const nav = document.querySelector('.bottom-nav')!.getBoundingClientRect()
+    return nav.top - version.bottom
+  })
+  expect(footerGap).toBeGreaterThanOrEqual(0)
+  expect(footerGap).toBeLessThan(86)
   await version.click()
 
   const dialog = page.getByRole('dialog', { name: 'История обновлений' })
