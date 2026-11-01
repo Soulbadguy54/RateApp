@@ -52,6 +52,45 @@ for (const slotName of ['games', 'collections'] as const) {
   })
 }
 
+
+test('morph expands and contracts as a shape, never an early rectangular fade', async ({ page }) => {
+  await page.goto('/?tab=profile')
+  const slot = page.locator('[data-nav-slot="games"] > button')
+  await expect(slot).toBeVisible()
+  const rect = await slot.boundingBox()
+  if (!rect) throw new Error('Missing navigation button')
+  const x = rect.x + rect.width / 2
+  const y = rect.y + rect.height / 2
+  await page.mouse.move(x, y)
+  const sampler = (sampleCount: number) => page.evaluate(async (count) => {
+    const samples: Array<{ width: number; svgOpacity: number; glassOpacity: number }> = []
+    for (let i = 0; i < count; i++) {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      const svg = document.querySelector<SVGSVGElement>('[data-nav-popup="games"] .bottom-nav__liquid-surface')
+      const path = svg?.querySelector<SVGGraphicsElement>('.bottom-nav__liquid-path')
+      const glass = document.querySelector<HTMLElement>('[data-nav-popup="games"] .bottom-nav__bubble')
+      if (svg && path && glass) samples.push({
+        width: path.getBBox().width,
+        svgOpacity: Number(getComputedStyle(svg).opacity),
+        glassOpacity: Number(getComputedStyle(glass).opacity),
+      })
+    }
+    return samples
+  }, sampleCount)
+  const opening = sampler(95)
+  await page.mouse.down()
+  const openFrames = await opening
+  expect(openFrames.some(s => s.width < 65 && s.svgOpacity > .75)).toBe(true)
+  expect(openFrames.some(s => s.width > 175 && s.svgOpacity > .5)).toBe(true)
+  expect(openFrames.some(s => s.width < 120 && s.glassOpacity < .08)).toBe(true)
+  const closing = sampler(60)
+  await page.mouse.up()
+  const closeFrames = await closing
+  expect(closeFrames.some(s => s.width > 175)).toBe(true)
+  expect(closeFrames.some(s => s.width < 55 && s.svgOpacity > .5)).toBe(true)
+  await expect(page.locator('[data-nav-popup="games"] .bottom-nav__bubble')).toHaveCount(0)
+})
+
 test('Steam cloud emerges without overshoot or a competing transform', async ({ page }) => {
   await page.goto('/?tab=profile')
   const launch = page.locator('.profile-steam-cloud-launch')
