@@ -52,6 +52,15 @@
   pointer-events: none;
 }
 
+/* The placeholder stays inside the bar for accurate gesture geometry, while
+   the rendered popup is a BODY-level layer above the bar's backdrop root.
+   Nested backdrop-filter inside the already-blurred nav cannot blur the page. */
+.bottom-nav__bubble-floating {
+  position: fixed;
+  z-index: 55;
+  pointer-events: none;
+}
+
 .bottom-nav__liquid-surface {
   position: absolute;
   z-index: 0;
@@ -81,14 +90,14 @@
   align-items: stretch;
   gap: 3px;
   padding: 7px;
-  /* The SVG supplies the liquid silhouette; the nearly transparent blurred
-     content layer fades in late in the morph and makes choices readable. */
+  /* EXACT same glass recipe as .bottom-nav, not a separately tuned imitation.
+     Because this renders through a body portal, blur samples the page itself. */
   border: 1px solid rgba(175, 187, 204, .27);
   border-radius: 16px;
-  background: rgba(10, 15, 27, .76);
-  -webkit-backdrop-filter: blur(38px) saturate(145%) brightness(.72);
-  backdrop-filter: blur(38px) saturate(145%) brightness(.72);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .27), inset 0 1px 0 rgba(255,255,255,.055);
+  background: var(--header-glass-background);
+  -webkit-backdrop-filter: var(--header-glass-filter);
+  backdrop-filter: var(--header-glass-filter);
+  box-shadow: var(--header-glass-shadow);
   pointer-events: auto;
 }
 
@@ -127,7 +136,7 @@
   outline-offset: -2px;
 }
 
-.bottom-nav__slot .bottom-nav__bubble-highlight {
+.bottom-nav__bubble-floating .bottom-nav__bubble-highlight {
   /* Exactly the same active surface geometry/tint as the parent nav slot. */
   position: absolute;
   z-index: -1;
@@ -166,18 +175,23 @@
   border-color: rgba(140,242,125,.12);
   background: rgba(140,242,125,.075);
 }
-.bottom-nav__slot--collections .bottom-nav__bubble-choice.bottom-nav__item {
+.bottom-nav__bubble-floating--collections .bottom-nav__bubble-choice.bottom-nav__item {
   color: rgba(140, 242, 125, .78);
 }
 .bottom-nav__slot--collections .bottom-nav__item--collection-switchable.bottom-nav__item--active svg,
-.bottom-nav__slot--collections .bottom-nav__bubble-choice[data-highlighted="true"],
-.bottom-nav__slot--collections .bottom-nav__bubble-choice[data-highlighted="true"] svg {
+.bottom-nav__bubble-floating--collections .bottom-nav__bubble-choice[data-highlighted="true"],
+.bottom-nav__bubble-floating--collections .bottom-nav__bubble-choice[data-highlighted="true"] svg {
   color: var(--accent);
 }
-.bottom-nav__slot--collections .bottom-nav__bubble-highlight {
+.bottom-nav__bubble-floating--collections .bottom-nav__bubble-highlight {
   border-color: rgba(140,242,125,.12);
   background: rgba(140,242,125,.075);
 }
-.bottom-nav__slot--collections .bottom-nav__bubble-choice:focus-visible {
+.bottom-nav__bubble-floating--collections .bottom-nav__bubble-choice:focus-visible {
   outline-color: var(--accent);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  /* Match the bar's opaque fallback when native backdrop sampling is absent. */
+  .bottom-nav__bubble { background: rgba(15, 21, 33, .90); }
 }
