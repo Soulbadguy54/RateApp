@@ -72,7 +72,9 @@ export default function SteamIntegrationCloud({
   onFindUnmatched,
   onSynced,
   tint = 'default',
+  disabled = false,
 }: {
+  disabled?: boolean
   onFindUnmatched?: (name: string, appid: number) => void
   onSynced?: () => void
   tint?: ProfileTint
@@ -315,7 +317,7 @@ export default function SteamIntegrationCloud({
       const available = Math.max(compact, screenHeight - 12)
       const natural = content.scrollHeight + verticalPadding
       const target = Math.min(available, Math.max(compact, Math.ceil(natural)))
-      setExpandedHeight(previous => previous !== null && Math.abs(previous - target) < 2 ? previous : target)
+      setExpandedHeight(previous => previous !== null && Math.abs(previous - target) < 8 ? previous : target)
     }
     measure()
     const resizeObserver = new ResizeObserver(measure)
@@ -335,7 +337,8 @@ export default function SteamIntegrationCloud({
     <>
       <button type="button" ref={cloudRef}
         className={'profile-steam-cloud' + (connected ? ' profile-steam-cloud--connected' : '')}
-        onClick={event => { event.stopPropagation(); onOpen() }}
+        disabled={disabled}
+        onClick={event => { event.stopPropagation(); if (!disabled) onOpen() }}
         onPointerDown={event => event.stopPropagation()}
         aria-label={loading ? 'Steam — проверяем подключение' : connected ? 'Steam подключен, открыть настройки' : 'Подключить Steam'}
         title={connected ? 'Steam подключен' : 'Подключить Steam'}>
