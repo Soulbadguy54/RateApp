@@ -64,8 +64,13 @@ test('game nav: tap priority, hold-and-drag bubble, swipe-only pinning, history 
   expect(glass).toContain('blur(12px)')
   const liquid = page.locator('.bottom-nav__liquid-path')
   await expect(liquid).toHaveCSS('fill', 'rgba(16, 24, 41, 0.5)')
-  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('background-color', 'rgba(12, 18, 31, 0.34)')
-  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('backdrop-filter', /blur\(12px\)/)
+  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('background-color', 'rgba(10, 15, 27, 0.76)')
+  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('backdrop-filter', /blur\(38px\)/)
+  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('border-radius', '16px')
+  await expect(page.locator('.bottom-nav__liquid-path')).toHaveCSS('stroke', 'none')
+  await expect(page.locator('.bottom-nav__liquid-rim')).toHaveCount(0)
+  // Once the morph settles, the SVG no longer masks the glass backdrop.
+  await expect.poll(async () => Number(await page.locator('.bottom-nav__liquid-surface').evaluate(el => getComputedStyle(el).opacity))).toBeLessThan(.06)
   // Opening a pinned shortcut is NOT a selection: highlight only on hover.
   await expect(page.locator('.bottom-nav__bubble-highlight')).toHaveCount(0)
   // The path grows from a droplet into the whole two-cell panel.
