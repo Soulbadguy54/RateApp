@@ -783,3 +783,22 @@
 .profile-glass-header__hero .profile-steam-cloud img {
   width: 65%; max-height: 80%; object-fit: contain;
 }
+
+
+/* Slight rounding around the colorful avatar/header block without reducing
+   the full-width glass or changing its sticky geometry. */
+.page--viewport:not(.page--discovery) .page-motion .profile-glass-header.topbar {
+  border-radius: 14px 14px 18px 18px;
+  overflow: visible;
+  border: 1px solid rgba(var(--profile-tint-rgb,14,19,32),.28);
+  border-top-color: rgba(255,255,255,.10);
+  background:
+    radial-gradient(ellipse at 75% 10%, rgba(var(--profile-tint-rgb,14,19,32),.15), transparent 70%),
+    var(--header-glass-background);
+}
+.profile-glass-header::before {
+  border-radius: inherit;
+  background: linear-gradient(145deg,
+    rgba(var(--profile-tint-rgb,14,19,32),var(--profile-tint-alpha,0)),
+    transparent 65%);
+}

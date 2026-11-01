@@ -18,6 +18,7 @@ type Overview = {
   canSync: boolean
   redFlags: string[]
   lastSyncedAt: string | null
+  alreadyAddedCount?: number
   nextSyncAt?: string | null
 }
 type NewGame = { igdbId: number; title: string; coverUrl: string | null; status: 'playing' | 'wishlist'; apps: { appid: number; minutes: number | null }[] }
@@ -188,8 +189,14 @@ export default function SteamIntegrationCloud({
     const onEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false)
     }
+    const onBack = (event: Event) => {
+      event.preventDefault()
+      setOpen(false)
+    }
     document.addEventListener('keydown', onEscape)
+    window.addEventListener('rateapp:cancel-transient', onBack)
     return () => {
+      window.removeEventListener('rateapp:cancel-transient', onBack)
       document.removeEventListener('keydown', onEscape)
       cloudRef.current?.focus()
     }
@@ -352,13 +359,15 @@ export default function SteamIntegrationCloud({
                       </span>
                       {!preview && !result && <Icon name="external-link" size={17} />}
                     </a>
-                    {newCount > 0 && (
-                      <div className="steam-integration__stats">
-                        <p>Новых игр найдено: <strong>{newCount}</strong></p>
-                        {overview?.lastSyncedAt && (
-                          <p>Последняя синхронизация: <strong>{relativeSyncTime(overview.lastSyncedAt, secondsNow)}</strong></p>
-                        )}
+                    {(preview || result) && overview && (overview.alreadyAddedCount ?? 0) > 0 && (
+                      <div className="steam-integration__already-added" aria-label={'Уже добавлено: ' + overview.alreadyAddedCount}>
+                        Уже добавлено: <strong>{overview.alreadyAddedCount}</strong>
                       </div>
+                    )}
+                    {overview?.lastSyncedAt && (
+                      <p className="steam-integration__last-sync">
+                        Последняя синхронизация: {relativeSyncTime(overview.lastSyncedAt, secondsNow)}
+                      </p>
                     )}
                     {showAccessHelp && (
                       <div className="steam-integration__access-warning" role="alert">
@@ -377,8 +386,7 @@ export default function SteamIntegrationCloud({
                     )}
                     {(preview || result) && (
                       <div className="steam-integration__results" aria-label={preview ? 'Предпросмотр Steam' : 'Результат синхронизации'}>
-                        <h3>{preview ? 'Будут добавлены' : 'Добавлены'}: {items.length}</h3>
-                        {items.length === 0 && <p>Новых игр для добавления нет.</p>}
+                        {items.length > 0 && <h3>{preview ? 'Будут добавлены' : 'Добавлены'}: {items.length}</h3>}
                         {items.map(item => (
                           <div className="steam-integration__game" key={item.igdbId}>
                             {'coverUrl' in item && typeof item.coverUrl === 'string' && <img src={item.coverUrl} alt="" />}
@@ -387,31 +395,38 @@ export default function SteamIntegrationCloud({
                         ))}
                         <h3>Нужно найти в Rate APP: {unresolved.length}</h3>
                         {unresolved.length > 0 && <p>Попробуйте добавить игру вручную.</p>}
+                        <AnimatePresence initial={false}>
                         {unresolved.map(item => (
-                          <div key={item.appid} className="steam-integration__unresolved">
+                          <motion.div key={item.appid} layout
+                            className="steam-integration__unresolved"
+                            initial={reducedMotion ? false : { opacity: 0, height: 0, x: 12 }}
+                            animate={{ opacity: 1, height: 'auto', x: 0 }}
+                            exit={reducedMotion ? { opacity: 0, height: 0 } : { opacity: 0, height: 0, x: 22, scale: .97 }}
+                            transition={{ duration: reducedMotion ? 0 : .28, ease: 'easeOut' }}>
                             <a className="steam-integration__unresolved-title"
                               href={'https://store.steampowered.com/app/' + item.appid + '/'}
                               target="_blank" rel="noopener noreferrer" title="Открыть страницу игры в Steam">
                               {item.name}
                             </a>
                             <div className="steam-integration__unresolved-actions">
-                              <button type="button" aria-label={'Найти в базе Rate APP: ' + item.name}
+                              <button type="button" className="steam-integration__unresolved-search" aria-label={'Найти в базе Rate APP: ' + item.name}
                                 title="Найти в Rate APP" onClick={() => { onFindUnmatched?.(item.name, item.appid); setOpen(false) }}>
                                 <Icon name="search" size={17} />
                               </button>
-                              <button type="button" aria-label={'Больше не показывать: ' + item.name}
+                              <button type="button" className="steam-integration__unresolved-dismiss" aria-label={'Больше не показывать: ' + item.name}
                                 title="Не показывать при будущих синхронизациях"
                                 disabled={dismissBusy !== null} onClick={() => void dismissApp(item.appid)}>
                                 <Icon name="x" size={17} />
                               </button>
                             </div>
-                          </div>
+                          </motion.div>
                         ))}
+                        </AnimatePresence>
                       </div>
                     )}
                     {preview && <p className="steam-integration__muted">Это предпросмотр, игры еще не синхронизированы</p>}
-                    {result && <p className="steam-integration__notice" role="status">Синхронизировано новых игр: {result.created.length}. Сохраненные прохождения не менялись.</p>}
-                    <button type="button" className={'steam-integration__connect' + (syncing ? ' steam-integration__connect--busy' : '')}
+                    {result && result.created.length > 0 && <p className="steam-integration__notice" role="status">Синхронизировано новых игр: {result.created.length}. Сохраненные прохождения не менялись.</p>}
+                    <button type="button" className={'steam-integration__connect steam-integration__connect--sync' + (syncing ? ' steam-integration__connect--busy' : '')}
                       disabled={checking || syncing || !overview?.canSync || (!preview && cooldownLeft > 0)}
                       aria-busy={syncing} onClick={() => void sync()}>
                       <span className="steam-integration__sync-icon" aria-hidden="true"><Icon name="refresh" size={19} /></span>

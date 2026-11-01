@@ -204,6 +204,21 @@ export default function ProfileView({
     } finally { setSaving(false) }
   }
   const chosenTint = profileTintOption(tint)
+  // The palette affects the complete viewport (including the bottom-nav
+  // glass), not just the sticky avatar header. Restore inherited colors when
+  // the profile unmounts so another tab cannot retain this tint.
+  useEffect(() => {
+    const shell = document.querySelector<HTMLElement>('.app-shell--viewport')
+    if (!shell) return
+    shell.style.setProperty('--profile-full-rgb', chosenTint.rgb)
+    shell.style.setProperty('--profile-full-accent-rgb', chosenTint.accentRgb)
+    shell.style.setProperty('--profile-full-strength', tint === 'default' ? '.055' : '.19')
+    return () => {
+      shell.style.removeProperty('--profile-full-rgb')
+      shell.style.removeProperty('--profile-full-accent-rgb')
+      shell.style.removeProperty('--profile-full-strength')
+    }
+  }, [tint])
   const clouds = editing ? editClouds : savedClouds
 
   return (

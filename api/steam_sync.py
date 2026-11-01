@@ -338,6 +338,18 @@ def steam_overview(request: Request) -> dict:
             linked.last_preview_at + timedelta(seconds=PREVIEW_COOLDOWN_SECONDS)
             if linked.last_preview_at else None
         )
+        # Count *user-owned linked games*, never the entire Steam library.
+        # A user may already own other Rate APP games unrelated to Steam.
+        already_added_count = sum(
+            1 for (metadata,) in session.execute(
+                select(UserGame.steam_data).where(
+                    UserGame.user_id == user.id, UserGame.steam_data.is_not(None)
+                )
+            )
+            if isinstance(metadata, dict)
+            and metadata.get("steam_id64") == steam_id
+            and isinstance(metadata.get("apps"), list) and bool(metadata["apps"])
+        )
     profile = None
     red_flags = []
     game_count = 0
@@ -377,6 +389,7 @@ def steam_overview(request: Request) -> dict:
         "canSync": configured and not privacy_issue and not service_unavailable,
         "privacyIssue": privacy_issue,
         "redFlags": red_flags, "lastSyncedAt": last,
+        "alreadyAddedCount": already_added_count,
         "nextSyncAt": next_allowed.isoformat() if next_allowed else None,
     }
 

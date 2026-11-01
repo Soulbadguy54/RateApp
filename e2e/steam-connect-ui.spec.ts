@@ -119,7 +119,7 @@ test('Steam preview requires a second Sync click and shows only new and unknown 
   await sync.click()
   await expect(panel).toContainText('Будут добавлены:')
   await expect(panel).toContainText('Нужно найти в Rate APP:')
-  await expect(panel).toContainText('Новых игр найдено: 1')
+  await expect(panel).toContainText('Будут добавлены: 1')
   await expect(panel).toContainText('Это предпросмотр, игры еще не синхронизированы')
   await expect(panel).toContainText('Cyberpunk 2077')
   await expect(panel).not.toContainText('Steam #')
@@ -255,7 +255,7 @@ test('Steam unresolved rows have separate Steam page/search/dismiss actions and 
         ? { steamId64: '76561198012345678', configured: true,
             profile: { name: 'Steam QA', avatarUrl: null, profilePublic: true,
               profileUrl: 'https://steamcommunity.com/profiles/76561198012345678/' },
-            gameCount: 5, canSync: true, redFlags: [], lastSyncedAt: new Date(Date.now() - 4000000).toISOString() }
+            gameCount: 5, alreadyAddedCount: 3, canSync: true, redFlags: [], lastSyncedAt: new Date(Date.now() - 4000000).toISOString() }
       : path === '/api/steam/preview'
         ? { token: 'preview-12345678901234567890123456', items: [
               { igdbId: 1877, title: 'Cyberpunk 2077', status: 'playing', coverUrl: null,
@@ -266,11 +266,18 @@ test('Steam unresolved rows have separate Steam page/search/dismiss actions and 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/?tab=profile')
-  await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click({ force: true })
+  const cloud = page.getByRole('button', { name: 'Steam подключен, открыть настройки' })
+  await expect(cloud).toBeVisible()
+  await cloud.focus()
+  await page.keyboard.press('Enter')
   const panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
+  await expect(panel).toBeVisible()
   await expect(panel.locator('.steam-integration__brand h2')).toHaveText('Steam подключен')
   await panel.getByRole('button', { name: 'Синхронизировать' }).click()
-  await expect(panel).toContainText('Новых игр найдено: 1')
+  await expect(panel).toContainText('Будут добавлены: 1')
+  await expect(panel.getByLabel('Уже добавлено: 3')).toBeVisible()
+  await expect(panel.locator('.steam-integration__unresolved-search')).toHaveCSS('color', 'rgb(140, 242, 125)')
+  await expect(panel.locator('.steam-integration__unresolved-dismiss')).toHaveCSS('color', 'rgb(255, 129, 142)')
   await expect(panel).toContainText('Последняя синхронизация:')
   await expect(panel).toContainText('Нужно найти в Rate APP: 1')
   await expect(panel).toContainText('Попробуйте добавить игру вручную.')
@@ -346,6 +353,11 @@ test('manual Steam search saves playthrough before asking consent, links only on
   await expect(dialog).toHaveCount(0)
   expect(linked).toBe(1)
   await expect(page.locator('.detail-hero__steam-badge')).toBeVisible()
+  // A bottom-tab switch must end the Steam lookup; navigation within the
+  // lookup (search -> game -> Back) keeps its state until that explicit switch.
+  await page.getByRole('button', { name: 'Профиль', exact: true }).click()
+  await page.getByRole('button', { name: 'База игр', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Поиск по базе игр' })).toHaveValue('')
 })
 
 
@@ -436,3 +448,42 @@ for (const scenario of [
     }
   })
 }
+
+
+test('Steam modal consumes Back and empty preview has no new-game block', async ({ page }) => {
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    const data = path === '/api/bootstrap' ? {
+      user: { id: 812, nickname: 'back_qa', email: 'steam@example.test',
+        avatarVersion: 0, profileTint: 'rose', createdAt: '2026-11-01T00:00:00Z' },
+      library: [], collections: [],
+    } : path === '/api/steam/connection' ? { connected: true, steamId64: '76561198012345678' }
+      : path === '/api/steam/overview' ? {
+        steamId64: '76561198012345678', configured: true, alreadyAddedCount: 4,
+        profile: { name: 'Steam QA', avatarUrl: null, profilePublic: true,
+          profileUrl: 'https://steamcommunity.com/profiles/76561198012345678/' },
+        gameCount: 5, canSync: true, redFlags: [], lastSyncedAt: null,
+      } : path === '/api/steam/preview' ? {
+        token: 'preview-12345678901234567890123456', items: [],
+        unresolved: [{ appid: 809010, name: 'Call of Duty Deluxe' }],
+      } : path === '/api/push/config' ? { enabled: false, publicKey: '', devices: 0 } : {}
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
+  })
+  await page.goto('/?tab=profile')
+  await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click({ force: true })
+  const modal = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
+  await modal.getByRole('button', { name: 'Синхронизировать' }).click()
+  await expect(modal.locator('.steam-integration__already-added')).toContainText('Уже добавлено: 4')
+  await expect(modal).not.toContainText('Будут добавлены')
+  await expect(modal).not.toContainText('Новых игр для добавления нет.')
+  await expect(modal).toContainText('Нужно найти в Rate APP: 1')
+  await expect(page.locator('.page--viewport')).toHaveCSS('scrollbar-width', 'none')
+  await expect(page.locator('.app-shell--viewport')).toHaveCSS('--profile-full-rgb', '235,87,153')
+  await page.evaluate(() => {
+    const event = new Event('rateapp:cancel-transient', { cancelable: true })
+    window.dispatchEvent(event)
+    if (!event.defaultPrevented) throw new Error('Steam dialog did not consume Back')
+  })
+  await expect(modal).toHaveCount(0)
+  await expect(page).toHaveURL(/tab=profile/)
+})
