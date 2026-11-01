@@ -16,7 +16,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 for (const slotName of ['games', 'collections'] as const) {
-  test(slotName + ' hold menu has stable gray border, symmetric corners and strong live blur', async ({ page }) => {
+  test(slotName + ' hold menu has animated morph and exactly the nav glass', async ({ page }) => {
     await page.goto('/?tab=profile')
     const slot = page.locator('[data-nav-slot="' + slotName + '"] > button')
     await expect(slot).toBeVisible()
@@ -24,15 +24,27 @@ for (const slotName of ['games', 'collections'] as const) {
     if (!r) throw new Error('Missing bottom nav slot')
     await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2)
     await page.mouse.down()
-    const bubble = page.locator('[data-nav-slot="' + slotName + '"] .bottom-nav__bubble')
-    const surface = page.locator('[data-nav-slot="' + slotName + '"] .bottom-nav__liquid-surface')
+    const popup = page.locator('[data-nav-popup="' + slotName + '"]')
+    const bubble = popup.locator('.bottom-nav__bubble')
+    const surface = popup.locator('.bottom-nav__liquid-surface')
     await expect(bubble).toBeVisible({ timeout: 4000 })
-    await expect(bubble).toHaveCSS('background-color', 'rgba(10, 15, 27, 0.76)')
     await expect(bubble).toHaveCSS('border-radius', '16px')
     await expect(bubble).toHaveCSS('border-top-color', 'rgba(175, 187, 204, 0.27)')
-    await expect(bubble).toHaveCSS('backdrop-filter', /blur\(38px\)/)
-    await expect(page.locator('[data-nav-slot="' + slotName + '"] .bottom-nav__liquid-path')).toHaveCSS('stroke', 'none')
-    await expect(page.locator('[data-nav-slot="' + slotName + '"] .bottom-nav__liquid-rim')).toHaveCount(0)
+    await expect(popup.locator('.bottom-nav__liquid-path')).toHaveCSS('stroke', 'none')
+    await expect(popup.locator('.bottom-nav__liquid-rim')).toHaveCount(0)
+    // Exact material equality, including gradient, saturate and blur, not
+    // merely a visually similar dark RGBA rectangle.
+    const glass = await page.evaluate((slot) => {
+      const bar = document.querySelector<HTMLElement>('.bottom-nav')!
+      const dialog = document.querySelector<HTMLElement>('[data-nav-popup="' + slot + '"] .bottom-nav__bubble')
+      return { bar: getComputedStyle(bar).backgroundImage, filter: getComputedStyle(bar).backdropFilter,
+        popup: dialog ? getComputedStyle(dialog).backgroundImage : '',
+        popupFilter: dialog ? getComputedStyle(dialog).backdropFilter : '',
+        bodyPortal: dialog?.parentElement?.parentElement === document.body }
+    }, slotName)
+    expect(glass.popup).toBe(glass.bar)
+    expect(glass.popupFilter).toBe(glass.filter)
+    expect(glass.bodyPortal).toBe(true)
     await expect.poll(async () => Number(await surface.evaluate(el => getComputedStyle(el).opacity)), { timeout: 4000 })
       .toBeLessThan(.06)
     await page.mouse.up()
