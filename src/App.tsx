@@ -4025,7 +4025,7 @@ function App() {
               whileTap={shouldReduceMotion ? undefined : { scale: .92 }}
               transition={{ type: 'spring', stiffness: 500, damping: 34 }}
             >
-              {activeTab === item.id && (
+              {navActiveTab === item.id && (
                 <motion.span
                   className="bottom-nav__active-surface"
                   layoutId="bottom-nav-active-surface"
