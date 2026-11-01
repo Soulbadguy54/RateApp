@@ -886,3 +886,15 @@
   pointer-events:auto;
 }
 .page--viewport:has(.profile-glass-header) { padding-bottom:calc(var(--bottom-nav-height) + var(--safe-bottom) + 68px); }
+
+/* Footer is portaled outside the animated page so fixed really means viewport
+   fixed, not fixed inside a transform-containing block. */
+body > .app-build-version {
+  position: fixed;
+  z-index: 19;
+  bottom: calc(var(--bottom-nav-height, 62px) + var(--safe-bottom, 0px) + 2px);
+  left: 0; right: 0;
+  margin: 0; padding: 0; text-align: center;
+  pointer-events: none;
+}
+body > .app-build-version .app-build-version__trigger { pointer-events: auto; }
