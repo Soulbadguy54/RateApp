@@ -3,6 +3,7 @@ import type { CSSProperties, PointerEvent } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import type { AuthUser } from '../AuthScreen'
 import PushSettings from '../PushSettings'
+import SteamIntegrationCloud from '../components/SteamIntegrationCloud'
 import Icon from '../components/Icon'
 import { Cover } from '../components/GameCard'
 import type { ProfileCloud } from '../profileTopGames'
@@ -243,9 +244,7 @@ export default function ProfileView({
             </ol>
           )}
           <div className="profile-steam-cloud-launch">
-            <div className="profile-steam-cloud" role="img" aria-label="Steam — интеграция пока не подключена">
-              <img src="/brand/steam.svg" alt="" aria-hidden="true" draggable={false} />
-            </div>
+            <SteamIntegrationCloud />
           </div>
           <div className="profile-glass-header__avatar-row">
             {editing && photo ? (
