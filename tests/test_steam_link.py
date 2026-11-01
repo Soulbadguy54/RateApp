@@ -1,15 +1,16 @@
 """Steam OpenID link regression tests. No live Steam traffic, no game import."""
 import secrets
+import hashlib
 import unittest
 from urllib.parse import parse_qs, urlencode, urlsplit
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 
 from api.index import app
 from api.database import SessionLocal
-from api.models import User, UserGame, SteamConnection
+from api.models import User, UserGame, SteamConnection, AuthSession
 
 
 STEAM_ID = "76561198012345678"
@@ -121,6 +122,50 @@ class SteamLinkTests(unittest.TestCase):
         self.assertIn("steam=unavailable", rejected.headers["location"])
         self.assertEqual(self.client.delete("/api/steam/connection", headers={"Origin": "https://bad.example"}).status_code, 403)
         self.assertEqual(self.client.get("/api/steam/connection").json()["connected"], False)
+
+    def test_session_revoked_during_steam_verification_fails_closed(self):
+        ret, state = self._start()
+        cookie = self.client.cookies.get("rateapp_session")
+        self.assertTrue(cookie)
+
+        def revoke_session(_assertion):
+            with SessionLocal() as db:
+                db.execute(delete(AuthSession).where(
+                    AuthSession.token_hash == hashlib.sha256(cookie.encode()).hexdigest(),
+                ))
+                db.commit()
+            return True
+
+        with patch("api.steam_routes._check_steam", side_effect=revoke_session):
+            response = self.client.get("/api/steam/callback?" + urlencode(self._assertion(ret, state)))
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("steam=session", response.headers["location"])
+        with SessionLocal() as db:
+            user = db.scalar(select(User).where(User.nickname == self.nickname))
+            self.assertIsNone(db.scalar(select(SteamConnection).where(SteamConnection.user_id == user.id)))
+
+    def test_callback_never_links_different_user_after_external_check(self):
+        from types import SimpleNamespace
+        from api.steam_routes import _current_auth
+
+        ret, state = self._start()
+        calls = 0
+
+        def switched_session(request, db):
+            nonlocal calls
+            calls += 1
+            user, token = _current_auth(request, db)
+            if calls == 2:
+                return SimpleNamespace(id=user.id + 99_999), token
+            return user, token
+
+        with patch("api.steam_routes._current_auth", side_effect=switched_session):
+            with patch("api.steam_routes._check_steam", return_value=True):
+                response = self.client.get("/api/steam/callback?" + urlencode(self._assertion(ret, state)))
+        self.assertEqual(calls, 2)
+        self.assertIn("steam=session", response.headers["location"])
+        with SessionLocal() as db:
+            self.assertEqual(db.scalar(select(func.count(SteamConnection.id))), 0)
 
     def test_unauthenticated_is_not_linkable(self):
         with TestClient(app, base_url="https://testserver", follow_redirects=False) as anonymous:
