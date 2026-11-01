@@ -4600,3 +4600,32 @@ body:has(.auth-shell) .install-prompt { display: none; }
   background: linear-gradient(145deg,rgba(60,105,72,.8),rgba(20,59,44,.85));
 }
 .steam-match-confirm__actions button:active { transform: scale(.95); }
+
+
+/* Whole-app contract: hide scroll indicators without disabling touch/keyboard
+   scrolling, scroll anchoring, snapping or the page's normal overflow. */
+html, body, #root, #root * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html::-webkit-scrollbar, body::-webkit-scrollbar,
+#root::-webkit-scrollbar, #root *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* The chosen profile palette lives behind the entire scrollport and the
+   bottom navigation, not only the avatar/header area. */
+.app-shell--viewport:has(.profile-glass-header) {
+  background:
+    radial-gradient(ellipse 130% 70% at 86% 2%,
+      rgba(var(--profile-full-accent-rgb,140,242,125),var(--profile-full-strength,.055)),
+      transparent 65%),
+    radial-gradient(ellipse 125% 85% at 0% 97%,
+      rgba(var(--profile-full-rgb,14,19,32),.30), transparent 70%),
+    linear-gradient(158deg,#151b2b 0%,#12192a 48%,#0c101b 100%);
+}
+.app-shell--viewport:has(.profile-glass-header) > .page--viewport {
+  background: transparent;
+}
