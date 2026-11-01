@@ -24,6 +24,7 @@ for (const connected of [false, true]) {
     const dot = steam.locator('.profile-steam-cloud__status')
     await expect(dot).toBeVisible()
     await expect(dot).toHaveCSS('background-color', connected ? 'rgb(94, 241, 155)' : 'rgb(255, 92, 102)')
+    if (connected) await expect(steam.locator('img')).toHaveCSS('filter', /invert\(1\)/)
     await steam.click({ force: true })
     const panel = page.getByRole('dialog', { name: connected ? 'Подключённый аккаунт Steam' : 'Подключение Steam' })
     await expect(panel).toBeVisible()
