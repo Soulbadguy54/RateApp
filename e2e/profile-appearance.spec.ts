@@ -2,6 +2,12 @@ import { expect, test } from '@playwright/test'
 
 test.use({ serviceWorkers: 'block' })
 
+// Cloud-picker tests are not installation-prompt tests: suppress the system
+// install invitation so it cannot cover game cards during mobile taps.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('rateapp-install-confirmed', 'yes'))
+})
+
 test('profile keeps nickname, avatar and tint inside one sticky glass panel', async ({ page }) => {
   let avatarVersion = 0
   let tint = 'default'
@@ -147,16 +153,32 @@ test('floating cloud cards only use personal completed/dropped scores and open t
   await expect(steam).toBeVisible()
   await expect(page.getByRole('button', { name: /Steam/ })).toHaveCount(0)
   await expect(steam).toHaveCSS('animation-name', 'profile-steam-cloud-drift')
-  await expect(steam).toHaveCSS('animation-duration', '8.3s')
+  await expect(steam).toHaveCSS('animation-duration', '6.1s')
+  // Launch and drift must not write transform on the same element.
+  await expect(page.locator('.profile-steam-cloud-launch')).toHaveCSS('animation-name', 'profile-steam-emerge')
+  await expect(page.locator('.profile-top-games__item').first()).toHaveCSS('animation-name', 'profile-cloud-emerge')
+  await expect(cards.first()).toHaveCSS('animation-name', 'profile-cloud-drift')
+  const independent = await page.evaluate(() => {
+    const cloud = document.querySelector<HTMLElement>('.profile-top-game')!
+    const parent = cloud.parentElement!
+    return {
+      outer: getComputedStyle(parent).animationName.split(','),
+      inner: getComputedStyle(cloud).animationName.split(','),
+    }
+  })
+  expect(independent.outer).toHaveLength(1)
+  expect(independent.inner).toHaveLength(1)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(steam).toHaveCSS('animation-name', 'none')
+  await expect(page.locator('.profile-steam-cloud-launch')).toHaveCSS('animation-name', 'none')
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await expect(steam).toHaveCSS('animation-name', 'profile-steam-cloud-drift')
   const avatarCenter = await page.locator('.profile-glass-header__avatar-row').boundingBox()
   const hero = await page.locator('.profile-glass-header__hero').boundingBox()
   expect(avatarCenter && hero).toBeTruthy()
   expect(Math.abs(avatarCenter!.x + avatarCenter!.width / 2 - hero!.x - hero!.width / 2)).toBeLessThan(2)
-  await cards.first().click()
+  // Cloud targets move continuously; force bypasses Playwright's stability wait (real taps are unaffected).
+  await cards.first().click({ force: true })
   await expect(page).toHaveURL(/game=102/)
 })
 
@@ -200,7 +222,7 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   const save = page.getByRole('button', { name: 'Сохранить оформление профиля' })
   await expect(page.locator('.profile-top-game')).toHaveCount(3)
   await edit.click()
-  await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click()
+  await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click({ force: true })
   const picker = page.locator('.library-cloud-picker')
   await expect(picker).toBeVisible()
   await expect(picker.getByRole('heading', { name: 'Мои игры' })).toBeVisible()
@@ -212,7 +234,7 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   // Cancel picker with arrow. Profile remains in edit mode; no slot changed.
   await picker.getByRole('button', { name: 'Назад в профиль' }).click()
   await expect(save).toBeVisible()
-  await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click()
+  await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click({ force: true })
   await picker.getByRole('button', { name: 'Открыть поиск' }).click()
   await picker.getByRole('textbox', { name: 'Поиск в библиотеке' }).fill('My Playing')
   await expect(picker.locator('.game-card')).toHaveCount(1)
@@ -230,7 +252,7 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   await expect(page.locator('.profile-top-game').nth(1)).toHaveAttribute('aria-label', 'My Playing')
   // Preview another choice, leave profile without confirming: server keeps old pin.
   await page.getByRole('button', { name: 'Редактировать оформление профиля' }).click()
-  await page.getByRole('button', { name: 'Изменить игру в облаке 1' }).click()
+  await page.getByRole('button', { name: 'Изменить игру в облаке 1' }).click({ force: true })
   await picker.locator('.game-card').filter({ hasText: 'Other Pick' }).click()
   await page.locator('.bottom-nav__item').filter({ hasText: 'Мои игры' }).click()
   await expect(page.locator('.library-cloud-picker')).toHaveCount(0)
@@ -291,11 +313,11 @@ test('Control Resonant playing and rated RDR2 both pin via public IGDB IDs, not 
   })
   await page.goto('/?tab=profile')
   await page.getByRole('button', { name: 'Редактировать оформление профиля' }).click()
-  await page.getByRole('button', { name: 'Изменить игру в облаке 1' }).click()
+  await page.getByRole('button', { name: 'Изменить игру в облаке 1' }).click({ force: true })
   const picker = page.locator('.library-cloud-picker')
   await picker.locator('.game-card').filter({ hasText: 'Control Resonant' }).click()
   await expect(page.getByRole('button', { name: 'Сохранить оформление профиля' })).toBeVisible()
-  await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click()
+  await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click({ force: true })
   await picker.locator('.game-card').filter({ hasText: 'Red Dead Redemption 2' }).click()
   await page.getByRole('button', { name: 'Сохранить оформление профиля' }).click()
   await expect(page.getByRole('button', { name: 'Редактировать оформление профиля' })).toBeVisible()

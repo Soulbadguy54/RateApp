@@ -28,7 +28,8 @@ test('profile settings use accessible animated folder tabs; security has exactly
   await expect(notifications).toHaveAttribute('aria-selected', 'true')
   await expect(security).toHaveAttribute('aria-selected', 'false')
   await expect(page.getByRole('tabpanel', { name: 'Уведомления' })).toBeVisible()
-  await expect(page.getByText('Релизы игр')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Релизы игр' })).toBeVisible()
+  await expect(page.locator('.profile-settings .push-settings.info-card')).toHaveCSS('border-top-style', 'solid')
   await expect(page.locator('.push-settings .eyebrow')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Выйти из аккаунта' })).toHaveCount(0)
   await expect(page.locator('.profile-settings__tab-active')).toHaveCount(1)
@@ -118,4 +119,42 @@ test('powered by IGDB stays on one line with the database title at narrow widths
     expect(result.rowHeight, String(width)).toBeLessThan(result.titleHeight + 4)
     expect(result.captionRight, String(width)).toBeLessThanOrEqual(width - 8)
   }
+})
+
+test('selected profile outline reaches viewport edges without double folder border', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/?tab=profile')
+  const tabs = page.locator('.profile-settings__tabs')
+  const folder = page.locator('.profile-settings__folder')
+  await expect(tabs).toHaveAttribute('data-active', 'notifications')
+  await expect(folder).toHaveCSS('border-top-width', '0px')
+  const geometry = await page.evaluate(() => {
+    const settings = document.querySelector<HTMLElement>('.profile-settings')!
+    const tab = document.querySelector<HTMLElement>('.profile-settings__tabs')!
+    const r = settings.getBoundingClientRect()
+    const before = getComputedStyle(tab, '::before')
+    const after = getComputedStyle(tab, '::after')
+    return { left: r.left, right: r.right, leftRail: parseFloat(before.width), rightRail: parseFloat(after.width) }
+  })
+  expect(Math.abs(geometry.left)).toBeLessThanOrEqual(1)
+  expect(Math.abs(geometry.right - 390)).toBeLessThanOrEqual(1)
+  expect(geometry.leftRail).toBeGreaterThan(0)
+  expect(geometry.rightRail).toBeGreaterThan(150)
+  await page.getByRole('tab', { name: 'Безопасность' }).click()
+  await expect(tabs).toHaveAttribute('data-active', 'security')
+  await expect(tabs.locator('.profile-settings__tab-active')).toHaveCount(1)
+  await expect(folder).toHaveCSS('border-top-width', '0px')
+})
+
+test('profile version hugs bottom navigation with free viewport space', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/?tab=profile')
+  await expect(page.locator('.app-build-version')).toBeVisible()
+  const gap = await page.evaluate(() => {
+    const version = document.querySelector<HTMLElement>('.app-build-version')!.getBoundingClientRect()
+    const nav = document.querySelector<HTMLElement>('.bottom-nav')!.getBoundingClientRect()
+    return nav.top - version.bottom
+  })
+  expect(gap).toBeGreaterThanOrEqual(0)
+  expect(gap).toBeLessThanOrEqual(40)
 })

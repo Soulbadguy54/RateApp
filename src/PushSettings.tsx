@@ -181,7 +181,7 @@ export async function disconnectPushForLogout(): Promise<void> {
   window.dispatchEvent(new Event(PUSH_CHANGED_EVENT))
 }
 
-export default function PushSettings({ user, onOpenWishlist }: { user: string; onOpenWishlist: () => void }) {
+export default function PushSettings({ user, onOpenWishlist, accentColor = "#8cf27d" }: { user: string; onOpenWishlist: () => void; accentColor?: string }) {
   const supported = supportsWebPush()
   const [state, setState] = useState<PushState | null>(() => cachedPushState(user))
   const [busy, setBusy] = useState(false)
@@ -283,8 +283,8 @@ export default function PushSettings({ user, onOpenWishlist }: { user: string; o
             className="push-switch__track"
             initial={false}
             animate={{
-              backgroundColor: enabled ? '#8cf27d' : '#424753',
-              borderColor: enabled ? '#8cf27d' : 'rgba(255,255,255,.22)',
+              backgroundColor: enabled ? accentColor : '#424753',
+              borderColor: enabled ? accentColor : 'rgba(255,255,255,.22)',
             }}
             transition={shouldReduceMotion ? { duration: 0 } : { duration: .2, ease: 'easeOut' }}
           >
