@@ -1,22 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import CarouselArrows from '../components/CarouselArrows'
 import ContentLoading from '../components/ContentLoading'
 import { createPortal } from 'react-dom'
 import Icon from '../components/Icon'
 import { sessionFetch } from '../sessionFetch'
 import './SavedLinksView.css'
 
-type SavedGame = { id: number; igdbId: number; title: string; coverUrl?: string | null }
 type SavedLink = {
   id: number
   url: string
   title: string | null
   createdAt: string
-  status?: 'pending' | 'processing' | 'ready' | 'failed'
-  error?: string | null
-  games: SavedGame[]
 }
 type LinksPage = { items: SavedLink[]; nextBefore: number | null }
 
@@ -68,6 +63,20 @@ function normalizedLinkInput(value: string): string | null {
   }
 }
 
+/** Android Share Target: URL is commonly supplied as shared text.
+ * Only accept a http(s) URL; never automatically visit the shared source.
+ */
+export function sharedLinkFromParams(params: URLSearchParams): string | null {
+  const raw = [params.get('share_url'), params.get('share_text'), params.get('share_title')]
+    .filter((value): value is string => Boolean(value))
+  for (const value of raw) {
+    const url = value.match(/https?:\/\/[^\s<>"']+/i)?.[0]?.replace(/[.,;!?)}\]]+$/, '')
+    const normalized = url && normalizedLinkInput(url)
+    if (normalized) return normalized
+  }
+  return null
+}
+
 function readableDate(date: string) {
   const parsed = new Date(date)
   return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -81,8 +90,7 @@ async function responseError(response: Response, fallback: string) {
   return fallback
 }
 
-export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
-  onOpenGame: (gameIgdbId: number) => void
+export default function SavedLinksView({ cacheNamespace }: {
   cacheNamespace: string
 }) {
   const cacheKey = 'rateapp:saved-links:v3:' + cacheNamespace
@@ -108,6 +116,7 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
   const [previews, setPreviews] = useState<Record<number, LinkPreview>>(() => initialCacheRef.current?.previews ?? {})
   const previewAttemptedRef = useRef(new Set<number>())
   const requestRef = useRef<AbortController | null>(null)
+  const sharedImportStartedRef = useRef(false)
   const pendingDeleteRef = useRef<{ id: number; timer: number } | null>(null)
   const holdRef = useRef<{ pointerId: number; id: number; x: number; y: number; timer: number } | null>(null)
   const suppressCardClickRef = useRef<{ id: number; until: number } | null>(null)
@@ -172,15 +181,43 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
 
   useEffect(() => { void fetchLinks() }, [fetchLinks])
 
-  // Background workers update saved links independently of this mounted view.
-  // Revalidate only while unresolved records exist, and when the tab returns.
+  // The OS opens /?tab=links&share_*. Strip those parameters immediately
+  // to avoid duplicate POSTs after reload, then save through the existing
+  // authenticated, deduplicated endpoint. Failed shares remain editable.
   useEffect(() => {
-    if (!items.some(link => link.status === 'pending' || link.status === 'processing')) return
-    const refresh = () => { if (document.visibilityState === 'visible') void fetchLinks() }
-    const timer = window.setInterval(refresh, 90_000)
-    document.addEventListener('visibilitychange', refresh)
-    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh) }
-  }, [items, fetchLinks])
+    if (sharedImportStartedRef.current) return
+    const urlAtLaunch = new URL(window.location.href)
+    if (!['share_url', 'share_text', 'share_title'].some(key => urlAtLaunch.searchParams.has(key))) return
+    sharedImportStartedRef.current = true
+    const shared = sharedLinkFromParams(urlAtLaunch.searchParams)
+    for (const key of ['share_url', 'share_text', 'share_title']) urlAtLaunch.searchParams.delete(key)
+    window.history.replaceState(window.history.state, '', urlAtLaunch.pathname + urlAtLaunch.search + urlAtLaunch.hash)
+    if (!shared) {
+      setError('Не удалось найти адрес ссылки в переданном содержимом.')
+      setAddOpen(true)
+      return
+    }
+    setSaving(true)
+    setNotice('Сохраняем ссылку…')
+    void sessionFetch('/api/saved-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: shared }),
+    }).then(async response => {
+      if (!response.ok) throw new Error(await responseError(response, 'Не удалось сохранить ссылку.'))
+      const added = await response.json() as SavedLink
+      setFreshlyAddedId(added.id)
+      setItems(current => [added, ...current.filter(item => item.id !== added.id)])
+      setNotice('Ссылка сохранена.')
+      await fetchLinks()
+    }).catch((cause: unknown) => {
+      setError(cause instanceof Error ? cause.message : 'Не удалось сохранить ссылку.')
+      setNotice('')
+      setUrl(shared)
+      setAddOpen(true)
+    }).finally(() => setSaving(false))
+  }, [fetchLinks])
+
 
   useEffect(() => {
     try {
@@ -264,17 +301,6 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
       setError(cause instanceof Error ? cause.message : 'Не удалось сохранить ссылку.')
     } finally {
       setSaving(false)
-    }
-  }
-
-  const retryFailedLink = async (id: number) => {
-    setError('')
-    try {
-      const response = await sessionFetch('/api/saved-links/' + id + '/retry', { method: 'POST' })
-      if (!response.ok) throw new Error(await responseError(response, 'Не удалось поставить ссылку на повторную проверку.'))
-      await fetchLinks()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Не удалось повторить проверку.')
     }
   }
 
@@ -435,6 +461,7 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
       </header>
 
       {error && <div className="saved-links-message saved-links-message--error" role="alert">{error}</div>}
+      {notice && <div className="saved-links-message" role="status">{notice}</div>}
 
 
       {selectedIds.length > 0 && (
@@ -516,25 +543,6 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
                 <h3>{previews[link.id]?.title || link.title || displayHost(link.url)}</h3>
                 <p className="saved-link-card__host">{previews[link.id]?.description || displayHost(link.url)}</p>
                 <time dateTime={link.createdAt}>{readableDate(link.createdAt)}</time>
-                {link.status !== 'ready' && link.status && (
-                  <span className="saved-link-card__state-line">
-                    <span className={'saved-link-card__state saved-link-card__state--' + link.status}
-                      role="status" title={link.error || undefined}>
-                      {link.status === 'failed' ? 'Не удалось проверить'
-                        : link.status === 'processing' ? 'Ищем игры…' : 'Ожидает проверки'}
-                    </span>
-                    {link.status === 'failed' && selectedIds.length === 0 && (
-                      <button type="button" className="saved-link-card__retry"
-                        aria-label={'Повторить проверку ссылки ' + link.id}
-                        onClick={event => { event.stopPropagation(); void retryFailedLink(link.id) }}
-                        onPointerDown={event => event.stopPropagation()}>
-                        Повторить
-                      </button>
-                    )}
-                  </span>
-                )}
-                {link.status === 'failed' && link.error &&
-                  <small className="saved-link-card__state-error">{link.error}</small>}
               </div>
               <div className="saved-link-card__actions">
                 {selectedIds.length ? (
@@ -560,37 +568,6 @@ export default function SavedLinksView({ onOpenGame, cacheNamespace }: {
                 )}
               </div>
             </div>
-            {link.games?.length > 0 && selectedIds.length === 0 && (
-              <motion.section className="saved-link-card__matched"
-                aria-label={'Игры из ссылки: ' + link.games.length}
-                initial={reduceMotion ? false : { height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                transition={{ duration: .24, ease: 'easeOut' }}
-                onClick={event => event.stopPropagation()}
-                onPointerDown={event => event.stopPropagation()}
-                onContextMenu={event => event.stopPropagation()}>
-                <CarouselArrows className="saved-link-card__matched-track"
-                  label="Найденные игры, прокрутка по горизонтали">
-                  {link.games.map(game => (
-                    <div className="saved-link-card__matched-item" role="listitem" key={game.id}>
-                      <button className="saved-link-card__game-tile" type="button"
-                        onClick={event => {
-                          event.stopPropagation()
-                          onOpenGame(game.igdbId)
-                        }}
-                        aria-label={'Открыть игру ' + game.title}>
-                        <div className="saved-link-card__game-cover">
-                          {game.coverUrl
-                            ? <img src={game.coverUrl} alt="" loading="lazy" />
-                            : <Icon name="gamepad" size={25} />}
-                        </div>
-                        <span title={game.title}>{game.title}</span>
-                      </button>
-                    </div>
-                  ))}
-                </CarouselArrows>
-              </motion.section>
-            )}
           </motion.article>
         ))}
         </AnimatePresence>
