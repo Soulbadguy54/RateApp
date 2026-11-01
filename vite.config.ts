@@ -55,6 +55,13 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
+        // Android Chromium: installed RateApp appears in the OS Share sheet.
+        // Android often places URLs in `text`, not `url`.
+        share_target: {
+          action: '/?tab=links',
+          method: 'GET',
+          params: { title: 'share_title', text: 'share_text', url: 'share_url' },
+        },
         icons: [
           {
             src: '/rateapp-icon-192.png',
