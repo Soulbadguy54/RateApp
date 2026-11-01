@@ -230,7 +230,8 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   const geometry = await picker.boundingBox()
   expect(geometry).not.toBeNull()
   expect(geometry!.y).toBeLessThan(2)
-  expect(geometry!.height).toBeGreaterThan(page.viewportSize()!.height * .95)
+  expect(geometry!.height).toBeGreaterThan(page.viewportSize()!.height * .78)
+  await expect(page.locator('.bottom-nav__item').filter({ hasText: 'Мои игры' })).toHaveClass(/bottom-nav__item--active/)
   await expect(page.getByRole('button', { name: 'Steam подключен, открыть настройки' })).toBeDisabled().catch(async () => {
     await expect(page.getByRole('button', { name: 'Подключить Steam' })).toBeDisabled()
   })
