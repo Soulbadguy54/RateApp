@@ -242,8 +242,11 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   await expect(picker.getByRole('button', { name: 'Добавить игру' })).toHaveCount(0)
   // Cancel picker with arrow. Profile remains in edit mode; no slot changed.
   await picker.getByRole('button', { name: 'Назад в профиль' }).click()
+  await expect(picker).toHaveCount(0)
   await expect(save).toBeVisible()
-  await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click({ force: true })
+  const secondCloud = page.getByRole('button', { name: 'Изменить игру в облаке 2' })
+  await secondCloud.focus()
+  await page.keyboard.press('Enter')
   await expect(picker).toBeVisible()
   await expect(picker.getByRole('button', { name: 'Открыть поиск' })).toBeVisible()
   await picker.getByRole('button', { name: 'Открыть поиск' }).click()
