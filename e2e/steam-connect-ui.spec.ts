@@ -602,6 +602,11 @@ for (const count of [2, 26]) {
     const viewport = await page.evaluate(() => window.visualViewport?.height ?? window.innerHeight)
     await expect.poll(async () => panel.evaluate(el => el.offsetHeight))
       .toBeGreaterThan(before + 8)
+    // Wait for the actual 530ms glass resize to settle, not its first frame.
+    await expect.poll(async () => panel.evaluate(el => {
+      const desired = Number.parseFloat(el.style.height)
+      return Number.isFinite(desired) ? Math.abs(el.offsetHeight - desired) : 1000
+    }), { timeout: 2500 }).toBeLessThan(4)
     const after = await panel.evaluate(el => el.offsetHeight)
     expect(after).toBeLessThanOrEqual(viewport)
     if (count === 26) {
