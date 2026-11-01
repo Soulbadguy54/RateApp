@@ -60,7 +60,8 @@ test('Steam lookup survives declined matches and native Back restores the exact 
   })
 
   await page.goto('/?tab=profile')
-  await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click()
+  await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).focus()
+  await page.keyboard.press('Enter')
   let panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
   await panel.getByRole('button', { name: 'Синхронизировать' }).click()
   await expect(panel).toContainText('Нужно найти в Rate APP: 1')
