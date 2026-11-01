@@ -242,8 +242,10 @@ export default function ProfileView({
               ))}
             </ol>
           )}
-          <div className="profile-steam-cloud" role="img" aria-label="Steam — интеграция пока не подключена">
-            <img src="/brand/steam.svg" alt="" aria-hidden="true" draggable={false} />
+          <div className="profile-steam-cloud-launch">
+            <div className="profile-steam-cloud" role="img" aria-label="Steam — интеграция пока не подключена">
+              <img src="/brand/steam.svg" alt="" aria-hidden="true" draggable={false} />
+            </div>
           </div>
           <div className="profile-glass-header__avatar-row">
             {editing && photo ? (
@@ -308,7 +310,7 @@ export default function ProfileView({
 
       <section className="profile-settings" aria-label="Настройки профиля"
         style={{ '--profile-accent-color': chosenTint.color, '--profile-tint-rgb': chosenTint.rgb } as CSSProperties}>
-        <div className="profile-settings__tabs" role="tablist" aria-label="Разделы настроек">
+        <div className="profile-settings__tabs" data-active={settingsTab} role="tablist" aria-label="Разделы настроек">
           {([
             { id: 'notifications' as const, label: 'Уведомления', icon: 'bell' as const, ref: notificationsTabRef },
             { id: 'security' as const, label: 'Безопасность', icon: 'shield' as const, ref: securityTabRef },
@@ -333,7 +335,7 @@ export default function ProfileView({
               }}>
               {settingsTab === tab.id && (
                 <motion.span className="profile-settings__tab-active" layoutId="profile-settings-active"
-                  transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 38 }}
+                  transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 330, damping: 31 }}
                   aria-hidden="true" />
               )}
               <span className="profile-settings__tab-label">
@@ -356,7 +358,7 @@ export default function ProfileView({
               exit={reducedMotion ? undefined : { opacity: 0, x: settingsTab === 'security' ? -12 : 12 }}
               transition={{ duration: reducedMotion ? 0 : .22, ease: [0.22, 1, 0.36, 1] }}>
               {settingsTab === 'notifications' ? (
-                <PushSettings user={user.nickname} onOpenWishlist={onOpenWishlist} />
+                <PushSettings user={user.nickname} onOpenWishlist={onOpenWishlist} accentColor={chosenTint.color} />
               ) : (
                 <div className="profile-security">
                   <div className="profile-security__row">
