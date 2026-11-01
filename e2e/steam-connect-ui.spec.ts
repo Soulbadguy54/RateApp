@@ -266,8 +266,12 @@ test('Steam unresolved rows have separate Steam page/search/dismiss actions and 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/?tab=profile')
-  await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click({ force: true })
+  const cloud = page.getByRole('button', { name: 'Steam подключен, открыть настройки' })
+  await expect(cloud).toBeVisible()
+  await cloud.focus()
+  await page.keyboard.press('Enter')
   const panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
+  await expect(panel).toBeVisible()
   await expect(panel.locator('.steam-integration__brand h2')).toHaveText('Steam подключен')
   await panel.getByRole('button', { name: 'Синхронизировать' }).click()
   await expect(panel).toContainText('Будут добавлены: 1')
@@ -349,6 +353,11 @@ test('manual Steam search saves playthrough before asking consent, links only on
   await expect(dialog).toHaveCount(0)
   expect(linked).toBe(1)
   await expect(page.locator('.detail-hero__steam-badge')).toBeVisible()
+  // A bottom-tab switch must end the Steam lookup; navigation within the
+  // lookup (search -> game -> Back) keeps its state until that explicit switch.
+  await page.getByRole('button', { name: 'Профиль', exact: true }).click()
+  await page.getByRole('button', { name: 'База игр', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Поиск по базе игр' })).toHaveValue('')
 })
 
 
