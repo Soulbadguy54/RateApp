@@ -10,9 +10,9 @@ export const COLLECTION_THEMES = [
   { id: 'blue', name: 'Синий', accent: 'rgb(var(--palette-dislike-rgb))', shade: '#366ac1', glow: 'rgba(75, 129, 225, .24)' },
   { id: 'cyan', name: 'Голубой', accent: '#85ddf2', shade: '#238ba8', glow: 'rgba(50, 170, 198, .23)' },
   { id: 'teal', name: 'Бирюзовый', accent: '#7ee2d7', shade: '#218e88', glow: 'rgba(47, 181, 166, .22)' },
-  { id: 'emerald', name: 'Зелёный', accent: 'rgb(var(--palette-like-rgb))', shade: '#35895a', glow: 'rgba(59, 175, 102, .22)' },
+  { id: 'emerald', name: 'Зеленый', accent: 'rgb(var(--palette-like-rgb))', shade: '#35895a', glow: 'rgba(59, 175, 102, .22)' },
   { id: 'lime', name: 'Лаймовый', accent: '#d7ee86', shade: '#859831', glow: 'rgba(175, 194, 65, .21)' },
-  { id: 'amber', name: 'Жёлтый', accent: 'rgb(var(--palette-playthrough-rgb))', shade: '#ae7b29', glow: 'rgba(221, 171, 57, .21)' },
+  { id: 'amber', name: 'Желтый', accent: 'rgb(var(--palette-playthrough-rgb))', shade: '#ae7b29', glow: 'rgba(221, 171, 57, .21)' },
   { id: 'orange', name: 'Оранжевый', accent: '#ffb285', shade: '#bc623a', glow: 'rgba(226, 120, 64, .22)' },
   { id: 'slate', name: 'Серый', accent: '#b8c7d8', shade: '#61758d', glow: 'rgba(117, 143, 171, .20)' },
 ] as const

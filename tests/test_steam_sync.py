@@ -178,6 +178,14 @@ class SteamDatabaseSyncTests(unittest.TestCase):
                 self.assertTrue(db.scalar(select(CollectionGame).join(Collection)
                     .where(Collection.user_id == self.user_id, Collection.slug == "wishlist",
                            CollectionGame.user_game_id == wishlist.id)))
+            too_early = self.client.post("/api/steam/preview", headers=headers)
+            self.assertEqual(too_early.status_code, 429)
+            from api.models import SteamConnection
+            from datetime import timedelta
+            with SessionLocal() as db:
+                linked = db.scalar(select(SteamConnection).where(SteamConnection.user_id == self.user_id))
+                linked.last_preview_at = steam_sync._now() - timedelta(minutes=3)
+                db.commit()
             again = self.client.post("/api/steam/preview", headers=headers)
             self.assertEqual(again.status_code, 200, again.text)
             self.assertEqual(again.json()["items"], [])
@@ -210,3 +218,39 @@ class SteamDatabaseSyncTests(unittest.TestCase):
         self.assertFalse(response.json()["privacyIssue"])
         self.assertNotIn("STEAM_WEB_API_KEY", response.text)
         self.assertNotIn("Администратору", response.text)
+
+    def test_preview_cooldown_limits_fetch_but_allows_immediate_commit(self):
+        with patch.object(steam_sync, "_owned_games", return_value=([], None)), \
+             patch.object(steam_sync, "_prepare", return_value=([], [])):
+            headers = {"Origin": "https://testserver"}
+            first = self.client.post("/api/steam/preview", headers=headers)
+            self.assertEqual(first.status_code, 200, first.text)
+            self.assertIn("nextSyncAt", first.json())
+            limited = self.client.post("/api/steam/preview", headers=headers)
+            self.assertEqual(limited.status_code, 429, limited.text)
+            self.assertGreater(int(limited.headers["retry-after"]), 0)
+            saved = self.client.post("/api/steam/commit", headers=headers,
+                json={"token": first.json()["token"]})
+            self.assertEqual(saved.status_code, 200, saved.text)
+            self.assertEqual(saved.json()["created"], [])
+
+    def test_steam_link_is_metadata_not_gameplay_status(self):
+        from api.database import SessionLocal
+        from api.library_service import _library_payload
+        from api.models import User, UserGame
+        from sqlalchemy import select
+        with SessionLocal() as db:
+            user = db.get(User, self.user_id)
+            entry = db.scalar(select(UserGame).where(UserGame.user_id == self.user_id))
+            data = _library_payload(db, user)
+            self.assertEqual(len(data), 1)
+            self.assertFalse(data[0]["steamLinked"])
+            original_status, original_score = entry.status, entry.score
+            entry.steam_data = {"apps": [{"appid": 101, "minutes": 90}],
+                                "steam_id64": "76561198012345678", "imported": False}
+            db.commit()
+            with_meta = _library_payload(db, user)
+            self.assertTrue(with_meta[0]["steamLinked"])
+            self.assertEqual(with_meta[0]["status"], original_status)
+            self.assertEqual(float(with_meta[0]["score"]), float(original_score))
+            self.assertNotIn("steam_data", with_meta[0])

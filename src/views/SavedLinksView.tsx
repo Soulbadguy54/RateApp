@@ -394,7 +394,7 @@ export default function SavedLinksView({ cacheNamespace }: {
         <div className="saved-links-heading-row">
         <div>
           <h1>Мои ссылки</h1>
-          <p>Сохранённые ссылки из других источников</p>
+          <p>Сохраненные ссылки из других источников</p>
         </div>
         <motion.button type="button" className="round-add saved-links-add-toggle"
           aria-label={addOpen ? 'Закрыть ввод ссылки' : 'Добавить ссылку'}
@@ -426,7 +426,7 @@ export default function SavedLinksView({ cacheNamespace }: {
             disabled={!addOpen || saving} />
           {validLink && (
             <button className="text-field-submit" type="submit"
-              aria-label="Добавить введённую ссылку"
+              aria-label="Добавить введенную ссылку"
               disabled={!addOpen || saving}>
               <Icon name="arrow" size={18} />
             </button>
@@ -460,7 +460,7 @@ export default function SavedLinksView({ cacheNamespace }: {
         <div className="saved-links-empty">
           <Icon name="bookmark" size={34} />
           <strong>Пока нет ссылок</strong>
-          <p>Добавь статью, обзор или подборку — всё будет под рукой.</p>
+          <p>Добавь статью, обзор или подборку — все будет под рукой.</p>
         </div>
       )}
 
@@ -550,7 +550,7 @@ export default function SavedLinksView({ cacheNamespace }: {
       {!loading && nextBefore != null && (
         <button type="button" className="saved-links-more" disabled={loadingMore || deleting}
           onClick={() => void fetchLinks(nextBefore)}>
-          {loadingMore ? 'Загружаем…' : 'Показать ещё'}
+          {loadingMore ? 'Загружаем…' : 'Показать еще'}
         </button>
       )}
 

@@ -182,6 +182,7 @@ def finish_steam_link(request: Request):
         else:
             if existing.steam_id64 != steam_id:
                 existing.last_synced_at = None
+                existing.last_preview_at = None
                 session.execute(delete(SteamSyncPreview).where(SteamSyncPreview.user_id == final_user.id))
             existing.steam_id64 = steam_id
         try:

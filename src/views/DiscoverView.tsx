@@ -493,7 +493,7 @@ export default function DiscoverView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gameId: game.id, action }),
       })
-      if (!response.ok) throw new Error('Не получилось сохранить свайп — попробуй ещё раз.')
+      if (!response.ok) throw new Error('Не получилось сохранить свайп — попробуй еще раз.')
       const direction = action === 'like' ? 'right' : action === 'dislike' ? 'left' : 'up'
       saved = true
       setDeparture(direction)
@@ -626,7 +626,7 @@ export default function DiscoverView({
         ) : !game ? (
           <div className="discover-state">
             <span className="discover-state__icon">✦</span>
-            <h2>Пока всё просмотрено</h2>
+            <h2>Пока все просмотрено</h2>
             <p>Новые варианты появятся, когда каталог пополнится.</p>
             <button type="button" onClick={() => { setCards([]); setIndex(0); void loadFeed(true) }}>Обновить ленту</button>
           </div>

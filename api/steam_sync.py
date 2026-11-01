@@ -37,6 +37,7 @@ APPID_RE = re.compile(r"^[1-9][0-9]{0,9}$")
 STORE_APP_RE = re.compile(r"^/app/([1-9][0-9]{0,9})(?:/|$)")
 MAX_OWNED = 3000
 PREVIEW_TTL_MINUTES = 15
+PREVIEW_COOLDOWN_SECONDS = 120
 
 
 class CommitPayload(BaseModel):
@@ -321,6 +322,10 @@ def steam_overview(request: Request) -> dict:
         user, linked = _connection(session, request)
         steam_id = linked.steam_id64
         last = linked.last_synced_at.isoformat() if linked.last_synced_at else None
+        next_allowed = (
+            linked.last_preview_at + timedelta(seconds=PREVIEW_COOLDOWN_SECONDS)
+            if linked.last_preview_at else None
+        )
     profile = None
     red_flags = []
     game_count = 0
@@ -360,16 +365,32 @@ def steam_overview(request: Request) -> dict:
         "canSync": configured and not privacy_issue and not service_unavailable,
         "privacyIssue": privacy_issue,
         "redFlags": red_flags, "lastSyncedAt": last,
+        "nextSyncAt": next_allowed.isoformat() if next_allowed else None,
     }
 
 
 @router.post("/api/steam/preview")
 def steam_preview(request: Request) -> dict:
     _require_origin(request)
+    # Persist the start of each expensive Steam/IGDB scan. Row-level lock
+    # serializes concurrent requests across devices/workers. Never rate-limit
+    # commit: the user must be able to confirm an existing preview immediately.
     with _session() as session:
         user, linked = _connection(session, request)
-        user_id, steam_id = user.id, linked.steam_id64
+        locked = session.scalar(
+            select(SteamConnection).where(SteamConnection.user_id == user.id).with_for_update()
+        )
+        now = _now()
+        if locked.last_preview_at is not None:
+            remaining = (locked.last_preview_at + timedelta(seconds=PREVIEW_COOLDOWN_SECONDS) - now).total_seconds()
+            if remaining > 0:
+                seconds = max(1, int(remaining + .999))
+                raise HTTPException(429, "Повторная проверка библиотеки пока недоступна.",
+                                    headers={"Retry-After": str(seconds)})
+        locked.last_preview_at = now
+        user_id, steam_id = user.id, locked.steam_id64
         session_hash = _hash_token(request.cookies.get(SESSION_COOKIE, ""))
+        session.commit()
     games, problem = _owned_games(steam_id)
     if problem:
         raise HTTPException(409, problem)
@@ -392,7 +413,8 @@ def steam_preview(request: Request) -> dict:
             expires_at=_now() + timedelta(minutes=PREVIEW_TTL_MINUTES),
         ))
         session.commit()
-    return {"token": token, "items": items, "unresolved": unresolved}
+    return {"token": token, "items": items, "unresolved": unresolved,
+            "nextSyncAt": (now + timedelta(seconds=PREVIEW_COOLDOWN_SECONDS)).isoformat()}
 
 
 @router.post("/api/steam/commit")

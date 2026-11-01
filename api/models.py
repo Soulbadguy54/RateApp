@@ -38,6 +38,7 @@ class SteamConnection(Base):
     steam_id64: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_preview_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SteamLinkChallenge(Base):
