@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -82,7 +82,9 @@ export default function SteamIntegrationCloud({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
-  const [expanded, setExpanded] = useState(false)
+  const [expandedHeight, setExpandedHeight] = useState<number | null>(null)
+  const panelRef = useRef<HTMLElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [unlinking, setUnlinking] = useState(false)
   const [origin, setOrigin] = useState<Origin>({ x: 0, y: 0 })
   const [overview, setOverview] = useState<Overview | null>(null)
@@ -208,7 +210,7 @@ export default function SteamIntegrationCloud({
     if (bounds) setOrigin({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 })
     setPreview(null)
     setResult(null)
-    setExpanded(false)
+    setExpandedHeight(null)
     setDismissed([])
     setError('')
     setOpen(true)
@@ -217,9 +219,6 @@ export default function SteamIntegrationCloud({
   const sync = async () => {
     if (pendingRef.current || !overview?.canSync || (!preview && nextSyncAt && Date.parse(nextSyncAt) > Date.now())) return
     pendingRef.current = true
-    // Expand the same glass surface immediately, before the network request.
-    // The compact dialog's layout must never depend on when Steam responds.
-    setExpanded(true)
     setSyncing(true)
     setError('')
     const controller = new AbortController()
@@ -298,6 +297,39 @@ export default function SteamIntegrationCloud({
   const items = preview?.items ?? result?.created ?? []
   const unresolved = (preview?.unresolved ?? result?.unresolved ?? []).filter(item => !dismissed.includes(item.appid))
   const newCount = items.length
+  const hasVisibleGames = newCount > 0 || unresolved.length > 0
+  // Only actual games can expand the dialog. An empty preview/commit retains
+  // the fixed compact footprint; a short list grows just enough to fit.
+  useLayoutEffect(() => {
+    if (!open || !connected || !hasVisibleGames) {
+      setExpandedHeight(null)
+      return
+    }
+    const content = contentRef.current
+    const panel = panelRef.current
+    if (!content || !panel) return
+    const measure = () => {
+      const computed = window.getComputedStyle(panel)
+      const verticalPadding = parseFloat(computed.paddingTop) + parseFloat(computed.paddingBottom)
+      const screenHeight = window.visualViewport?.height ?? window.innerHeight
+      const compact = Math.min(445, Math.max(0, screenHeight - 36))
+      // Safety gap to the viewport: longer lists scroll inside the same glass.
+      const available = Math.max(compact, screenHeight - 12)
+      const natural = content.scrollHeight + verticalPadding
+      const target = Math.min(available, Math.max(compact, Math.ceil(natural)))
+      setExpandedHeight(previous => previous !== null && Math.abs(previous - target) < 2 ? previous : target)
+    }
+    measure()
+    const resizeObserver = new ResizeObserver(measure)
+    resizeObserver.observe(content)
+    window.addEventListener('resize', measure)
+    window.visualViewport?.addEventListener('resize', measure)
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', measure)
+      window.visualViewport?.removeEventListener('resize', measure)
+    }
+  }, [open, connected, hasVisibleGames, preview, result, overview, dismissed, error, checking])
   const cooldownLeft = nextSyncAt ? Math.max(0, Math.ceil((Date.parse(nextSyncAt) - secondsNow) / 1000)) : 0
   const cooldownLabel = cooldownLeft > 0 ? Math.floor(cooldownLeft / 60) + ':' + String(cooldownLeft % 60).padStart(2, '0') : null
 
@@ -326,15 +358,17 @@ export default function SteamIntegrationCloud({
               onPointerDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
               <motion.section role="dialog" aria-modal="true"
                 aria-label={connected ? 'Подключенный аккаунт Steam' : 'Подключение Steam'}
-                className={'steam-integration__panel' + (connected ? ' steam-integration__panel--connected' : '') + (expanded ? ' steam-integration__panel--expanded' : '')}
-                style={panelStyle}
-                data-mode={expanded ? 'expanded' : 'compact'}
+                ref={panelRef}
+                className={'steam-integration__panel' + (connected ? ' steam-integration__panel--connected' : '') + (hasVisibleGames ? ' steam-integration__panel--expanded' : '')}
+                style={{ ...panelStyle, ...(hasVisibleGames && expandedHeight !== null ? { height: expandedHeight + 'px' } : {}) }}
+                data-mode={hasVisibleGames ? 'results' : 'compact'}
                 initial={reducedMotion ? false : { opacity: .65, scale: .16, x, y, borderRadius: 32 }}
                 animate={{ opacity: 1, scale: 1, x: 0, y: 0, borderRadius: expanded ? 14 : 21 }}
                 exit={reducedMotion ? { opacity: 0 } : { opacity: .6, scale: .16, x, y, borderRadius: 32 }}
                 transition={reducedMotion ? { duration: 0 } : {
                   type: 'spring', stiffness: 300, damping: 32, mass: .86,
                 }}>
+                <div ref={contentRef} className="steam-integration__content">
                 <div className="steam-integration__heading">
                   <div className="steam-integration__brand">
                     <img src="/brand/steam.svg" alt="" className={checking ? 'steam-integration__logo--checking' : ''} />
@@ -352,7 +386,7 @@ export default function SteamIntegrationCloud({
                 </p>
                 <div className="steam-integration__status-space" aria-live="polite" aria-atomic="true">
                   {error ? <p className="steam-integration__notice" role="status">{error}</p>
-                    : connected && checking && !expanded
+                    : connected && checking && !hasVisibleGames
                       ? <p className="steam-integration__muted" role="status">Проверяем подключение и вашу библиотеку…</p>
                       : null}
                 </div>
@@ -467,6 +501,7 @@ export default function SteamIntegrationCloud({
                     <p className="steam-integration__footnote">Синхронизация запускается только вручную.</p>
                   </>
                 )}
+                </div>
               </motion.section>
             </motion.div>
           )}
