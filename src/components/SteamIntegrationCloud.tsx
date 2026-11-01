@@ -8,7 +8,6 @@ import { profileTintOption, type ProfileTint } from '../profilePalette'
 import './SteamIntegrationCloud.css'
 
 type SteamConnection = { connected: boolean; steamId64: string | null }
-type Origin = { x: number; y: number }
 type Overview = {
   steamId64: string
   configured: boolean
@@ -86,7 +85,6 @@ export default function SteamIntegrationCloud({
   const panelRef = useRef<HTMLElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [unlinking, setUnlinking] = useState(false)
-  const [origin, setOrigin] = useState<Origin>({ x: 0, y: 0 })
   const [overview, setOverview] = useState<Overview | null>(null)
   const [avatarFailed, setAvatarFailed] = useState(false)
   const [overviewError, setOverviewError] = useState(false)
@@ -206,10 +204,9 @@ export default function SteamIntegrationCloud({
   }, [open])
 
   const onOpen = () => {
-    const bounds = cloudRef.current?.getBoundingClientRect()
-    if (bounds) setOrigin({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 })
     setPreview(null)
     setResult(null)
+    setOverview(null)
     setExpandedHeight(null)
     setDismissed([])
     setError('')
@@ -292,8 +289,9 @@ export default function SteamIntegrationCloud({
   } as CSSProperties
   const privacyBlocked = Boolean(overview?.privacyIssue)
   const showAccessHelp = connected && (privacyBlocked || overviewError || Boolean(overview?.redFlags?.length))
-  const x = origin.x ? origin.x - window.innerWidth / 2 : 0
-  const y = origin.y ? origin.y - window.innerHeight / 2 : 0
+  // Intentionally avoid translating a 28px blurred glass surface across the
+  // whole viewport: large scale/position springs caused costly re-rasterization
+  // on high-refresh mobile screens. Entrance/exit move just a few pixels.
   const items = preview?.items ?? result?.created ?? []
   const unresolved = (preview?.unresolved ?? result?.unresolved ?? []).filter(item => !dismissed.includes(item.appid))
   const newCount = items.length
@@ -312,7 +310,7 @@ export default function SteamIntegrationCloud({
       const computed = window.getComputedStyle(panel)
       const verticalPadding = parseFloat(computed.paddingTop) + parseFloat(computed.paddingBottom)
       const screenHeight = window.visualViewport?.height ?? window.innerHeight
-      const compact = Math.min(445, Math.max(0, screenHeight - 36))
+      const compact = Math.min(380, Math.max(0, screenHeight - 24))
       // Safety gap to the viewport: longer lists scroll inside the same glass.
       const available = Math.max(compact, screenHeight - 12)
       const natural = content.scrollHeight + verticalPadding
@@ -362,11 +360,11 @@ export default function SteamIntegrationCloud({
                 className={'steam-integration__panel' + (connected ? ' steam-integration__panel--connected' : '') + (hasVisibleGames ? ' steam-integration__panel--expanded' : '')}
                 style={{ ...panelStyle, ...(hasVisibleGames && expandedHeight !== null ? { height: expandedHeight + 'px' } : {}) }}
                 data-mode={hasVisibleGames ? 'results' : 'compact'}
-                initial={reducedMotion ? false : { opacity: .65, scale: .16, x, y, borderRadius: 32 }}
-                animate={{ opacity: 1, scale: 1, x: 0, y: 0, borderRadius: hasVisibleGames ? 14 : 21 }}
-                exit={reducedMotion ? { opacity: 0 } : { opacity: .6, scale: .16, x, y, borderRadius: 32 }}
+                initial={reducedMotion ? false : { opacity: 0, scale: .975, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: .985, y: 6 }}
                 transition={reducedMotion ? { duration: 0 } : {
-                  type: 'spring', stiffness: 300, damping: 32, mass: .86,
+                  duration: .28, ease: [0.22, 1, 0.36, 1],
                 }}>
                 <div ref={contentRef} className="steam-integration__content">
                 <div className="steam-integration__heading">
@@ -384,14 +382,10 @@ export default function SteamIntegrationCloud({
                     ? 'Игры синхронизируются только по вашему запросу.'
                     : 'Привяжите Steam, чтобы импортировать библиотеку в Rate APP.'}
                 </p>
-                <div className="steam-integration__status-space" aria-live="polite" aria-atomic="true">
-                  {error ? <p className="steam-integration__notice" role="status">{error}</p>
-                    : connected && checking && !hasVisibleGames
-                      ? <p className="steam-integration__muted" role="status">Проверяем подключение и вашу библиотеку…</p>
-                      : null}
-                </div>
+                {!connected && error && <p className="steam-integration__notice" role="status">{error}</p>}
                 {connected ? (
                   <>
+                    {overview ? (
                     <a className="steam-integration__profile"
                       href={overview?.profile?.profileUrl || 'https://steamcommunity.com/profiles/' + connection?.steamId64 + '/'}
                       target="_blank" rel="noopener noreferrer"
@@ -405,16 +399,26 @@ export default function SteamIntegrationCloud({
                       </span>
                       <Icon name="external-link" size={17} />
                     </a>
+                    ) : (
+                      <div className="steam-integration__profile steam-integration__profile--loading"
+                        aria-label="Профиль Steam загружается">
+                        <span className="steam-integration__avatar-placeholder"><Icon name="user" size={24} /></span>
+                        <span className="steam-integration__profile-info steam-integration__profile-info--placeholder"
+                          aria-hidden="true" />
+                        <Icon name="external-link" size={17} />
+                      </div>
+                    )}
                     {(preview || result) && overview && (overview.alreadyAddedCount ?? 0) > 0 && (
                       <div className="steam-integration__already-added" aria-label={'Уже добавлено: ' + overview.alreadyAddedCount}>
                         Уже добавлено: <strong>{overview.alreadyAddedCount}</strong>
                       </div>
                     )}
-                    {overview?.lastSyncedAt && (
-                      <p className="steam-integration__last-sync">
-                        Последняя синхронизация: {relativeSyncTime(overview.lastSyncedAt, secondsNow)}
-                      </p>
-                    )}
+                    <p className="steam-integration__last-sync">
+                      Последняя синхронизация: {overview?.lastSyncedAt
+                        ? relativeSyncTime(overview.lastSyncedAt, secondsNow)
+                        : '—'}
+                    </p>
+                    {error && <p className="steam-integration__notice" role="status">{error}</p>}
                     {showAccessHelp && (
                       <div className="steam-integration__access-warning" role="alert">
                         <div className="steam-integration__warning-title">

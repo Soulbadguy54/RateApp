@@ -419,3 +419,65 @@
   .steam-integration__panel { transition: none; }
   .steam-integration__profile { transition: none; }
 }
+
+
+/* Keep the connected compact dialog snug beneath the disconnect control;
+   constant placeholders avoid reflow during asynchronous overview checks. */
+.steam-integration__panel--connected:not(.steam-integration__panel--expanded) {
+  height: min(380px, calc(100dvh - 24px));
+}
+.steam-integration__intro {
+  margin-bottom: 10px;
+}
+.steam-integration__panel--connected .steam-integration__profile {
+  height: 76px;
+  min-height: 76px;
+  overflow: hidden;
+}
+.steam-integration__profile--loading { pointer-events: none; }
+.steam-integration__avatar-placeholder {
+  display: grid;
+  place-items: center;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.06);
+  color: rgba(227,235,248,.58);
+}
+.steam-integration__profile-info--placeholder {
+  min-height: 34px;
+}
+.steam-integration__last-sync {
+  margin: 8px 0 12px;
+  min-height: 18px;
+}
+.steam-integration__status-space {
+  display: none;
+}
+/* The header is the only visible connection-check indicator. */
+.steam-integration__panel--connected .steam-integration__heading {
+  min-height: 44px;
+}
+.steam-integration__connect--sync {
+  transform: translateZ(0);
+}
+.steam-integration__sync-icon {
+  will-change: transform;
+}
+/* A lightweight GLASS surface: background and blur are rasterized once;
+   move the panel by composite transforms, not huge scale spring zooms. */
+.steam-integration__panel {
+  contain: paint;
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  transition: height .43s cubic-bezier(.2,.75,.25,1);
+}
+.steam-integration__backdrop {
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .steam-integration__panel { transition: none; will-change: auto; }
+  .steam-integration__sync-icon { will-change: auto; }
+}

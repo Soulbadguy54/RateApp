@@ -847,3 +847,28 @@
   height: 100%;
   -webkit-tap-highlight-color: transparent;
 }
+
+
+/* One continuous profile gradient. The shell owns the background; there is no
+   separate rounded/tinted plate or outline around the avatar header. */
+.page--viewport:not(.page--discovery) .page-motion .profile-glass-header.topbar {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.page--viewport .profile-glass-header::before {
+  display: none;
+}
+.page--viewport .page-motion:has(> .profile-glass-header) {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - var(--page-top-inset, 0px) - var(--bottom-nav-height, 62px) - var(--safe-bottom, 0px) - 6px);
+}
+.page--viewport .page-motion:has(> .profile-glass-header) > .app-build-version {
+  margin: auto auto 0;
+  padding: 0;
+  text-align: center;
+}
