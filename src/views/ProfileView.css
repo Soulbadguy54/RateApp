@@ -739,12 +739,12 @@
 
 /* Pin the version label to the bottom of the available profile viewport,
    just above the fixed navigation; grow naturally on short screens. */
-.page--viewport .page-motion:has(> .profile-settings) {
+.page--viewport .page-motion > div:has(> .profile-settings) {
   display: flex;
   flex-direction: column;
   min-height: calc(100dvh - var(--bottom-nav-height) - var(--safe-bottom) - var(--page-bottom-gap));
 }
-.page--viewport .page-motion:has(> .profile-settings) > .app-build-version {
+.page--viewport .page-motion > div:has(> .profile-settings) > .app-build-version {
   flex: 0 0 auto;
   align-self: stretch;
   margin: auto auto 0;
