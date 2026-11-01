@@ -29,6 +29,7 @@ from api.push_routes import router as push_router
 from api.games_routes import router as games_router, _cache_igdb_games
 from api.discovery_routes import router as discovery_router
 from api.saved_links_routes import router as saved_links_router
+from api.steam_routes import router as steam_router
 from api.library_service import (
     _community_rating_map, _game_payload, _collection_slugs,
     _serialize_entry, _collections_payload, _library_payload,
