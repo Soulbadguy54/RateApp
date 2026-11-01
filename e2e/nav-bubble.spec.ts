@@ -64,8 +64,14 @@ test('game nav: tap priority, hold-and-drag bubble, swipe-only pinning, history 
   expect(glass).toContain('blur(12px)')
   const liquid = page.locator('.bottom-nav__liquid-path')
   await expect(liquid).toHaveCSS('fill', 'rgba(16, 24, 41, 0.5)')
-  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('background-color', 'rgba(10, 15, 27, 0.76)')
-  await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('backdrop-filter', /blur\(38px\)/)
+  const material = await page.evaluate(() => {
+    const bar = getComputedStyle(document.querySelector<HTMLElement>('.bottom-nav')!)
+    const popup = getComputedStyle(document.querySelector<HTMLElement>('.bottom-nav__bubble')!)
+    return { barBackground: bar.backgroundImage, popupBackground: popup.backgroundImage,
+      barFilter: bar.backdropFilter, popupFilter: popup.backdropFilter }
+  })
+  expect(material.popupBackground).toBe(material.barBackground)
+  expect(material.popupFilter).toBe(material.barFilter)
   await expect(page.locator('.bottom-nav__bubble')).toHaveCSS('border-radius', '16px')
   await expect(page.locator('.bottom-nav__liquid-path')).toHaveCSS('stroke', 'none')
   await expect(page.locator('.bottom-nav__liquid-rim')).toHaveCount(0)
