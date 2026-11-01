@@ -396,11 +396,11 @@ export default function ProfileView({
                     </div>
                     <div className="profile-security__backup-actions">
                       <button type="button" disabled aria-label="Импорт резервной копии (недоступен)" title="Импорт пока не реализован">
-                        <Icon name="upload" size={18} /><span className="sr-only">Импорт</span>
+                        <Icon name="upload" size={18} />
                       </button>
                       <a href="/api/export" download="rateapp-export.json"
                         aria-label="Экспорт резервной копии" title="Экспорт текущего JSON-файла аккаунта">
-                        <Icon name="download" size={18} /><span className="sr-only">Экспорт</span>
+                        <Icon name="download" size={18} />
                       </a>
                     </div>
                   </div>
