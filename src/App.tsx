@@ -3892,7 +3892,6 @@ function App() {
             role="region" aria-label="Выбор игры для облака"
             initial={shouldReduceMotion ? false : { opacity: 0, x: 22 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={shouldReduceMotion ? undefined : { opacity: 0, x: 18 }}
             transition={{ duration: shouldReduceMotion ? 0 : .25, ease: [0.22, 1, 0.36, 1] }}>
             {renderLibrary(true)}
           </motion.div>
