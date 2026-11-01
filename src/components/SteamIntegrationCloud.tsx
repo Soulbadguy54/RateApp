@@ -312,7 +312,7 @@ export default function SteamIntegrationCloud({
       const computed = window.getComputedStyle(panel)
       const verticalPadding = parseFloat(computed.paddingTop) + parseFloat(computed.paddingBottom)
       const screenHeight = window.visualViewport?.height ?? window.innerHeight
-      const compact = Math.min(380, Math.max(0, screenHeight - 24))
+      const compact = Math.min(350, Math.max(0, screenHeight - 24))
       // Safety gap to the viewport: longer lists scroll inside the same glass.
       const available = Math.max(compact, screenHeight - 12)
       const natural = content.scrollHeight + verticalPadding
