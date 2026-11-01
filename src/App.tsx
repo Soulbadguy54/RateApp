@@ -3885,7 +3885,7 @@ function App() {
       )}
       </AnimatePresence>
 
-      <ReleaseNotesDialog open={welcomeReleaseOpen} tint={authUser.profileTint ?? 'default'}
+      <ReleaseNotesDialog open={welcomeReleaseOpen} tint={profileTintOption(authUser.profileTint).id}
         onClose={closeWelcomeRelease} />
       <PushOnboarding user={authUser.nickname} />
 
