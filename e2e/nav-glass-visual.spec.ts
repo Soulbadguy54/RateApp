@@ -91,6 +91,47 @@ test('morph expands and contracts as a shape, never an early rectangular fade', 
   await expect(page.locator('[data-nav-popup="games"] .bottom-nav__bubble')).toHaveCount(0)
 })
 
+
+test('long-press drag and release still selects a floating portal choice', async ({ page }) => {
+  await page.goto('/?tab=profile')
+  for (const [group, targetId, resultTab] of [
+    ['games', 'discovery', 'discovery'], ['collections', 'links', 'links'],
+  ] as const) {
+    const slot = page.locator('[data-nav-slot="' + group + '"] > button')
+    const rect = await slot.boundingBox()
+    if (!rect) throw new Error('Missing slot ' + group)
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2)
+    await page.mouse.down()
+    const choice = page.locator('[data-nav-popup="' + group + '"] [data-' +
+      (group === 'games' ? 'game' : 'collection') + '-nav-choice="' + targetId + '"]')
+    await expect(choice).toBeVisible({ timeout: 4000 })
+    // Wait for the shape to finish expanding, then drag with capture retained.
+    await expect.poll(async () => Number(await choice.evaluate(el => getComputedStyle(el.parentElement!).opacity)))
+      .toBeGreaterThan(.9)
+    const bounds = await choice.boundingBox()
+    if (!bounds) throw new Error('Missing portal choice')
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, { steps: 9 })
+    await expect(choice).toHaveAttribute('data-highlighted', 'true')
+    await page.mouse.up()
+    await expect(page).toHaveURL(new RegExp('tab=' + resultTab))
+    await expect(page.locator('[data-nav-popup="' + group + '"] .bottom-nav__bubble')).toHaveCount(0)
+  }
+})
+
+test('keyboard ArrowUp opens and Escape closes the portal without navigation', async ({ page }) => {
+  await page.goto('/?tab=profile')
+  const slot = page.locator('[data-nav-slot="games"] > button')
+  await slot.focus()
+  await page.keyboard.press('ArrowUp')
+  await expect(slot).toHaveAttribute('aria-expanded', 'true')
+  const choice = page.locator('[data-nav-popup="games"] [data-game-nav-choice]').first()
+  await expect(choice).toBeVisible()
+  await expect(choice).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(slot).toHaveAttribute('aria-expanded', 'false')
+  await expect(page).toHaveURL(/tab=profile/)
+})
+
 test('Steam cloud emerges without overshoot or a competing transform', async ({ page }) => {
   await page.goto('/?tab=profile')
   const launch = page.locator('.profile-steam-cloud-launch')
