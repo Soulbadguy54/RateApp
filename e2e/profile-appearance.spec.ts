@@ -273,6 +273,10 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   await expect(page.locator('.library-cloud-picker')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Добавить игру' })).toBeVisible()
   await expect(page.locator('.game-card')).toHaveCount(4)
+  // The new-release intro is independent of cloud picking and may open upon
+  // the first visit to My Games; dismiss it before selecting another game
+  const welcome = page.getByRole('dialog', { name: 'История обновлений' })
+  if (await welcome.isVisible()) await welcome.getByRole('button', { name: 'Закрыть историю обновлений' }).click()
   await page.locator('.game-card').filter({ hasText: 'Other Pick' }).click()
   await expect(page).toHaveURL(/game=504/)
   expect(saves).toBe(1)
