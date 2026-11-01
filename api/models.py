@@ -29,6 +29,28 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class SteamConnection(Base):
+    """Only verified Steam identity; NO imports or ownership claims yet."""
+    __tablename__ = "steam_connections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
+    steam_id64: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SteamLinkChallenge(Base):
+    """Single-use Steam OpenID state, bound to an active Rate APP session."""
+    __tablename__ = "steam_link_challenges"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    session_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    state_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AuthSession(Base):
     __tablename__ = "auth_sessions"
 
