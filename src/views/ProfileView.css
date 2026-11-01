@@ -898,3 +898,8 @@ body > .app-build-version {
   pointer-events: none;
 }
 body > .app-build-version .app-build-version__trigger { pointer-events: auto; }
+
+.profile-glass-header--editing .profile-steam-cloud-launch {
+  filter: grayscale(1) opacity(.38);
+  pointer-events: none;
+}
