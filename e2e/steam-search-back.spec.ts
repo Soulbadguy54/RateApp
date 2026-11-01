@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
 
+test.use({ serviceWorkers: 'block' })
+
 test('Steam lookup survives declined matches and native Back restores the exact preview', async ({ page }) => {
   await page.addInitScript(() => window.localStorage.setItem('rateapp-install-confirmed', 'yes'))
   const games = [889, 890].map((id, i) => ({
