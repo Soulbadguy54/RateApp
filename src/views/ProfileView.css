@@ -765,3 +765,70 @@
   }
   .profile-settings .push-settings.info-card { margin-top: 3px; padding-block: 7px; }
 }
+
+/* Steam is a functional, accessible cloud rather than a passive decoration. */
+.profile-steam-cloud {
+  cursor: pointer;
+  pointer-events: auto;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.profile-steam-cloud:focus-visible { outline: 2px solid var(--profile-accent-color, var(--accent)); outline-offset: 3px; }
+.profile-steam-cloud--connected { opacity: 1; filter: none; color: white; }
+.profile-steam-cloud--connected img { opacity: 1; filter: none; }
+.profile-steam-cloud__status {
+  position: absolute;
+  z-index: 3;
+  right: -3px;
+  top: -3px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #141c2a;
+  border-radius: 50%;
+  background: #ee616d;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.18);
+}
+.profile-steam-cloud__status--connected { background: #70e79a; }
+.profile-steam-backdrop {
+  position: fixed;
+  z-index: 130;
+  inset: 0;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  padding: max(20px, env(safe-area-inset-top)) 15px calc(var(--bottom-nav-height, 62px) + 18px);
+  background: rgba(4, 8, 16, .68);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.profile-steam-dialog {
+  width: min(100%, 440px);
+  max-height: min(78dvh, 720px);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid rgba(206, 220, 238, .23);
+  border-radius: 20px;
+  color: #e6edf7;
+  background: linear-gradient(150deg, rgba(25, 37, 57, .96), rgba(13, 21, 35, .98));
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 24px 65px rgba(0,0,0,.5);
+  transform-origin: 82% 9%;
+}
+.profile-steam-dialog__head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.profile-steam-dialog__head img { flex-shrink: 0; }
+.profile-steam-dialog__head h2 { margin: 0; flex: 1; font-size: 19px; color: #f4f8ff; }
+.profile-steam-dialog__head button {
+  border: 0; padding: 0; width: 34px; height: 34px; border-radius: 10px;
+  color: #c4d0de; background: rgba(255,255,255,.07); font-size: 26px;
+}
+.profile-steam-dialog p { margin: 0 0 12px; font-size: 12px; line-height: 1.55; }
+.profile-steam-dialog__privacy { margin: 14px 0; padding: 13px; border: 1px solid rgba(175,188,205,.24); border-radius: 12px; }
+.profile-steam-dialog__privacy strong { display: block; font-size: 13px; margin-bottom: 7px; }
+.profile-steam-dialog__privacy a { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--profile-accent-color, #8cf27d); }
+.profile-steam-dialog__hint { color: #a6b6c9; }
+.profile-steam-dialog__id { color: #a2d4f4; overflow-wrap: anywhere; }
+.profile-steam-dialog__error { color: #ff9aa3; }
+.profile-steam-dialog__action { display: flex; justify-content: center; align-items: center; width: 100%; min-height: 44px; padding: 10px 14px; border: 1px solid #9cb8d8; border-radius: 12px; background: #263e5c; color: #f6fbff; font-size: 13px; font-weight: 750; text-decoration: none; }
+.profile-steam-dialog__action--disconnect { background: transparent; border-color: rgba(255,255,255,.24); }
+@media (prefers-reduced-motion: reduce) { .profile-steam-dialog { transform: none; } }
