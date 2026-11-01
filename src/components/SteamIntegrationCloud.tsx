@@ -37,7 +37,6 @@ export default function SteamIntegrationCloud() {
       if (!response.ok) throw new Error('Состояние Steam недоступно.')
       const data = await response.json() as SteamConnection
       setConnection({ connected: Boolean(data.connected), steamId64: data.steamId64 ?? null })
-      setError('')
     } catch {
       setError('Не удалось проверить подключение Steam.')
     } finally {
@@ -165,7 +164,7 @@ export default function SteamIntegrationCloud() {
                         className="steam-integration__privacy-link">Открыть настройки приватности Steam <Icon name="external-link" size={16} /></a>
                     </div>
                     <p className="steam-integration__safety">
-                      Вход проходит на сайте Steam. **Rate APP не получает пароль или код Steam Guard** и не имеет доступа к закрытым играм. Позже по вашему подтверждению мы сможем получать общедоступную библиотеку и суммарные часы игры.
+                      Вход проходит на сайте Steam. Rate APP не получает пароль или код Steam Guard и не имеет доступа к закрытым играм. Позже по вашему подтверждению мы сможем получать общедоступную библиотеку и суммарные часы игры.
                     </p>
                     <a className="steam-integration__connect" href="/api/steam/connect">
                       <img src="/brand/steam.svg" alt="" />
