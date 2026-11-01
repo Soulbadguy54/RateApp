@@ -60,8 +60,8 @@ function LiquidMorph({ reduceMotion, children, ariaLabel }: { reduceMotion: bool
   // Keep the real liquid silhouette visible for almost the entire expansion.
   // Previously the rectangular backdrop became visible at 34%, hiding the
   // opening morph. Reverse these same values for a visible close morph.
-  const surfaceOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .85, .98, 1], [0, 1, 1, .14, 0])
-  const choicesOpacity = useTransform(progress, [0, .79, .89, 1], [0, 0, .25, 1])
+  const surfaceOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .72, .90, 1], [0, 1, 1, .94, 0])
+  const choicesOpacity = useTransform(progress, [0, .61, .78, 1], [0, 0, .34, 1])
 
   useEffect(() => {
     if (reduceMotion) {
