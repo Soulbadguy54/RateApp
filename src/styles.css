@@ -4652,8 +4652,8 @@ html::-webkit-scrollbar, body::-webkit-scrollbar,
 .library-cloud-picker--screen {
   position: fixed;
   z-index: 2400;
-  inset: 0;
-  height: 100dvh;
+  inset: 0 0 calc(var(--bottom-nav-height, 62px) + var(--safe-bottom, 0px)) 0;
+  height: calc(100dvh - var(--bottom-nav-height, 62px) - var(--safe-bottom, 0px));
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
