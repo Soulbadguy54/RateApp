@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { createPortal } from 'react-dom'
 import type { AuthUser } from '../AuthScreen'
 import PushSettings from '../PushSettings'
 import SteamIntegrationCloud from '../components/SteamIntegrationCloud'
@@ -266,7 +267,7 @@ export default function ProfileView({
             </ol>
           )}
           <div className="profile-steam-cloud-launch">
-            <SteamIntegrationCloud onFindUnmatched={onFindSteamGame} onSynced={onSteamSynced} tint={tint} />
+            <SteamIntegrationCloud onFindUnmatched={onFindSteamGame} onSynced={onSteamSynced} tint={tint} disabled={editing} />
           </div>
           <div className="profile-glass-header__avatar-row">
             {editing && photo ? (
@@ -425,7 +426,7 @@ export default function ProfileView({
           </AnimatePresence>
         </div>
       </section>
-      <p className="app-build-version"
+      {createPortal(<p className="app-build-version"
         style={{ '--profile-accent-color': chosenTint.color,
           '--profile-accent-rgb': chosenTint.accentRgb } as CSSProperties}>
         <button type="button" className="app-build-version__trigger"
@@ -433,7 +434,7 @@ export default function ProfileView({
           onClick={() => setReleaseNotesOpen(true)}>
           Версия приложения: <span>{CURRENT_RELEASE_VERSION}</span>
         </button>
-      </p>
+      </p>, document.body)}
       <ReleaseNotesDialog open={releaseNotesOpen} tint={tint} onClose={closeReleaseNotes} />
     </>
   )
