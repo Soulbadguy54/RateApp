@@ -27,7 +27,7 @@ for (const connected of [false, true]) {
     await steam.click({ force: true })
     const panel = page.getByRole('dialog', { name: connected ? 'Подключённый аккаунт Steam' : 'Подключение Steam' })
     await expect(panel).toBeVisible()
-    await expect(panel).toContainText(connected ? 'Импорт игр пока не включён' : 'Rate APP')
+    await expect(panel).toContainText(connected ? 'сейчас игры не импортируются' : 'Rate APP')
     if (connected) {
       await expect(panel.getByText('SteamID:')).toBeVisible()
       await expect(panel.getByRole('button', { name: 'Отвязать Steam' })).toBeVisible()
