@@ -135,6 +135,10 @@
   outline: 2px solid var(--profile-accent-color, var(--accent));
   outline-offset: 3px;
 }
+/* Editing demands a stable touch target while ordinary profile clouds float. */
+.profile-top-game--editing { animation: none; }
+.profile-top-game:hover,
+.profile-top-game:focus-visible,
 .profile-top-game:active { animation-play-state: paused; }
 .profile-top-game__cover {
   display: grid;
