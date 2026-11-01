@@ -247,7 +247,7 @@ export default function ProfileView({
             </ol>
           )}
           <div className="profile-steam-cloud-launch">
-            <SteamIntegrationCloud onFindUnmatched={onFindSteamGame} onSynced={onSteamSynced} />
+            <SteamIntegrationCloud onFindUnmatched={onFindSteamGame} onSynced={onSteamSynced} tint={tint} />
           </div>
           <div className="profile-glass-header__avatar-row">
             {editing && photo ? (
