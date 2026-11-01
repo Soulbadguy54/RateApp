@@ -425,7 +425,9 @@ export default function ProfileView({
           </AnimatePresence>
         </div>
       </section>
-      <p className="app-build-version">
+      <p className="app-build-version"
+        style={{ '--profile-accent-color': chosenTint.color,
+          '--profile-accent-rgb': chosenTint.accentRgb } as CSSProperties}>
         <button type="button" className="app-build-version__trigger"
           aria-label={'История обновлений, версия ' + CURRENT_RELEASE_VERSION}
           onClick={() => setReleaseNotesOpen(true)}>
