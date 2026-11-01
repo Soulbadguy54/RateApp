@@ -28,10 +28,11 @@ test('profile settings use accessible animated folder tabs; security has exactly
   await expect(notifications).toHaveAttribute('aria-selected', 'true')
   await expect(security).toHaveAttribute('aria-selected', 'false')
   await expect(page.getByRole('tabpanel', { name: 'Уведомления' })).toBeVisible()
-  await expect(page.getByText('Релизы игр')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Релизы игр' })).toBeVisible()
   await expect(page.locator('.push-settings .eyebrow')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Выйти из аккаунта' })).toHaveCount(0)
   await expect(page.locator('.profile-settings__tab-active')).toHaveCount(1)
+  await expect(page.locator('.profile-settings__folder')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
 
   await security.click()
   const panel = page.getByRole('tabpanel', { name: 'Безопасность' })
@@ -46,6 +47,8 @@ test('profile settings use accessible animated folder tabs; security has exactly
   await expect(rows.nth(2)).toContainText('Резервное копирование')
   await expect(panel.getByRole('button', { name: /Импорт/ })).toBeDisabled()
   await expect(panel.getByRole('link', { name: /Экспорт/ })).toHaveAttribute('href', '/api/export')
+  await expect(rows.nth(2).getByRole('button', { name: /Импорт/ })).not.toContainText('Импорт')
+  await expect(rows.nth(2).getByRole('link', { name: /Экспорт/ })).not.toContainText('Экспорт')
   await expect(panel.getByRole('button', { name: 'Изменить' })).toHaveCount(2)
   for (const button of await panel.getByRole('button', { name: 'Изменить' }).all()) {
     await expect(button).toBeDisabled()
