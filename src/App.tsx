@@ -3896,7 +3896,6 @@ function App() {
             {renderLibrary(true)}
           </motion.div>
         )}
-      </AnimatePresence>
 
       <AnimatePresence>
       {steamMatchPrompt && (
