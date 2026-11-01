@@ -149,6 +149,7 @@ test('selected profile outline reaches viewport edges without double folder bord
 test('profile version hugs bottom navigation with free viewport space', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/?tab=profile')
+  await expect(page.locator('.app-build-version')).toBeVisible()
   const gap = await page.evaluate(() => {
     const version = document.querySelector<HTMLElement>('.app-build-version')!.getBoundingClientRect()
     const nav = document.querySelector<HTMLElement>('.bottom-nav')!.getBoundingClientRect()
