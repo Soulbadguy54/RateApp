@@ -42,7 +42,8 @@ test('public version number opens business-only notes and arrows browse producti
   await next.click()
   await expect(dialog.locator('.release-notes__version strong')).toHaveText('26.10.012')
 
-  for (let i = 0; i < 11; i += 1) await previous.click()
+  // Check the remote boundary without a long chain of WebKit click animations.
+  await page.keyboard.press('End')
   await expect(dialog.locator('.release-notes__version strong')).toHaveText('26.10.001')
   await expect(previous).toBeDisabled()
   await next.click()
