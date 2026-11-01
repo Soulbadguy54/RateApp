@@ -4651,7 +4651,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar,
    second library section appended underneath the profile's settings. */
 .library-cloud-picker--screen {
   position: fixed;
-  z-index: 24;
+  z-index: 2400;
   inset: 0;
   height: 100dvh;
   overflow-y: auto;
