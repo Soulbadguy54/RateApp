@@ -34,7 +34,7 @@ const LIQUID_DROP =
 const LIQUID_STRETCH =
   'M 91 17 C 77 17 67 27 63 40 C 58 51 59 64 61 71 C 64 81 77 84 88 84 C 96 85 106 85 114 84 C 125 84 138 81 141 71 C 143 64 144 51 139 40 C 135 27 125 17 111 17 C 105 17 97 17 91 17 Z'
 const LIQUID_PANEL =
-  'M 24 3 C 12 3 3 12 3 24 C 3 36 3 44 3 56 C 3 65 12 69 24 69 C 70 69 132 69 178 69 C 190 69 199 65 199 56 C 199 44 199 36 199 24 C 199 12 190 3 178 3 C 132 3 70 3 24 3 Z'
+  'M 19 3 C 10 3 3 10 3 19 C 3 29 3 43 3 53 C 3 62 10 69 19 69 C 60 69 142 69 183 69 C 192 69 199 62 199 53 C 199 43 199 29 199 19 C 199 10 192 3 183 3 C 140 3 60 3 19 3 Z'
 
 // Closing must go BEYOND the visible 29×27px starting droplet, otherwise
 // that rounded square lingers until AnimatePresence removes the SVG.
@@ -58,8 +58,9 @@ function LiquidMorph({ reduceMotion, children, ariaLabel }: { reduceMotion: bool
   ])
   // The extra exit phase tapers the last droplet to zero opacity as well as
   // zero area. Opening still starts at progress 0 with the original droplet.
-  const surfaceOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0], [0, 1])
-  const rimOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .46, .85, 1], [0, .85, .5, .12, 0])
+  // The morph is visible while expanding but clears the settled panel: the
+  // native CSS backdrop blur must sample the PAGE rather than an opaque SVG.
+  const surfaceOpacity = useTransform(progress, [LIQUID_VANISH_PROGRESS, 0, .62, .92, 1], [0, 1, 1, .28, 0])
   // Content fades with the returning surface, not on an unrelated timeline.
   const choicesOpacity = useTransform(progress, [0, .34, .6, 1], [0, 0, .8, 1])
 
@@ -95,13 +96,6 @@ function LiquidMorph({ reduceMotion, children, ariaLabel }: { reduceMotion: bool
         aria-hidden="true"
       >
         <motion.path className="bottom-nav__liquid-path" d={shape} />
-        {!reduceMotion && (
-          <motion.path
-            className="bottom-nav__liquid-rim"
-            d={shape}
-            opacity={rimOpacity}
-          />
-        )}
       </motion.svg>
       <motion.div
         className="bottom-nav__bubble"
