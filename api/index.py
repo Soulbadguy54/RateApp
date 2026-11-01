@@ -266,6 +266,13 @@ def upsert_library_game(
         game = session.scalar(select(Game).where(Game.igdb_id == game_id))
         if game is None:
             raise HTTPException(status_code=404, detail="Игра пока недоступна в каталоге.")
+        # Also validate server-side: direct API callers must not bypass the UI.
+        if (payload.status in {"completed", "dropped"}
+                and payload.completedAt and game.release_date
+                and payload.completedAt < game.release_date):
+            raise HTTPException(
+                status_code=422, detail="Дата прохождения раньше даты выхода игры."
+            )
 
         entry = session.scalar(
             select(UserGame).where(

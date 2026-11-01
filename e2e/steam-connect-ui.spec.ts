@@ -363,12 +363,18 @@ test('manual Steam search saves playthrough before asking consent, links only on
   const dialog = page.getByRole('alertdialog', { name: 'Это та же игра?' })
   await expect(dialog).toContainText('Call of Duty Deluxe')
   await expect(dialog).toContainText('Call of Duty: Modern Warfare')
+  await expect(dialog).not.toContainText('Игра уже добавлена в Rate APP')
+  await expect(dialog.locator('.rateapp-confirm__brand')).toHaveCount(0)
+  const pairHeights = await dialog.locator('.steam-match-confirm__pair > div').evaluateAll(nodes =>
+    nodes.map(node => node.getBoundingClientRect().height))
+  expect(pairHeights.every(height => height < 120)).toBe(true)
   expect(saved).toBe(1)
   expect(linked).toBe(0)
   await dialog.getByRole('button', { name: 'Да, связать игры' }).click()
   await expect(dialog).toHaveCount(0)
   expect(linked).toBe(1)
   await expect(page.locator('.detail-hero__steam-badge')).toBeVisible()
+  await expect(page.locator('.detail-hero__steam-badge')).toHaveCSS('width', '18px')
   // A bottom-tab switch must end the Steam lookup; navigation within the
   // lookup (search -> game -> Back) keeps its state until that explicit switch.
   await page.getByRole('button', { name: 'Профиль', exact: true }).click()

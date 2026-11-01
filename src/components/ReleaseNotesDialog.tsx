@@ -16,6 +16,8 @@ type Props = {
 /** A profile overlay: Android Back and Safari edge-swipe behave like ×. */
 export default function ReleaseNotesDialog({ open, tint, onClose }: Props) {
   const [index, setIndex] = useState(0)
+  const [direction, setDirection] = useState(-1)
+  const pageTo = (next: number) => { setDirection(next > index ? -1 : 1); setIndex(Math.max(0, Math.min(RELEASE_NOTES.length - 1, next))) }
   const panelRef = useRef<HTMLElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
   const reducedMotion = useReducedMotion()
@@ -107,6 +109,7 @@ export default function ReleaseNotesDialog({ open, tint, onClose }: Props) {
           >
             <header className="release-notes__header">
               <div className="release-notes__heading-wrap">
+                <Icon name="sparkles" size={22} />
                 <h2 id="release-notes-heading">История обновлений</h2>
               </div>
               <button
@@ -124,19 +127,25 @@ export default function ReleaseNotesDialog({ open, tint, onClose }: Props) {
               <button type="button" className="release-notes__arrow"
                 aria-label="Предыдущая версия"
                 disabled={index >= RELEASE_NOTES.length - 1}
-                onClick={() => setIndex(value => Math.min(RELEASE_NOTES.length - 1, value + 1))}>
+                onClick={() => pageTo(index + 1)}>
                 <Icon name="chevron-left" size={23} />
               </button>
               <div className="release-notes__version" aria-live="polite" aria-atomic="true">
                 <strong>{release.version}</strong>
                 <span>{release.period}</span>
               </div>
-              <button type="button" className="release-notes__arrow"
-                aria-label="Следующая версия"
-                disabled={index === 0}
-                onClick={() => setIndex(value => Math.max(0, value - 1))}>
-                <Icon name="chevron-right" size={23} />
-              </button>
+              {index === 0 ? (
+                <span className="release-notes__new-mark" aria-label="Самая новая версия">
+                  <Icon name="badge-new" size={42} />
+                  <span>NEW</span>
+                </span>
+              ) : (
+                <button type="button" className="release-notes__arrow"
+                  aria-label="Следующая версия"
+                  onClick={() => pageTo(index - 1)}>
+                  <Icon name="chevron-right" size={23} />
+                </button>
+              )}
             </div>
 
             <div className="release-notes__body">
@@ -144,10 +153,10 @@ export default function ReleaseNotesDialog({ open, tint, onClose }: Props) {
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={release.version}
-                  initial={reducedMotion ? false : { opacity: 0, y: 7 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -7 }}
-                  transition={{ duration: reducedMotion ? 0 : .16 }}
+                  initial={reducedMotion ? false : { opacity: 0, x: direction * 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={reducedMotion ? { opacity: 0 } : { opacity: 0, x: -direction * 20 }}
+                  transition={{ duration: reducedMotion ? 0 : .28, ease: [0.22, 1, 0.36, 1] }}
                 >
                   {release.changes.length ? (
                     <ul className="release-notes__changes">

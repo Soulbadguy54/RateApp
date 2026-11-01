@@ -27,6 +27,7 @@ export type IconName =
   | 'sort'
   | 'edit'
   | 'trash'
+  | 'badge-new'
   | 'sparkles'
   | 'book'
   | 'cpu'
@@ -81,6 +82,7 @@ export default function Icon({ name, size = 22 }: { name: IconName; size?: numbe
     sort: <><path d="M8 6h11M8 12h8M8 18h5"/><path d="M4 4v16M2 18l2 2 2-2"/></>,
     edit: <><path d="M12 20h9"/><path d="m16.5 4.5 3 3L8 19H5v-3L16.5 4.5Z"/><path d="m15 6 3 3"/></>,
     trash: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v5M14 11v5"/></>,
+    'badge-new': <><path d="M12 2.5 14.6 5l3.7-.2.8 3.5 3 2.2-1.7 3.2.7 3.5-3.7.9L15 21l-3-1.8L9 21l-2.4-2.9-3.7-.9.7-3.5-1.7-3.2 3-2.2.8-3.5 3.7.2L12 2.5Z"/></>,
     sparkles: <><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 17 .7 1.3L21 19l-1.3.7L19 21l-.7-1.3L17 19l1.3-.7L19 17Z"/></>,
     book: <><path d="M12 6c-2.3-1.6-5.3-1.9-9-1v14c3.7-.9 6.7-.6 9 1 2.3-1.6 5.3-1.9 9-1V5c-3.7-.9-6.7-.6-9 1Z"/><path d="M12 6v14"/></>,
     cpu: <><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 10h4v4h-4zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4"/></>,

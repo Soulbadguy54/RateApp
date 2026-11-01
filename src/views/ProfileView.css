@@ -872,3 +872,34 @@
   padding: 0;
   text-align: center;
 }
+
+/* The footer is viewport-anchored immediately over the fixed bottom nav.
+   Reserve scrolling room so the footer never hides the last settings row. */
+.page--viewport .page-motion:has(> .profile-glass-header) > .app-build-version {
+  position:fixed; z-index:19;
+  bottom:calc(var(--bottom-nav-height,62px) + var(--safe-bottom,0px) + 1px);
+  left:0; right:0;
+  margin:0; padding:0;
+  pointer-events:none;
+}
+.page--viewport .page-motion:has(> .profile-glass-header) > .app-build-version button {
+  pointer-events:auto;
+}
+.page--viewport:has(.profile-glass-header) { padding-bottom:calc(var(--bottom-nav-height) + var(--safe-bottom) + 68px); }
+
+/* Footer is portaled outside the animated page so fixed really means viewport
+   fixed, not fixed inside a transform-containing block. */
+body > .app-build-version {
+  position: fixed;
+  z-index: 19;
+  bottom: calc(var(--bottom-nav-height, 62px) + var(--safe-bottom, 0px) + 8px);
+  left: 0; right: 0;
+  margin: 0; padding: 0; text-align: center;
+  pointer-events: none;
+}
+body > .app-build-version .app-build-version__trigger { pointer-events: auto; }
+
+.profile-glass-header--editing .profile-steam-cloud-launch {
+  filter: grayscale(1) opacity(.38);
+  pointer-events: none;
+}

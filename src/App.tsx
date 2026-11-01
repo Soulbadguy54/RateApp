@@ -37,6 +37,9 @@ import {
   type LibraryStatus,
 } from './data'
 
+import ReleaseNotesDialog from './components/ReleaseNotesDialog'
+import { CURRENT_RELEASE_VERSION } from './releaseNotes'
+
 const ProfileView = lazy(() => import('./views/ProfileView'))
 const DiscoverView = lazy(() => import('./views/DiscoverView'))
 const SavedLinksView = lazy(() => import('./views/SavedLinksView'))
@@ -267,6 +270,8 @@ function App() {
   }
   const [activeTab, setActiveTab] = useState<Tab>(firstViewRef.current.tab)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [welcomeReleaseOpen, setWelcomeReleaseOpen] = useState(false)
+  const checkedReleaseRef = useRef<string | null>(null)
   // useSyncExternalStore also reads a 401 that arrived before subscription:
   // a bare window Event can be lost during child-first passive effects on WebKit.
   const sessionExpired = useSyncExternalStore(subscribeSessionExpiry, getSessionExpiredSnapshot)
@@ -1462,6 +1467,25 @@ function App() {
     navigateTo({ tab, gameId: null, collectionId: null, formGameId: null }, { replace: true })
   }
 
+  useEffect(() => {
+    if (!authReady || !authUser || bootstrapError || activeTab !== 'library' || selectedGameId != null) return
+    const key = 'rateapp:release-seen:' + authUser.id
+    const marker = key + ':' + CURRENT_RELEASE_VERSION
+    if (checkedReleaseRef.current === marker) return
+    checkedReleaseRef.current = marker
+    try { if (window.localStorage.getItem(key) === CURRENT_RELEASE_VERSION) return }
+    catch { /* private mode */ }
+    setWelcomeReleaseOpen(true)
+  }, [authReady, authUser?.id, bootstrapError, activeTab, selectedGameId])
+
+  const closeWelcomeRelease = () => {
+    if (authUser) {
+      try { window.localStorage.setItem('rateapp:release-seen:' + authUser.id, CURRENT_RELEASE_VERSION) }
+      catch { /* optional storage */ }
+    }
+    setWelcomeReleaseOpen(false)
+  }
+
   // Re-selecting the active bottom tab, or tapping the My Games title,
   // starts that tab from scratch without logging out or reloading the PWA.
   const resetTab = (tab: Tab) => {
@@ -1655,6 +1679,10 @@ function App() {
     const today = new Date().toISOString().slice(0, 10)
     if (ratedStatuses.has(addStatus) && (!addPlatform.trim() || !addDate)) {
       window.alert('Для прохождения обязательно укажите платформу и дату.')
+      return
+    }
+    if (ratedStatuses.has(addStatus) && game.releaseDate && addDate < game.releaseDate) {
+      window.alert('Дата прохождения не может быть раньше даты выхода игры')
       return
     }
     const nextEntry: LibraryEntry = {
@@ -3049,8 +3077,9 @@ function App() {
             {ratedStatuses.has(addStatus) && (
               <label className="form-field">
                 <span>{addStatus === 'dropped' ? 'Дата дропа' : 'Дата прохождения'}</span>
-                <input type="date" value={addDate} onChange={(event) => setAddDate(event.target.value)} />
-                <small>По умолчанию — сегодня. Можно указать любую прошлую дату.</small>
+                <input type="date" min={addGame.releaseDate || undefined} value={addDate}
+                  onChange={(event) => setAddDate(event.target.value)} />
+                <small>{addGame.releaseDate ? 'Дата не может быть раньше выхода игры' : 'По умолчанию — сегодня'}</small>
               </label>
             )}
 
@@ -3821,13 +3850,17 @@ function App() {
         </AnimatePresence>
       </main>
 
+      <AnimatePresence>
       {steamMatchPrompt && (
-        <div className="rateapp-confirm-backdrop">
-          <section className="rateapp-confirm steam-match-confirm" role="alertdialog"
+        <motion.div className="rateapp-confirm-backdrop"
+          initial={shouldReduceMotion ? false : {opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+          transition={{duration:shouldReduceMotion ? 0 : .2}}>
+          <motion.section className="rateapp-confirm steam-match-confirm"
+            initial={shouldReduceMotion ? false : {opacity:0,scale:.96,y:14}}
+            animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:.97,y:8}}
+            transition={{duration:shouldReduceMotion ? 0 : .3,ease:[.22,1,.36,1]}} role="alertdialog"
             aria-modal="true" aria-labelledby="steam-match-confirm-title">
-            <span className="rateapp-confirm__brand">Steam</span>
             <h2 id="steam-match-confirm-title">Это та же игра?</h2>
-            <p className="steam-match-confirm__hint">Игра уже добавлена в Rate APP.</p>
             <div className="steam-match-confirm__pair">
               <div><small>В Steam</small><strong>{steamMatchPrompt.sourceName}</strong></div>
               <Icon name="arrow" size={18} />
@@ -3847,10 +3880,13 @@ function App() {
                 {steamMatchBusy ? <Icon name="refresh" size={21} /> : <Icon name="checkmark" size={21} />}
               </button>
             </div>
-          </section>
-        </div>
+          </motion.section>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <ReleaseNotesDialog open={welcomeReleaseOpen} tint={profileTintOption(authUser.profileTint).id}
+        onClose={closeWelcomeRelease} />
       <PushOnboarding user={authUser.nickname} />
 
       {(deleteCollectionPrompt || deleteGamePrompt || bulkDeleteCollectionPrompt || bulkRemoveGamesPrompt) && (

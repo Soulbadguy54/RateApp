@@ -119,3 +119,28 @@
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+/* A single stable, almost full-viewport liquid-glass sheet. Page transitions
+   animate only the contents, never the dialog's own size. */
+.release-notes__backdrop { padding: max(7px, env(safe-area-inset-top)) 8px max(7px, env(safe-area-inset-bottom)); }
+.release-notes__panel {
+  height: calc(100dvh - max(7px, env(safe-area-inset-top)) - max(7px, env(safe-area-inset-bottom)));
+  max-height: none;
+  width: min(100%, 440px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.release-notes__heading-wrap { display:flex; align-items:center; gap:10px; }
+.release-notes__heading-wrap > svg { flex:0 0 auto; color:var(--release-accent,var(--accent)); }
+.release-notes__body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+.release-notes__new-mark {
+  position:relative; width:44px; height:44px;
+  display:grid; place-items:center;
+  color:var(--accent,#8cf27d); /* Global application green, not the profile tint. */
+}
+.release-notes__new-mark > span {
+  position:absolute; font-size:8px; font-weight:900; letter-spacing:-.04em;
+}
+.release-notes__new-mark svg { color:var(--accent,#8cf27d); }
+.release-notes__changes li { line-height:1.55; }
