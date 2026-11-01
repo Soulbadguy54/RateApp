@@ -229,7 +229,7 @@ export default function ProfileView({
                       ? 'Изменить игру в облаке ' + (index + 1)
                       : cloud!.game.title + (cloud!.score != null ? ', личная оценка ' + cloud!.score.toFixed(1) + ' из 10' : '')}
                     onClick={() => editing ? onChooseCloud(index) : cloud && onOpenGame(cloud.game.id)}
-                    style={{ '--cloud-delay': (-index * 2.13) + 's' } as CSSProperties}>
+                    style={{ '--cloud-delay': (index * .13) + 's' } as CSSProperties}>
                     <span className="profile-top-game__cover">
                       {cloud ? <Cover game={cloud.game} thumbnail /> : <Icon name="gamepad" size={20} />}
                     </span>
@@ -387,12 +387,12 @@ export default function ProfileView({
                       <span className="profile-security__details"><strong>Резервное копирование</strong></span>
                     </div>
                     <div className="profile-security__backup-actions">
-                      <button type="button" disabled title="Импорт пока не реализован">
-                        <Icon name="upload" size={15} /> Импорт
+                      <button type="button" disabled title="Импорт пока не реализован" aria-label="Импорт">
+                        <Icon name="upload" size={18} />
                       </button>
                       <a href="/api/export" download="rateapp-export.json"
-                        title="Экспорт текущего JSON-файла аккаунта">
-                        <Icon name="download" size={15} /> Экспорт
+                        title="Экспорт текущего JSON-файла аккаунта" aria-label="Экспорт">
+                        <Icon name="download" size={18} />
                       </a>
                     </div>
                   </div>
