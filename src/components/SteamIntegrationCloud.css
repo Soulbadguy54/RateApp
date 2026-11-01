@@ -1,6 +1,6 @@
 /* A status-bearing Steam cloud: drift stays on the inner button and
    the dialog grows from its measured screen position. */
-.profile-steam-cloud { cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; }
+.profile-glass-header__hero .profile-steam-cloud { cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; }
 .profile-steam-cloud:focus-visible { outline: 2px solid var(--profile-accent-color, var(--accent)); outline-offset: 4px; }
 .profile-steam-cloud__status {
   position: absolute;
@@ -19,7 +19,7 @@
   box-shadow: 0 0 9px rgba(94,241,155,.45);
 }
 .profile-steam-cloud__status--pending { background: #9da8b7; box-shadow: none; }
-.profile-steam-cloud--connected { opacity: 1; color: #fff; filter: none; }
+.profile-glass-header__hero .profile-steam-cloud--connected { opacity: 1; color: #fff; filter: none; }
 .profile-steam-cloud--connected img {
   opacity: 1;
   filter: none;
