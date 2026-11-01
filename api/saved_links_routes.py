@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
-from api.models import Game, SavedLink, User
+from api.models import SavedLink, User
 from api.security import _current_user, _now, _session
 
 router = APIRouter()
@@ -85,36 +85,14 @@ def _get_user_link(session, user_id: int, link_id: int) -> SavedLink:
     return link
 
 
-def _game_map(session, links: list[SavedLink]) -> dict[int, Game]:
-    """Single catalog query across the entire page; no N+1 or network calls."""
-    ids = {item for link in links for item in (link.game_ids or [])}
-    if not ids:
-        return {}
-    return {game.id: game for game in session.scalars(
-        select(Game).where(Game.id.in_(ids))
-    ).all()}
-
-
-def _link_payload(link: SavedLink, games: dict[int, Game]) -> dict[str, object]:
-    ids = list(link.game_ids or [])
+def _link_payload(link: SavedLink) -> dict[str, object]:
+    """Only the saved bookmark: retired GPT/game columns are never exposed."""
     return {
         "id": link.id,
         "url": link.url,
         "title": link.title,
-        "status": link.status,
-        "gptNames": link.gpt_names,
         "createdAt": link.created_at.isoformat(),
         "updatedAt": link.updated_at.isoformat(),
-        "finishedAt": link.finished_at.isoformat() if link.finished_at else None,
-        "error": link.error,
-        "gameIds": ids,
-        "gamesCount": len(ids),
-        "games": [{
-            "id": games[game_id].id,
-            "igdbId": games[game_id].igdb_id,
-            "title": games[game_id].title,
-            "coverUrl": games[game_id].cover_url,
-        } for game_id in ids if game_id in games],
     }
 
 
@@ -134,8 +112,7 @@ def list_saved_links(request: Request, limit: int = Query(default=50, ge=1, le=5
             ))
         rows = session.scalars(stmt).all()
         page = rows[:limit]
-        games = _game_map(session, page)
-        return {"items": [_link_payload(link, games) for link in page],
+        return {"items": [_link_payload(link) for link in page],
                 "nextBefore": page[-1].id if len(rows) > limit else None}
 
 
@@ -153,7 +130,7 @@ def save_link(payload: LinkCreate, request: Request) -> dict[str, object]:
             SavedLink.user_id == user.id, SavedLink.url_hash == digest,
         ))
         if existing:
-            return _link_payload(existing, _game_map(session, [existing]))
+            return _link_payload(existing)
         # Lock the account to serialize concurrent quota checks and dedup.
         session.execute(select(User.id).where(User.id == user.id).with_for_update()).scalar_one()
         count = session.scalar(select(func.count()).select_from(SavedLink)
@@ -164,7 +141,9 @@ def save_link(payload: LinkCreate, request: Request) -> dict[str, object]:
         )) or 0
         if count >= MAX_LINKS_PER_USER or recent >= MAX_NEW_LINKS_PER_DAY:
             raise HTTPException(429, detail="Достигнут лимит сохранённых ссылок.")
-        row = SavedLink(user_id=user.id, url=url, url_hash=digest, title=title)
+        # A bookmark needs no GPT claim, resolver, or background status.
+        row = SavedLink(user_id=user.id, url=url, url_hash=digest, title=title,
+                        status="ready", gpt_names=[])
         session.add(row)
         try:
             session.commit()
@@ -176,7 +155,7 @@ def save_link(payload: LinkCreate, request: Request) -> dict[str, object]:
             if match is None:
                 raise
             row = match
-        return _link_payload(row, _game_map(session, [row]))
+        return _link_payload(row)
 
 
 @router.post("/api/saved-links/{link_id}/preview")
@@ -263,14 +242,14 @@ def get_saved_link(link_id: int, request: Request) -> dict[str, object]:
     with _session() as session:
         user = _current_user(request, session)
         link = _get_user_link(session, user.id, link_id)
-        return _link_payload(link, _game_map(session, [link]))
+        return _link_payload(link)
 
 
 @router.post("/api/saved-links/bulk-delete")
 def bulk_delete_saved_links(payload: LinksBulkDelete, request: Request) -> dict[str, int]:
     """Atomically remove only the caller's links, or remove none.
 
-    Deleting rows cascades their names/IDs but never catalog games or ratings.
+    Deleting rows only affects the caller's saved bookmarks.
     """
     ids = payload.ids
     if any(item <= 0 for item in ids) or len(ids) != len(set(ids)):
@@ -295,47 +274,5 @@ def delete_saved_link(link_id: int, request: Request) -> None:
     with _session() as session:
         user = _current_user(request, session)
         row = _get_user_link(session, user.id, link_id)
-        session.delete(row)  # removes the row, its GPT names and every associated game ID
+        session.delete(row)  # removes this bookmark; catalog and user games are untouched
         session.commit()
-
-
-def _reset_for_recheck(link: SavedLink) -> None:
-    """Explicitly re-analyze a URL after an edit; invalidate stale leases."""
-    link.gpt_names = None
-    link.game_ids = []
-    link.status = "pending"
-    link.attempts = 0
-    link.match_cursor = 0
-    link.match_failures = 0
-    link.lease_token = None
-    link.lease_until = None
-    link.error = None
-    link.finished_at = None
-    link.updated_at = _now()
-
-
-@router.post("/api/saved-links/{link_id}/retry")
-def retry_saved_link(link_id: int, request: Request) -> dict[str, object]:
-    with _session() as session:
-        user = _current_user(request, session)
-        link = _get_user_link(session, user.id, link_id)
-        if link.status != "failed":
-            raise HTTPException(409, detail="Повтор возможен только после ошибки.")
-        _reset_for_recheck(link)
-        session.commit()
-        return _link_payload(link, _game_map(session, [link]))
-
-
-@router.post("/api/saved-links/{link_id}/refresh")
-def refresh_saved_link(link_id: int, request: Request) -> dict[str, object]:
-    """A source article may change: discard old snapshot and re-analyze it."""
-    with _session() as session:
-        user = _current_user(request, session)
-        link = session.scalar(select(SavedLink).where(
-            SavedLink.id == link_id, SavedLink.user_id == user.id,
-        ).with_for_update())
-        if link is None:
-            raise HTTPException(404, detail="Ссылка не найдена.")
-        _reset_for_recheck(link)
-        session.commit()
-        return _link_payload(link, {})
