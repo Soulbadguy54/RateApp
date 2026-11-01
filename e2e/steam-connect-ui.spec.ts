@@ -313,6 +313,7 @@ test('manual Steam search saves playthrough before asking consent, links only on
     accent: '#336699', accent2: '#223344', glyph: 'C' }
   let saved = 0
   let linked = 0
+  let previews = 0
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname
     let data: unknown = {}
@@ -329,10 +330,10 @@ test('manual Steam search saves playthrough before asking consent, links only on
       profile: { name: 'Steam QA', avatarUrl: null, profilePublic: true,
         profileUrl: 'https://steamcommunity.com/profiles/76561198012345678/' },
       gameCount: 1, canSync: true, redFlags: [], lastSyncedAt: null }
-    else if (path === '/api/steam/preview') data = {
+    else if (path === '/api/steam/preview') { previews++ ; data = {
       token: 'preview-12345678901234567890123456', items: [],
       unresolved: [{ appid: 809010, name: 'Call of Duty Deluxe' }],
-      nextSyncAt: new Date(Date.now() + 30000).toISOString() }
+      nextSyncAt: new Date(Date.now() + 30000).toISOString() } }
     else if (path === '/api/games/search') data = { items: [game], hasMore: false, nextOffset: null }
     else if (path === '/api/library/889' && route.request().method() === 'PUT') {
       saved++
@@ -375,6 +376,17 @@ test('manual Steam search saves playthrough before asking consent, links only on
   expect(linked).toBe(1)
   await expect(page.locator('.detail-hero__steam-badge')).toBeVisible()
   await expect(page.locator('.detail-hero__steam-badge')).toHaveCSS('width', '18px')
+  await page.goBack()
+  await expect(page.getByRole('textbox', { name: 'Поиск по базе игр' })).toHaveValue('Call of Duty Deluxe')
+  await page.goBack()
+  await expect(page).toHaveURL(/tab=profile/)
+  await expect(panel).toBeVisible()
+  await expect(panel).toContainText('Нужно найти в Rate APP: 0')
+  expect(saved).toBe(1)
+  expect(previews).toBe(1)
+  // Returning from manual matching never triggers another Steam preview POST.
+  // Explicitly close the restored modal before interacting with bottom nav.
+  await panel.getByRole('button', { name: 'Закрыть подключение Steam' }).click()
   // A bottom-tab switch must end the Steam lookup; navigation within the
   // lookup (search -> game -> Back) keeps its state until that explicit switch.
   await page.getByRole('button', { name: 'Профиль', exact: true }).click()
@@ -467,7 +479,29 @@ for (const scenario of [
       await expect(page.locator('.detail-hero__steam-badge')).toBeVisible()
     } else {
       await expect(page.locator('.detail-hero__steam-badge')).toHaveCount(0)
+      // Declining one candidate leaves the Steam AppID context intact.
+      // A second collection membership must offer the same match again.
+      // The collection sheet stays open after toggling membership, so use
+      // its existing second action rather than closing/reopening the sheet.
+      await page.getByRole('button', {
+        name: 'Добавить «Call of Duty: Modern Warfare» в «Хочу пройти»',
+      }).click()
+      await expect(consent).toContainText('Call of Duty Deluxe')
+      await consent.getByRole('button', { name: 'Нет, не связывать игры' }).click()
+      await expect(consent).toHaveCount(0)
+      expect(linked).toBe(0)
     }
+    // Dismiss the still-open collections sheet before native Back;
+    // otherwise the first Back intentionally closes that transient UI.
+    await page.locator('.detail-toolbar__actions').getByRole('button', { name: 'Коллекции' }).click()
+    await page.goBack()
+    await expect(search).toHaveValue('Call of Duty')
+    await page.goBack()
+    await expect(page).toHaveURL(/tab=profile/)
+    await expect(panel).toBeVisible()
+    await expect(panel).toContainText(scenario.accept
+      ? 'Нужно найти в Rate APP: 0'
+      : 'Нужно найти в Rate APP: 1')
   })
 }
 

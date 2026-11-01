@@ -101,6 +101,7 @@ export default function SavedLinksView({ cacheNamespace }: {
   const [notice, setNotice] = useState('')
   const [previews, setPreviews] = useState<Record<number, LinkPreview>>(() => initialCacheRef.current?.previews ?? {})
   const previewAttemptedRef = useRef(new Set<number>())
+  const shareFeedbackActiveRef = useRef(false)
   const requestRef = useRef<AbortController | null>(null)
   const pendingDeleteRef = useRef<{ id: number; timer: number } | null>(null)
   const holdRef = useRef<{ pointerId: number; id: number; x: number; y: number; timer: number } | null>(null)
@@ -153,7 +154,8 @@ export default function SavedLinksView({ cacheNamespace }: {
         ? [...current.filter(item => !payload.items.some(next => next.id === item.id)), ...payload.items]
         : payload.items)
       setNextBefore(payload.nextBefore)
-      setError('')
+      // A late initial GET must not erase an invalid Share Target warning.
+      if (!shareFeedbackActiveRef.current) setError('')
     } catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Не удалось загрузить ссылки.')
     } finally {
@@ -221,15 +223,29 @@ export default function SavedLinksView({ cacheNamespace }: {
     return () => window.removeEventListener('rateapp:cancel-transient', dismiss)
   }, [bulkConfirmOpen, selectedIds, pendingDeleteId])
 
-  // Handle an incoming installed-PWA Android Share Target once per navigation.
+  // An installed Android PWA may receive the URL via the URL, text or title
+  // field. Consume the intent before any asynchronous request so a failed
+  // save/reload never silently submits the same URL twice.
+  const sharedIntentSeen = useRef(false)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (!params.has('shared_url') && !params.has('text')) return
-    const direct = params.get('shared_url') || ''
-    const text = params.get('text') || ''
-    const candidate = direct || text.match(/https?:\/\/[^\s<>"']+/i)?.[0] || ''
-    const normalized = normalizedLinkInput(candidate)
-    if (!normalized) { setError('Из меню «Поделиться» пришла некорректная ссылка.'); return }
+    if (sharedIntentSeen.current) return
+    const current = new URL(window.location.href)
+    const params = current.searchParams
+    if (!['shared_url', 'text', 'title'].some(key => params.has(key))) return
+    sharedIntentSeen.current = true
+    shareFeedbackActiveRef.current = true
+    const raw = ['shared_url', 'text', 'title']
+      .map(key => params.get(key) || '')
+    const shared = raw.map(value => value.match(/https?:\/\/[^\s<>"']+/i)?.[0]?.replace(/[.,;!?)}\]]+$/, '') || '')
+      .find(value => normalizedLinkInput(value) !== null) || ''
+    for (const key of ['shared_url', 'text', 'title']) params.delete(key)
+    window.history.replaceState(window.history.state, '', current.pathname + current.search + current.hash)
+    const normalized = normalizedLinkInput(shared)
+    if (!normalized) {
+      setError('Из меню «Поделиться» пришла некорректная ссылка.')
+      setAddOpen(true)
+      return
+    }
     let cancelled = false
     setSaving(true)
     void sessionFetch('/api/saved-links', {
@@ -238,13 +254,16 @@ export default function SavedLinksView({ cacheNamespace }: {
     }).then(async response => {
       if (!response.ok) throw new Error(await responseError(response, 'Не удалось сохранить ссылку.'))
       if (cancelled) return
+      shareFeedbackActiveRef.current = false
+      setError('')
       setNotice('Ссылка сохранена из меню «Поделиться».')
-      const clean = new URL(window.location.href)
-      for (const key of ['shared_url', 'text', 'title']) clean.searchParams.delete(key)
-      window.history.replaceState(window.history.state, '', clean.pathname + clean.search + clean.hash)
       void fetchLinks()
     }).catch((cause: unknown) => {
-      if (!cancelled) setError(cause instanceof Error ? cause.message : 'Не удалось сохранить ссылку.')
+      if (!cancelled) {
+        setError(cause instanceof Error ? cause.message : 'Не удалось сохранить ссылку.')
+        setUrl(normalized)
+        setAddOpen(true)
+      }
     }).finally(() => { if (!cancelled) setSaving(false) })
     return () => { cancelled = true }
   }, [fetchLinks])
@@ -258,6 +277,7 @@ export default function SavedLinksView({ cacheNamespace }: {
       return
     }
     setSaving(true)
+    shareFeedbackActiveRef.current = false
     setError('')
     setNotice('')
     try {

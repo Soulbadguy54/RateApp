@@ -225,6 +225,17 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click({ force: true })
   const picker = page.locator('.library-cloud-picker')
   await expect(picker).toBeVisible()
+  await expect(picker).toHaveClass(/library-cloud-picker--screen/)
+  await expect(picker).toHaveCSS('position', 'fixed')
+  await expect(picker).toHaveAttribute('role', 'dialog')
+  // The picker is rendered at document.body, not inline below ProfileView.
+  const geometry = await picker.evaluate(node => {
+    const rect = node.getBoundingClientRect()
+    return { parent: node.parentElement?.tagName, top: rect.top, height: rect.height, viewport: window.innerHeight }
+  })
+  expect(geometry.parent).toBe('BODY')
+  expect(Math.abs(geometry.top)).toBeLessThan(2)
+  expect(Math.abs(geometry.height - geometry.viewport)).toBeLessThan(3)
   await expect(picker.getByRole('heading', { name: 'Мои игры' })).toBeVisible()
   await expect(picker.getByText('Выбери игру!', { exact: true })).toBeVisible()
   await expect(picker.getByText('Выбери игру!', { exact: true })).toHaveCSS('text-align', 'center')
