@@ -481,7 +481,8 @@ for (const scenario of [
       await expect(page.locator('.detail-hero__steam-badge')).toHaveCount(0)
       // Declining one candidate leaves the Steam AppID context intact.
       // A second collection membership must offer the same match again.
-      await page.locator('.detail-toolbar__actions').getByRole('button', { name: 'Коллекции' }).click()
+      // The collection sheet stays open after toggling membership, so use
+      // its existing second action rather than closing/reopening the sheet.
       await page.getByRole('button', {
         name: 'Добавить «Call of Duty: Modern Warfare» в «Хочу пройти»',
       }).click()
@@ -490,6 +491,9 @@ for (const scenario of [
       await expect(consent).toHaveCount(0)
       expect(linked).toBe(0)
     }
+    // Dismiss the still-open collections sheet before native Back;
+    // otherwise the first Back intentionally closes that transient UI.
+    await page.locator('.detail-toolbar__actions').getByRole('button', { name: 'Коллекции' }).click()
     await page.goBack()
     await expect(search).toHaveValue('Call of Duty')
     await page.goBack()
