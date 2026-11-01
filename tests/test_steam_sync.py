@@ -162,3 +162,15 @@ class SteamDatabaseSyncTests(unittest.TestCase):
         from sqlalchemy import select
         with SessionLocal() as db:
             return {g.igdb_id: g for g in db.scalars(select(Game).where(Game.igdb_id.in_(ids)))}
+
+    def test_existing_rated_game_never_in_unresolved_even_when_hours_hidden(self):
+        with (
+            patch.object(steam_sync, "_resolve_mappings", return_value={101: 700001, 102: 700002}),
+            patch.object(steam_sync, "_ensure_games", side_effect=lambda ids: self._games(ids)),
+        ):
+            added, unknown = steam_sync._prepare(self.user_id, "76561198012345678", [
+                {"appid": 101, "name": "Already rated", "minutes": None},
+                {"appid": 102, "name": "New played", "minutes": 12},
+            ])
+        self.assertEqual([item["igdbId"] for item in added], [700002])
+        self.assertEqual(unknown, [])
