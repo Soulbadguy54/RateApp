@@ -3864,10 +3864,7 @@ function App() {
                   </Suspense>
                 )}
                 {activeTab === 'profile' && (
-                  <>
-                    <div hidden={profileCloudPickerSlot !== null}>{renderProfile()}</div>
-
-                  </>
+                  <div hidden={profileCloudPickerSlot !== null}>{renderProfile()}</div>
                 )}
               </>
             )}
