@@ -366,7 +366,19 @@
   align-items: end;
   gap: clamp(6px, 2vw, 12px);
   padding: 0 6px;
+}
+/* Extend the horizontal folder-divider to the physical viewport edges,
+   not merely the padded profile content width. */
+.profile-settings__tabs::before {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  z-index: 0;
+  width: 100vw;
   border-bottom: 1px solid var(--profile-accent-color, var(--accent));
+  content: '';
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 .profile-settings__tab {
   position: relative;
