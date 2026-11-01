@@ -83,11 +83,11 @@
   padding: 7px;
   /* The SVG supplies the liquid silhouette; the nearly transparent blurred
      content layer fades in late in the morph and makes choices readable. */
-  border: 1px solid rgba(175, 187, 204, .27);
+  border: 1px solid var(--nav-glass-stroke);
   border-radius: 16px;
-  background: rgba(10, 15, 27, .76);
-  -webkit-backdrop-filter: blur(38px) saturate(145%) brightness(.72);
-  backdrop-filter: blur(38px) saturate(145%) brightness(.72);
+  background: var(--nav-glass-background);
+  -webkit-backdrop-filter: var(--nav-glass-filter);
+  backdrop-filter: var(--nav-glass-filter);
   box-shadow: 0 12px 32px rgba(0, 0, 0, .27), inset 0 1px 0 rgba(255,255,255,.055);
   pointer-events: auto;
 }
