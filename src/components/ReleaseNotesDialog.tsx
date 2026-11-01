@@ -35,6 +35,12 @@ export default function ReleaseNotesDialog({ open, tint, onClose }: Props) {
       if (event.key === 'Escape') {
         event.preventDefault()
         onClose()
+      } else if (event.key === 'Home') {
+        event.preventDefault()
+        setIndex(0)
+      } else if (event.key === 'End') {
+        event.preventDefault()
+        setIndex(RELEASE_NOTES.length - 1)
       } else if (event.key === 'ArrowLeft') {
         event.preventDefault()
         setIndex(value => Math.min(RELEASE_NOTES.length - 1, value + 1))
