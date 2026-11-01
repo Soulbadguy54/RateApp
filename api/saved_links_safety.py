@@ -1,7 +1,7 @@
-"""Small fail-closed external URL reader for saved-link ChatGPT jobs.
+"""Small fail-closed source reader for saved-link preview and thumbnail metadata.
 
-Only a deliberately claimed URL is read here. No browser, JS, cookies, proxy,
-file downloads, or arbitrary tool calls; Safe Browsing lookup precedes every hop.
+No JavaScript, cookies, proxy, arbitrary downloads or external tool calls;
+Safe Browsing checks every redirect before fetching untrusted metadata.
 """
 import html
 import json
@@ -39,7 +39,7 @@ BLOCKED_HINTS = ("sidebar", "advert", "promo", "related", "recommend",
 
 
 class SourceSafetyError(ValueError):
-    """Unsafe or inaccessible source. Do not expose URLs/keys to GPT or logs."""
+    """Unsafe or inaccessible source. Do not expose URLs/keys to logs."""
 
     def __init__(self, message: str, *, terminal: bool = False):
         super().__init__(message)
@@ -569,7 +569,7 @@ def _safe_page_response(url: str, *,
                         accepted_types: tuple[str, ...] = ACCEPTED_TYPES,
                         max_bytes: int = MAX_RESPONSE_BYTES,
                         require_https: bool = False) -> tuple[bytes, dict[str, str]]:
-    """Shared fail-closed reputation and pinned fetch for preview, images and GPT."""
+    """Shared fail-closed reputation and pinned fetch for metadata and images."""
 
     try:
         current = canonical_url(url)
@@ -606,11 +606,4 @@ def _safe_page_response(url: str, *,
         current = next_url
     raise SourceSafetyError("Ссылка не может быть обработана.")
 
-
-def prepare_source(url: str) -> dict[str, str | int]:
-    """Reputation-check each redirect hop before opening a pinned connection."""
-    body, headers = _safe_page_response(url)
-    text = _read_text(body, headers)
-    return {"text": text, "characters": len(text),
-            "contentType": headers["content-type"].split(";", 1)[0]}
 
