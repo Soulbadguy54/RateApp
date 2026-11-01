@@ -1677,6 +1677,23 @@ function App() {
       setEntries(current => current.map(entry =>
         entry.gameId === gameId ? { ...entry, steamLinked: true } : entry))
       setSteamMatchPrompt(null)
+      setPendingSteamMatch(null)
+      // The linked Steam AppID is now resolved, including in the preview
+      // restored when the user eventually navigates Back to the profile.
+      const snapshot = steamSearchSnapshotRef.current
+      if (snapshot) {
+        steamSearchSnapshotRef.current = {
+          ...snapshot,
+          preview: snapshot.preview ? {
+            ...snapshot.preview,
+            unresolved: snapshot.preview.unresolved.filter(item => item.appid !== steamMatchPrompt.appid),
+          } : null,
+          result: snapshot.result ? {
+            ...snapshot.result,
+            unresolved: snapshot.result.unresolved.filter(item => item.appid !== steamMatchPrompt.appid),
+          } : null,
+        }
+      }
     } catch {
       setSteamMatchError('Игра добавлена, но связь со Steam установить не удалось. Попробуйте еще раз.')
     } finally {
