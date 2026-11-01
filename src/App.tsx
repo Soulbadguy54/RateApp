@@ -86,7 +86,8 @@ function readAppHistoryEntry(value: unknown): AppHistoryEntry | null {
 function readAppViewFromUrl(): AppView {
   const params = new URLSearchParams(window.location.search)
   const tabName = params.get('tab') as Tab | null
-  const tab: Tab = tabName && validTabs.includes(tabName) ? tabName : 'library'
+  const tab: Tab = params.has('shared_url') || (params.has('text') && tabName === 'links')
+    ? 'links' : tabName && validTabs.includes(tabName) ? tabName : 'library'
   const gameId = Number(params.get('game'))
   const formGameId = Number(params.get('edit'))
   return {
@@ -261,7 +262,8 @@ function App() {
   const shouldReduceMotion = useReducedMotion()
   const firstViewRef = useRef<AppView | null>(null)
   if (!firstViewRef.current) {
-    firstViewRef.current = readAppHistoryEntry(window.history.state)?.view ?? readAppViewFromUrl()
+    firstViewRef.current = window.location.search.includes('shared_url=') || window.location.search.includes('text=')
+      ? readAppViewFromUrl() : readAppHistoryEntry(window.history.state)?.view ?? readAppViewFromUrl()
   }
   const [activeTab, setActiveTab] = useState<Tab>(firstViewRef.current.tab)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
@@ -3708,7 +3710,7 @@ function App() {
                 {activeTab === 'collections' && renderCollections()}
                 {activeTab === 'links' && (
                   <Suspense fallback={<div className="viewport-loading"><ContentLoading tone="green" text="Открываем ссылки…" /></div>}>
-                    <SavedLinksView onOpenGame={openGame} cacheNamespace={String(authUser.id)} />
+                    <SavedLinksView cacheNamespace={String(authUser.id)} />
                   </Suspense>
                 )}
                 {activeTab === 'profile' && (
