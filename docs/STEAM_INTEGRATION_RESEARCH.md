@@ -7,12 +7,14 @@
 1. Steam как OpenID 2.0 identity provider, URL `https://steamcommunity.com/openid/`: пользователь авторизуется **на стороне Steam**; Rate APP после серверной проверки assertion получает `SteamID64`. OpenID не предоставляет нам пароль, email или OAuth-доступ к закрытой библиотеке. Это именно привязка Steam к уже авторизованному пользователю Rate APP; не замена текущему аккаунту Rate APP.
 2. `IPlayerService/GetOwnedGames/v1` по SteamID64 и **серверному** Steam Web API user key: при доступных game details возвращает owned AppID, `playtime_forever` (минуты), опционально названия/иконки (`include_appinfo=1`); `include_played_free_games=1` добавляет бесплатные игры с игровой активностью. **Это не обязательно все элементы клиента Steam**: приватные игры, чужие семейные доступы, отдельные DLC/tools, недоступные подписки, скрытое время игры и некоторые free-to-play могут отличаться.
 3. `GetRecentlyPlayedGames` — отдельно недавно запущенные игры; подходит для будущей функции «последняя активность», но **не** надёжная замена полному owned-list и не используется при первичном импорте.
-4. `ISteamUser/GetPlayerSummaries/v2` возвращает публичную информацию профиля, аватар, видимость и профильный URL; нельзя объявлять библиотеку доступной лишь по public summary.
-5. IGDB `external_games`: связь `uid` (Steam AppID в виде строки), `external_game_source` (новый справочник Steam) и `game` (IGDB ID). Поле `category=1` — прежний **deprecated** enum Steam: не закреплять новую реализацию на deprecated field. При неоднозначном соответствии показывать пользователю варианты. Не связывать приложения по одному только имени. Держать Steam AppID независимо от IGDB ID.
+4. `ISteamUserStats/GetPlayerAchievements/v1` и `GetUserStatsForGame/v2`: в будущем могут обогатить карточку достижениями и статистикой **для поддерживаемых игр при доступных данных**. Не определяют статус «пройдено» надёжно; нельзя читать произвольные private достижения.
+5. `ISteamUser/GetPlayerSummaries/v2` возвращает публичную информацию профиля, аватар, видимость и профильный URL; нельзя объявлять библиотеку доступной лишь по public summary.
+6. IGDB `external_games`: связь `uid` (Steam AppID в виде строки), `external_game_source` (новый справочник Steam) и `game` (IGDB ID). Поле `category=1` — прежний **deprecated** enum Steam: не закреплять новую реализацию на deprecated field. При неоднозначном соответствии показывать пользователю варианты. Не связывать приложения по одному только имени. Держать Steam AppID независимо от IGDB ID.
 
 Официальные источники:
 - Steam OpenID: https://steamcommunity.com/developer/contentguidelines и https://partner.steamgames.com/doc/features/auth
 - Steam library/playtime: https://partner.steamgames.com/doc/webapi/IPlayerService
+- Steam achievements: https://partner.steamgames.com/doc/webapi/ISteamUserStats
 - Steam Web API keys: https://partner.steamgames.com/doc/webapi_overview/auth
 - Приватность Game Details: https://help.steampowered.com/faqs/view/588C-C67D-0251-C276 и https://store.steampowered.com/news/posts/?appids=593110&enddate=1528828991
 - Steam private games: https://help.steampowered.com/en/faqs/view/1150-C06F-4D62-4966
