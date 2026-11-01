@@ -24,7 +24,7 @@ from api.collections_service import _ensure_wishlist_collection
 from api.games_routes import IGDB_GAME_FIELDS, _cache_igdb_games
 from api.igdb_client import Priority, igdb_client
 from api.models import (
-    CollectionGame, Game, GameExternalId, SteamConnection, SteamSyncPreview,
+    CollectionGame, Game, GameExternalId, SteamConnection, SteamSyncPreview, SteamIgnoredApp,
     UserGame,
 )
 from api.security import SESSION_COOKIE, _current_user, _hash_token, _now, _session
@@ -37,7 +37,7 @@ APPID_RE = re.compile(r"^[1-9][0-9]{0,9}$")
 STORE_APP_RE = re.compile(r"^/app/([1-9][0-9]{0,9})(?:/|$)")
 MAX_OWNED = 3000
 PREVIEW_TTL_MINUTES = 15
-PREVIEW_COOLDOWN_SECONDS = 120
+PREVIEW_COOLDOWN_SECONDS = 30
 
 
 class CommitPayload(BaseModel):
@@ -47,6 +47,10 @@ class CommitPayload(BaseModel):
 class ManualMatchPayload(BaseModel):
     appid: int = Field(gt=0, le=4294967295)
     igdbId: int = Field(gt=0)
+
+
+class IgnoreSteamAppPayload(BaseModel):
+    appid: int = Field(gt=0, le=4294967295)
 
 
 def _require_origin(request: Request):
@@ -268,6 +272,14 @@ def _ensure_games(igdb_ids: set[int]) -> dict[int, Game]:
 
 
 def _prepare(user_id: int, steam_id: str, games: list[dict]) -> tuple[list[dict], list[dict]]:
+    # Ignore locally dismissed apps BEFORE expensive IGDB resolution.
+    with _session() as session:
+        ignored_apps = set(session.scalars(
+            select(SteamIgnoredApp.appid).where(
+                SteamIgnoredApp.user_id == user_id, SteamIgnoredApp.steam_id64 == steam_id
+            )
+        ))
+    games = [row for row in games if row["appid"] not in ignored_apps]
     appids = [g["appid"] for g in games]
     matches = _resolve_mappings(appids)
     loaded = _ensure_games(set(matches.values()))
@@ -287,7 +299,7 @@ def _prepare(user_id: int, steam_id: str, games: list[dict]) -> tuple[list[dict]
     unresolved = []
     for row in games:
         appid = row["appid"]
-        if appid in user_matched_apps:
+        if appid in user_matched_apps or appid in ignored_apps:
             continue
         igdb_id = matches.get(appid)
         # Existing Rate APP games must never appear in either block, even if
@@ -457,7 +469,10 @@ def steam_commit(payload: CommitPayload, request: Request) -> dict:
                 session.add(CollectionGame(collection_id=wishlist.id, user_game_id=entry.id))
             created.append({"igdbId": game.igdb_id, "title": game.title, "status": status})
         linked.last_synced_at = _now()
-        unresolved = preview.unresolved
+        ignored = set(session.scalars(select(SteamIgnoredApp.appid).where(
+            SteamIgnoredApp.user_id == user.id, SteamIgnoredApp.steam_id64 == linked.steam_id64
+        )))
+        unresolved = [item for item in preview.unresolved if item.get("appid") not in ignored]
         session.delete(preview)
         session.commit()
     return {"created": created, "unresolved": unresolved}
@@ -505,3 +520,18 @@ def steam_manual_match(payload: ManualMatchPayload, request: Request) -> dict:
         entry.steam_data = data
         session.commit()
     return {"linked": True}
+
+
+@router.post("/api/steam/ignored")
+def steam_ignore_app(payload: IgnoreSteamAppPayload, request: Request) -> dict:
+    """User-local dismiss, never a shared provider mapping or library deletion."""
+    _require_origin(request)
+    with _session() as session:
+        user, linked = _connection(session, request)
+        session.execute(pg_insert(SteamIgnoredApp).values(
+            user_id=user.id, steam_id64=linked.steam_id64, appid=payload.appid,
+        ).on_conflict_do_nothing(
+            constraint="uq_steam_ignored_user_account_app"
+        ))
+        session.commit()
+    return {"hidden": True}

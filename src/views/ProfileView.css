@@ -765,3 +765,21 @@
   }
   .profile-settings .push-settings.info-card { margin-top: 3px; padding-block: 7px; }
 }
+
+/* Every cloud, including present/future integrations, shares identical poster
+   proportions and footprint. Only the content differs. */
+.profile-glass-header__hero {
+  --profile-cloud-height: calc(var(--profile-cloud-width) * 1.12);
+}
+.profile-glass-header__hero .profile-top-game,
+.profile-glass-header__hero .profile-steam-cloud {
+  box-sizing: border-box;
+  width: 100%; height: 100%; padding: 2px;
+  border-radius: 19px;
+}
+.profile-glass-header__hero .profile-top-game__cover {
+  width: 86%; height: 92%; border-radius: 10px;
+}
+.profile-glass-header__hero .profile-steam-cloud img {
+  width: 65%; max-height: 80%; object-fit: contain;
+}

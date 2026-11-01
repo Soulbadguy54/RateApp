@@ -566,6 +566,11 @@ function App() {
 
   const [addQuery, setAddQuery] = useState('')
   const [pendingSteamMatch, setPendingSteamMatch] = useState<{ name: string; appid: number } | null>(null)
+  const [steamMatchPrompt, setSteamMatchPrompt] = useState<{
+    sourceName: string; appid: number; gameId: number; gameTitle: string
+  } | null>(null)
+  const [steamMatchBusy, setSteamMatchBusy] = useState(false)
+  const [steamMatchError, setSteamMatchError] = useState('')
   const addSearchInputRef = useRef<HTMLInputElement>(null)
   const [addGameId, setAddGameId] = useState<number | null>(firstViewRef.current.formGameId)
   const [addStatus, setAddStatus] = useState<LibraryStatus>('completed')
@@ -1586,6 +1591,44 @@ function App() {
     navigateTo({ tab: 'add', gameId: null, collectionId: null, formGameId: game.id })
   }
 
+  const offerManualSteamMatch = (game: Game) => {
+    if (!pendingSteamMatch || steamMatchPrompt) return
+    setSteamMatchPrompt({
+      sourceName: pendingSteamMatch.name, appid: pendingSteamMatch.appid,
+      gameId: game.id, gameTitle: game.title,
+    })
+    setSteamMatchError('')
+    setPendingSteamMatch(null)
+  }
+
+  const answerManualSteamMatch = async (confirmed: boolean) => {
+    if (!steamMatchPrompt || steamMatchBusy) return
+    if (!confirmed) {
+      setSteamMatchPrompt(null)
+      setSteamMatchError('')
+      return
+    }
+    setSteamMatchBusy(true)
+    setSteamMatchError('')
+    try {
+      const response = await sessionFetch('/api/steam/manual-match', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appid: steamMatchPrompt.appid, igdbId: steamMatchPrompt.gameId,
+        }),
+      })
+      if (!response.ok) throw new Error()
+      const gameId = steamMatchPrompt.gameId
+      setEntries(current => current.map(entry =>
+        entry.gameId === gameId ? { ...entry, steamLinked: true } : entry))
+      setSteamMatchPrompt(null)
+    } catch {
+      setSteamMatchError('Игра добавлена, но связь со Steam установить не удалось. Попробуйте еще раз.')
+    } finally {
+      setSteamMatchBusy(false)
+    }
+  }
+
   const saveGame = async () => {
     const game = catalogGameById.get(addGameId!)
     if (!game) return
@@ -1626,20 +1669,9 @@ function App() {
       const savedEntry = normalizeEntry(savedPayload)
       setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), savedEntry])
       if (savedPayload.game) rememberCatalogResults([savedPayload.game])
-      // Link the user's explicit manual Steam choice only AFTER the ordinary
-      // library save succeeded. This is user-local, never a global IGDB mapping.
-      if (pendingSteamMatch) {
-        try {
-          const linked = await sessionFetch('/api/steam/manual-match', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ appid: pendingSteamMatch.appid, igdbId: game.id }),
-          })
-          if (!linked.ok) throw new Error()
-          setPendingSteamMatch(null)
-        } catch {
-          window.alert('Игра сохранена, но привязку Steam не удалось подтвердить. Попробуйте синхронизировать позже.')
-        }
-      }
+      // Saving a playthrough never silently claims a Steam match.
+      // Explicit acceptance is a separate user action after a successful save.
+      offerManualSteamMatch(game)
     } catch {
       window.alert('Не удалось сохранить игру. Проверьте соединение и попробуйте еще раз.')
       return
@@ -1674,6 +1706,10 @@ function App() {
         const response = await sessionFetch(url, { method: enabled ? 'PUT' : 'DELETE' })
         if (!response.ok) throw new Error('Collection membership update failed')
         update.persisted.set(collectionId, enabled)
+        if (enabled) {
+          const chosen = catalogGameById.get(gameId)
+          if (chosen) offerManualSteamMatch(chosen)
+        }
       }
     } catch {
       // Only revert unconfirmed changes; preserve other collection memberships.
@@ -2114,6 +2150,7 @@ function App() {
       if (!response.ok) throw new Error('Wishlist update failed')
       setEntries(current => withCollectionMembership(current, game.id, WISHLIST_COLLECTION_ID, !included))
       showWishlistToast(game.id, !included)
+      if (!included) offerManualSteamMatch(game)
     } catch {
       window.alert('Не удалось изменить список «Хочу пройти». Попробуй еще раз.')
     } finally {
@@ -3763,6 +3800,36 @@ function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {steamMatchPrompt && (
+        <div className="rateapp-confirm-backdrop">
+          <section className="rateapp-confirm steam-match-confirm" role="alertdialog"
+            aria-modal="true" aria-labelledby="steam-match-confirm-title">
+            <span className="rateapp-confirm__brand">Steam</span>
+            <h2 id="steam-match-confirm-title">Это та же игра?</h2>
+            <p className="steam-match-confirm__hint">Игра уже добавлена в Rate APP.</p>
+            <div className="steam-match-confirm__pair">
+              <div><small>В Steam</small><strong>{steamMatchPrompt.sourceName}</strong></div>
+              <Icon name="arrow" size={18} />
+              <div><small>В Rate APP</small><strong>{steamMatchPrompt.gameTitle}</strong></div>
+            </div>
+            <p className="steam-match-confirm__hint">
+              Связать их, чтобы Steam больше не предлагал эту игру при синхронизации?
+            </p>
+            {steamMatchError && <p role="alert" className="steam-match-confirm__error">{steamMatchError}</p>}
+            <div className="steam-match-confirm__actions">
+              <button type="button" aria-label="Нет, не связывать игры"
+                title="Это разные игры" disabled={steamMatchBusy}
+                onClick={() => void answerManualSteamMatch(false)}><Icon name="x" size={21} /></button>
+              <button type="button" className="steam-match-confirm__accept"
+                aria-label="Да, связать игры" title="Это одна игра"
+                disabled={steamMatchBusy} onClick={() => void answerManualSteamMatch(true)}>
+                {steamMatchBusy ? <Icon name="refresh" size={21} /> : <Icon name="checkmark" size={21} />}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       <PushOnboarding user={authUser.nickname} />
 

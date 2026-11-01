@@ -39,8 +39,10 @@ for (const connected of [false, true]) {
       await expect(profile).toHaveAttribute('href', 'https://steamcommunity.com/profiles/76561198012345678/')
       await expect(profile).toContainText('Steam QA')
       await expect(profile).toContainText('Steam ID: 76561198012345678')
-      await expect(panel).toContainText('Игр доступно: 10')
-      await expect(panel).toContainText('Последняя синхронизация: —')
+      await expect(panel).not.toContainText('Игр доступно:')
+      await expect(panel).not.toContainText('Новых игр найдено:')
+      await expect(panel.locator('.steam-integration__brand h2')).toContainText('Steam подключен')
+      await expect(panel.locator('.steam-integration__close')).toHaveCSS('border-style', 'solid')
       await expect(panel.getByRole('button', { name: 'Синхронизировать' })).toBeEnabled()
       await expect(panel.getByRole('button', { name: 'Отвязать Steam' })).toBeVisible()
       await expect(panel).not.toContainText('настройки приватности Steam')
@@ -116,11 +118,15 @@ test('Steam preview requires a second Sync click and shows only new and unknown 
   await expect(sync).toBeEnabled()
   await sync.click()
   await expect(panel).toContainText('Будут добавлены:')
-  await expect(panel).toContainText('Не удалось найти:')
+  await expect(panel).toContainText('Нужно найти в Rate APP:')
+  await expect(panel).toContainText('Новых игр найдено: 1')
   await expect(panel).toContainText('Это предпросмотр, игры еще не синхронизированы')
   await expect(panel).toContainText('Cyberpunk 2077')
   await expect(panel).not.toContainText('Steam #')
-  await expect(panel.getByRole('button', { name: /Unknown Steam Game/ })).toBeVisible()
+  await expect(panel.getByRole('link', { name: 'Unknown Steam Game' }))
+    .toHaveAttribute('href', 'https://store.steampowered.com/app/999999/')
+  await expect(panel.getByRole('button', { name: 'Найти в базе Rate APP: Unknown Steam Game' })).toBeVisible()
+  await expect(panel.getByRole('button', { name: 'Больше не показывать: Unknown Steam Game' })).toBeVisible()
   expect(previews).toBe(1)
   expect(commits).toBe(0)
   await sync.click()
@@ -229,3 +235,204 @@ test('Steam sync button acknowledges click with continuous activity state', asyn
   await expect(panel).toContainText('Это предпросмотр, игры еще не синхронизированы')
   await expect(panel.getByRole('button', { name: 'Синхронизировать' })).toBeEnabled()
 })
+
+test('Steam unresolved rows have separate Steam page/search/dismiss actions and hide after dismiss', async ({ page }) => {
+  let ignored = 0
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/steam/ignored') {
+      ignored++
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"hidden":true}' })
+      return
+    }
+    const body = path === '/api/bootstrap'
+      ? { user: { id: 720, nickname: 'steam_filter_qa', email: 'steam@example.test',
+            avatarVersion: 0, profileTint: 'default', createdAt: '2026-11-01T00:00:00Z' },
+          library: [], collections: [] }
+      : path === '/api/steam/connection'
+        ? { connected: true, steamId64: '76561198012345678' }
+      : path === '/api/steam/overview'
+        ? { steamId64: '76561198012345678', configured: true,
+            profile: { name: 'Steam QA', avatarUrl: null, profilePublic: true,
+              profileUrl: 'https://steamcommunity.com/profiles/76561198012345678/' },
+            gameCount: 5, canSync: true, redFlags: [], lastSyncedAt: new Date(Date.now() - 4000000).toISOString() }
+      : path === '/api/steam/preview'
+        ? { token: 'preview-12345678901234567890123456', items: [
+              { igdbId: 1877, title: 'Cyberpunk 2077', status: 'playing', coverUrl: null,
+                apps: [{ appid: 1091500, minutes: 100 }] }],
+            unresolved: [{ appid: 809010, name: 'A game Steam cannot map' }],
+            nextSyncAt: new Date(Date.now() + 30000).toISOString() }
+      : path === '/api/push/config' ? { enabled: false, publicKey: '', devices: 0 } : {}
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+  })
+  await page.goto('/?tab=profile')
+  await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click({ force: true })
+  const panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
+  await expect(panel.locator('.steam-integration__brand h2')).toHaveText('Steam подключен')
+  await panel.getByRole('button', { name: 'Синхронизировать' }).click()
+  await expect(panel).toContainText('Новых игр найдено: 1')
+  await expect(panel).toContainText('Последняя синхронизация:')
+  await expect(panel).toContainText('Нужно найти в Rate APP: 1')
+  await expect(panel).toContainText('Попробуйте добавить игру вручную.')
+  await expect(panel.getByRole('link', { name: 'A game Steam cannot map' }))
+    .toHaveAttribute('href', 'https://store.steampowered.com/app/809010/')
+  await panel.getByRole('button', { name: 'Больше не показывать: A game Steam cannot map' }).click()
+  await expect(panel).toContainText('Нужно найти в Rate APP: 0')
+  await expect(panel).not.toContainText('A game Steam cannot map')
+  expect(ignored).toBe(1)
+  await expect(panel).not.toContainText('809010')
+})
+
+test('manual Steam search saves playthrough before asking consent, links only on checkmark', async ({ page }) => {
+  const game = { id: 889, title: 'Call of Duty: Modern Warfare', genres: ['Шутер'],
+    year: 2019, releaseDate: '2019-10-25', developer: 'Infinity Ward',
+    platforms: ['PC'], igdbRating: 8, communityRating: 0, communityRatings: 0,
+    accent: '#336699', accent2: '#223344', glyph: 'C' }
+  let saved = 0
+  let linked = 0
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    let data: unknown = {}
+    if (path === '/api/bootstrap') data = {
+      user: { id: 721, nickname: 'cod_qa', email: 'steam@example.test',
+        avatarVersion: 0, profileTint: 'default', createdAt: '2026-11-01T00:00:00Z' },
+      library: [], collections: [
+        { id: 'wishlist', title: 'Хочу пройти', mark: '❤️', description: '',
+          isSystem: true }],
+    }
+    else if (path === '/api/steam/connection') data = { connected: true, steamId64: '76561198012345678' }
+    else if (path === '/api/steam/overview') data = {
+      steamId64: '76561198012345678', configured: true,
+      profile: { name: 'Steam QA', avatarUrl: null, profilePublic: true,
+        profileUrl: 'https://steamcommunity.com/profiles/76561198012345678/' },
+      gameCount: 1, canSync: true, redFlags: [], lastSyncedAt: null }
+    else if (path === '/api/steam/preview') data = {
+      token: 'preview-12345678901234567890123456', items: [],
+      unresolved: [{ appid: 809010, name: 'Call of Duty Deluxe' }],
+      nextSyncAt: new Date(Date.now() + 30000).toISOString() }
+    else if (path === '/api/games/search') data = { items: [game], hasMore: false, nextOffset: null }
+    else if (path === '/api/library/889' && route.request().method() === 'PUT') {
+      saved++
+      data = { gameId: 889, game, status: 'playing', platform: 'PC',
+        startedAt: '2026-11-01', completedAt: null, score: null,
+        atmosphereScore: null, storyScore: null, technologyScore: null,
+        gameplayScore: null, review: null, steamLinked: false,
+        collectionIds: [], addedAt: '2026-11-01' }
+    } else if (path === '/api/steam/manual-match') {
+      linked++
+      data = { linked: true }
+    } else if (path === '/api/push/config') data = { enabled: false, publicKey: '', devices: 0 }
+    else if (path === '/api/games/889/details') data = { game }
+    else if (path === '/api/games/889/community-rating') data = { gameId: 889, communityRating: 0, communityRatings: 0 }
+    else if (path === '/api/games/889/similar') data = []
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
+  })
+  await page.goto('/?tab=profile')
+  await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click({ force: true })
+  const panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
+  await panel.getByRole('button', { name: 'Синхронизировать' }).click()
+  await panel.getByRole('button', { name: 'Найти в базе Rate APP: Call of Duty Deluxe' }).click()
+  await expect(page.getByRole('textbox', { name: 'Поиск по базе игр' })).toHaveValue('Call of Duty Deluxe')
+  await page.getByRole('button', { name: 'Открыть игру «Call of Duty: Modern Warfare»' }).click()
+  await page.getByRole('button', { name: 'Добавить прохождение' }).click()
+  await page.locator('.choice-button--playing').click()
+  await page.getByRole('button', { name: 'Сохранить в библиотеку' }).click()
+  const dialog = page.getByRole('alertdialog', { name: 'Это та же игра?' })
+  await expect(dialog).toContainText('Call of Duty Deluxe')
+  await expect(dialog).toContainText('Call of Duty: Modern Warfare')
+  expect(saved).toBe(1)
+  expect(linked).toBe(0)
+  await dialog.getByRole('button', { name: 'Да, связать игры' }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(linked).toBe(1)
+  await expect(page.locator('.detail-hero__steam-badge')).toBeVisible()
+})
+
+
+for (const scenario of [
+  { collectionId: 'wishlist', collectionTitle: 'Хочу пройти', accept: true },
+  { collectionId: 'coop', collectionTitle: 'Кооператив', accept: false },
+] as const) {
+  test('manual Steam search links from a collection and respects decline: ' + scenario.collectionTitle, async ({ page }) => {
+    const game = { id: 889, title: 'Call of Duty: Modern Warfare', genres: ['Шутер'],
+      year: 2019, releaseDate: '2019-10-25', developer: 'Infinity Ward',
+      platforms: ['PC'], igdbRating: 8, communityRating: 0, communityRatings: 0,
+      accent: '#336699', accent2: '#223344', glyph: 'C' }
+    let memberships = 0
+    let linked = 0
+    await page.route('**/api/**', async route => {
+      const path = new URL(route.request().url()).pathname
+      let data: unknown = {}
+      if (path === '/api/bootstrap') data = {
+        user: { id: 722, nickname: 'cod_collection_qa', email: 'steam@example.test',
+          avatarVersion: 0, profileTint: 'default', createdAt: '2026-11-01T00:00:00Z' },
+        library: [],
+        collections: [
+          { id: 'wishlist', title: 'Хочу пройти', mark: '❤️', description: '', isSystem: true },
+          { id: 'coop', title: 'Кооператив', mark: '🎮', description: '', isSystem: false },
+        ],
+      }
+      else if (path === '/api/steam/connection')
+        data = { connected: true, steamId64: '76561198012345678' }
+      else if (path === '/api/steam/overview') data = {
+        steamId64: '76561198012345678', configured: true,
+        profile: { name: 'Steam QA', avatarUrl: null, profilePublic: true,
+          profileUrl: 'https://steamcommunity.com/profiles/76561198012345678/' },
+        gameCount: 1, canSync: true, redFlags: [], lastSyncedAt: null,
+      }
+      else if (path === '/api/steam/preview') data = {
+        token: 'preview-12345678901234567890123456', items: [],
+        unresolved: [{ appid: 809010, name: 'Call of Duty Deluxe' }],
+        nextSyncAt: new Date(Date.now() + 30000).toISOString(),
+      }
+      else if (path === '/api/games/search')
+        data = { items: [game], hasMore: false, nextOffset: null }
+      else if (path === '/api/games/889/details') data = { game }
+      else if (path === '/api/games/889/community-rating')
+        data = { gameId: 889, communityRating: 0, communityRatings: 0 }
+      else if (path === '/api/games/889/similar') data = { items: [] }
+      else if (path === '/api/push/config')
+        data = { enabled: false, publicKey: '', devices: 0 }
+      else if (path === '/api/library/889/wishlist' ||
+               path === '/api/library/889/collections/coop') {
+        if (route.request().method() === 'PUT') memberships++
+      }
+      else if (path === '/api/steam/manual-match') {
+        linked++
+        data = { linked: true }
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
+    })
+
+    await page.goto('/?tab=profile')
+    await page.getByRole('button', { name: 'Steam подключен, открыть настройки' }).click({ force: true })
+    const panel = page.getByRole('dialog', { name: 'Подключенный аккаунт Steam' })
+    await panel.getByRole('button', { name: 'Синхронизировать' }).click()
+    await panel.getByRole('button', { name: 'Найти в базе Rate APP: Call of Duty Deluxe' }).click()
+    const search = page.getByRole('textbox', { name: 'Поиск по базе игр' })
+    await expect(search).toHaveValue('Call of Duty Deluxe')
+    // The Steam AppID context must survive the user's correction of the search term.
+    await search.fill('Call of Duty')
+    await page.getByRole('button', { name: 'Открыть игру «Call of Duty: Modern Warfare»' }).click()
+    await page.locator('.detail-toolbar__actions').getByRole('button', { name: 'Коллекции' }).click()
+    await page.getByRole('button', {
+      name: 'Добавить «Call of Duty: Modern Warfare» в «' + scenario.collectionTitle + '»',
+    }).click()
+
+    const consent = page.getByRole('alertdialog', { name: 'Это та же игра?' })
+    await expect(consent).toContainText('Call of Duty Deluxe')
+    await expect(consent).toContainText('Call of Duty: Modern Warfare')
+    expect(memberships).toBe(1)
+    expect(linked).toBe(0)
+    await consent.getByRole('button', {
+      name: scenario.accept ? 'Да, связать игры' : 'Нет, не связывать игры',
+    }).click()
+    await expect(consent).toHaveCount(0)
+    expect(linked).toBe(scenario.accept ? 1 : 0)
+    if (scenario.accept) {
+      await expect(page.locator('.detail-hero__steam-badge')).toBeVisible()
+    } else {
+      await expect(page.locator('.detail-hero__steam-badge')).toHaveCount(0)
+    }
+  })
+}
