@@ -565,6 +565,7 @@ function App() {
   const [collectionError, setCollectionError] = useState('')
 
   const [addQuery, setAddQuery] = useState('')
+  const [pendingSteamMatch, setPendingSteamMatch] = useState<{ name: string; appid: number } | null>(null)
   const addSearchInputRef = useRef<HTMLInputElement>(null)
   const [addGameId, setAddGameId] = useState<number | null>(firstViewRef.current.formGameId)
   const [addStatus, setAddStatus] = useState<LibraryStatus>('completed')
@@ -1431,6 +1432,7 @@ function App() {
   }
 
   const openTab = (tab: Tab) => {
+    if (tab !== 'add') setPendingSteamMatch(null)
     if (cloudPickerSnapshotRef.current) closeProfileCloudPicker()
     // A bottom-nav selection starts a new navigation chain. Replace the old
     // location instead of adding it as a step in the destination tab's Back.
@@ -1440,6 +1442,7 @@ function App() {
   // Re-selecting the active bottom tab, or tapping the My Games title,
   // starts that tab from scratch without logging out or reloading the PWA.
   const resetTab = (tab: Tab) => {
+    setPendingSteamMatch(null)
     if (cloudPickerSnapshotRef.current) closeProfileCloudPicker()
     const view: AppView = { tab, gameId: null, collectionId: null, formGameId: null }
     // Resetting an active tab from a nested screen must also establish a root
@@ -1623,6 +1626,20 @@ function App() {
       const savedEntry = normalizeEntry(savedPayload)
       setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), savedEntry])
       if (savedPayload.game) rememberCatalogResults([savedPayload.game])
+      // Link the user's explicit manual Steam choice only AFTER the ordinary
+      // library save succeeded. This is user-local, never a global IGDB mapping.
+      if (pendingSteamMatch) {
+        try {
+          const linked = await sessionFetch('/api/steam/manual-match', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appid: pendingSteamMatch.appid, igdbId: game.id }),
+          })
+          if (!linked.ok) throw new Error()
+          setPendingSteamMatch(null)
+        } catch {
+          window.alert('Игра сохранена, но привязку Steam не удалось подтвердить. Попробуйте синхронизировать позже.')
+        }
+      }
     } catch {
       window.alert('Не удалось сохранить игру. Проверьте соединение и попробуйте ещё раз.')
       return
@@ -3105,6 +3122,13 @@ function App() {
           </div>
         </header>
 
+        {pendingSteamMatch && (
+          <div className="game-database-error" role="status">
+            <span>Поиск игры из Steam: {pendingSteamMatch.name} (AppID {pendingSteamMatch.appid}).
+              Выберите игру и добавьте её — связь сохранится после подтверждения.</span>
+            <button type="button" onClick={() => setPendingSteamMatch(null)}>Отменить связь</button>
+          </div>
+        )}
         <section className="search-results">
           {addResults.map((game, index) => (
             <button
@@ -3603,6 +3627,19 @@ function App() {
         Array.from({ length: 3 }, (_, index) => authUser?.profileCloudGameIds?.[index] ?? null))}
       onChooseCloud={beginProfileCloudPicker}
       onOpenGame={openGame}
+      onFindSteamGame={(name, appid) => {
+        openTab('add')
+        setAddQuery(name.slice(0, 100))
+        setPendingSteamMatch({ name, appid })
+      }}
+      onSteamSynced={() => {
+        void sessionFetch('/api/library', { cache: 'no-store' }).then(async response => {
+          if (!response.ok) return
+          const rows = await response.json() as ApiLibraryEntry[]
+          setEntries(rows.map(normalizeEntry))
+          rows.forEach(row => { if (row.game) rememberCatalogResults([row.game]) })
+        }).catch(() => undefined)
+      }}
       onSaved={(updated) => setAuthUser(updated)}
       onOpenWishlist={() => navigateTo({
         tab: 'collections', gameId: null, collectionId: WISHLIST_COLLECTION_ID, formGameId: null,

@@ -41,6 +41,7 @@ type Point = { x: number; y: number }
 export default function ProfileView({
   user, savedClouds, editClouds, cloudDraftIds,
   onStartCloudEditing, onChooseCloud, onOpenGame, onOpenWishlist, onSaved,
+  onFindSteamGame, onSteamSynced,
 }: {
   user: AuthUser
   savedClouds: ProfileCloud[]
@@ -51,6 +52,8 @@ export default function ProfileView({
   onOpenGame: (gameId: number) => void
   onOpenWishlist: () => void
   onSaved: (user: AuthUser) => void
+  onFindSteamGame?: (name: string, appid: number) => void
+  onSteamSynced?: () => void
 }) {
   const [settingsTab, setSettingsTab] = useState<'notifications' | 'security'>('notifications')
   const notificationsTabRef = useRef<HTMLButtonElement>(null)
@@ -244,7 +247,7 @@ export default function ProfileView({
             </ol>
           )}
           <div className="profile-steam-cloud-launch">
-            <SteamIntegrationCloud />
+            <SteamIntegrationCloud onFindUnmatched={onFindSteamGame} onSynced={onSteamSynced} />
           </div>
           <div className="profile-glass-header__avatar-row">
             {editing && photo ? (

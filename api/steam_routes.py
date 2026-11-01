@@ -17,7 +17,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
-from api.models import SteamConnection, SteamLinkChallenge
+from api.models import SteamConnection, SteamLinkChallenge, SteamSyncPreview
 from api.security import SESSION_COOKIE, _current_user, _hash_token, _now, _session
 
 router = APIRouter()
@@ -180,6 +180,9 @@ def finish_steam_link(request: Request):
         if existing is None:
             session.add(SteamConnection(user_id=user.id, steam_id64=steam_id))
         else:
+            if existing.steam_id64 != steam_id:
+                existing.last_synced_at = None
+                session.execute(delete(SteamSyncPreview).where(SteamSyncPreview.user_id == final_user.id))
             existing.steam_id64 = steam_id
         try:
             session.commit()
@@ -198,6 +201,7 @@ def unlink_steam(request: Request) -> dict[str, bool]:
         user = _current_user(request, session)
         session.execute(delete(SteamConnection).where(SteamConnection.user_id == user.id))
         session.execute(delete(SteamLinkChallenge).where(SteamLinkChallenge.user_id == user.id))
+        session.execute(delete(SteamSyncPreview).where(SteamSyncPreview.user_id == user.id))
         session.commit()
     # No game data is touched. Provenance/cleanup will be a separately reviewed
     # decision after the future import model exists.
