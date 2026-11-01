@@ -244,6 +244,8 @@ test('profile cloud picker stays scoped: pin any My Games entry, save, cancel an
   await picker.getByRole('button', { name: 'Назад в профиль' }).click()
   await expect(save).toBeVisible()
   await page.getByRole('button', { name: 'Изменить игру в облаке 2' }).click({ force: true })
+  await expect(picker).toBeVisible()
+  await expect(picker.getByRole('button', { name: 'Открыть поиск' })).toBeVisible()
   await picker.getByRole('button', { name: 'Открыть поиск' }).click()
   await picker.getByRole('textbox', { name: 'Поиск в библиотеке' }).fill('My Playing')
   await expect(picker.locator('.game-card')).toHaveCount(1)
