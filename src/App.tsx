@@ -566,6 +566,7 @@ function App() {
 
   const [addQuery, setAddQuery] = useState('')
   const [pendingSteamMatch, setPendingSteamMatch] = useState<{ name: string; appid: number } | null>(null)
+  const steamSearchActiveRef = useRef(false)
   const [steamMatchPrompt, setSteamMatchPrompt] = useState<{
     sourceName: string; appid: number; gameId: number; gameTitle: string
   } | null>(null)
@@ -1437,7 +1438,24 @@ function App() {
   }
 
   const openTab = (tab: Tab) => {
-    if (tab !== 'add') setPendingSteamMatch(null)
+    // Only bottom-tab switching ends the manual Steam search. Returning from
+    // a game detail via native Back keeps the search and its matching context.
+    setPendingSteamMatch(null)
+    if (steamSearchActiveRef.current) {
+      steamSearchActiveRef.current = false
+      addSearchGenerationRef.current += 1
+      addSearchAbortRef.current?.abort()
+      addSearchAbortRef.current = null
+      addSearchBusyRef.current = false
+      setAddQuery('')
+      setAddResults([])
+      setAddSearchLoading(false)
+      setAddSearchError('')
+      setAddSearchSource('local')
+      setAddSearchNextOffset(0)
+      setAddSearchHasMore(false)
+      setLocalSearchMissQuery(null)
+    }
     if (cloudPickerSnapshotRef.current) closeProfileCloudPicker()
     // A bottom-nav selection starts a new navigation chain. Replace the old
     // location instead of adding it as a step in the destination tab's Back.
@@ -1447,6 +1465,7 @@ function App() {
   // Re-selecting the active bottom tab, or tapping the My Games title,
   // starts that tab from scratch without logging out or reloading the PWA.
   const resetTab = (tab: Tab) => {
+    steamSearchActiveRef.current = false
     setPendingSteamMatch(null)
     if (cloudPickerSnapshotRef.current) closeProfileCloudPicker()
     const view: AppView = { tab, gameId: null, collectionId: null, formGameId: null }
@@ -3664,6 +3683,7 @@ function App() {
       onOpenGame={openGame}
       onFindSteamGame={(name, appid) => {
         openTab('add')
+        steamSearchActiveRef.current = true
         setAddQuery(name.slice(0, 100))
         setPendingSteamMatch({ name, appid })
       }}
