@@ -481,3 +481,15 @@
   .steam-integration__panel { transition: none; will-change: auto; }
   .steam-integration__sync-icon { will-change: auto; }
 }
+
+/* Compact dialog ends near Unlink; results still adopt their measured height. */
+.steam-integration__panel--connected:not(.steam-integration__panel--expanded) {
+  height: min(350px, calc(100dvh - 24px));
+}
+/* Reduce layered raster work on high-refresh displays. Glass color,
+   outline and highlights stay; no expensive additional inner backdrop blur. */
+.steam-integration__panel {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  transition: height .34s cubic-bezier(.22, 1, .36, 1);
+}
