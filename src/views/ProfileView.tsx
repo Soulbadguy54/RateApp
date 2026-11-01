@@ -52,6 +52,44 @@ export default function ProfileView({
   onSaved: (user: AuthUser) => void
 }) {
   const [settingsTab, setSettingsTab] = useState<'notifications' | 'security'>('notifications')
+  const [steamOpen, setSteamOpen] = useState(false)
+  const [steamConnected, setSteamConnected] = useState(false)
+  const [steamId, setSteamId] = useState<string | null>(null)
+  const [steamBusy, setSteamBusy] = useState(false)
+  const [steamError, setSteamError] = useState('')
+  const steamButtonRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    void sessionFetch('/api/steam/status', { signal: controller.signal })
+      .then(r => r.ok ? r.json() as Promise<{ connected: boolean; steamId: string | null }> : null)
+      .then(data => {
+        if (!controller.signal.aborted && data) {
+          setSteamConnected(data.connected)
+          setSteamId(data.steamId)
+        }
+      }).catch(() => {})
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('steam')) {
+      setSteamOpen(true)
+      if (params.get('steam') === 'error') setSteamError('Привязку не удалось подтвердить. Попробуйте снова.')
+      if (params.get('steam') === 'conflict') setSteamError('Этот Steam-аккаунт уже привязан к другому пользователю.')
+      params.delete('steam')
+      window.history.replaceState(window.history.state, '', window.location.pathname + (params.size ? '?' + params : '') + window.location.hash)
+    }
+    return () => controller.abort()
+  }, [user.id])
+  const disconnectSteam = async () => {
+    if (!window.confirm('Отвязать Steam? Уже добавленные вручную игры останутся без изменений.')) return
+    setSteamBusy(true)
+    setSteamError('')
+    try {
+      const response = await sessionFetch('/api/steam/connection', { method: 'DELETE' })
+      if (!response.ok) throw new Error('Не удалось отвязать Steam')
+      setSteamConnected(false)
+      setSteamId(null)
+    } catch { setSteamError('Не удалось отвязать Steam. Повторите попытку.') }
+    finally { setSteamBusy(false) }
+  }
   const notificationsTabRef = useRef<HTMLButtonElement>(null)
   const securityTabRef = useRef<HTMLButtonElement>(null)
   const [editing, setEditing] = useState(false)
@@ -243,9 +281,14 @@ export default function ProfileView({
             </ol>
           )}
           <div className="profile-steam-cloud-launch">
-            <div className="profile-steam-cloud" role="img" aria-label="Steam — интеграция пока не подключена">
+            <button ref={steamButtonRef} type="button"
+              className={'profile-steam-cloud' + (steamConnected ? ' profile-steam-cloud--connected' : '')}
+              aria-label={steamConnected ? 'Steam подключён. Настройки интеграции' : 'Подключить Steam'}
+              aria-haspopup="dialog" aria-expanded={steamOpen}
+              onClick={() => { setSteamError(''); setSteamOpen(true) }}>
               <img src="/brand/steam.svg" alt="" aria-hidden="true" draggable={false} />
-            </div>
+              <span className={'profile-steam-cloud__status' + (steamConnected ? ' profile-steam-cloud__status--connected' : '')} aria-hidden="true" />
+            </button>
           </div>
           <div className="profile-glass-header__avatar-row">
             {editing && photo ? (
@@ -308,6 +351,42 @@ export default function ProfileView({
         </AnimatePresence>
       </header>
 
+      <AnimatePresence>
+        {steamOpen && (
+          <motion.div className="profile-steam-backdrop" role="presentation"
+            initial={reducedMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={event => { if (event.target === event.currentTarget) setSteamOpen(false) }}>
+            <motion.section className="profile-steam-dialog" role="dialog" aria-modal="true"
+              aria-labelledby="profile-steam-title"
+              initial={reducedMotion ? false : { opacity: 0, scale: .26, x: 88, y: -170, borderRadius: 36 }}
+              animate={{ opacity: 1, scale: 1, x: 0, y: 0, borderRadius: 20 }}
+              exit={reducedMotion ? undefined : { opacity: 0, scale: .26, x: 88, y: -170 }}
+              transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 285, damping: 31 }}>
+              <div className="profile-steam-dialog__head">
+                <img src="/brand/steam.svg" width="35" height="35" alt="" />
+                <h2 id="profile-steam-title">Подключение Steam</h2>
+                <button type="button" aria-label="Закрыть окно Steam" onClick={() => setSteamOpen(false)}>×</button>
+              </div>
+              <p>{steamConnected ? 'Steam-аккаунт привязан к Rate APP.' : 'Привяжи свой аккаунт Steam, чтобы позже перенести игровую библиотеку в Rate APP.'}</p>
+              <p>Авторизация происходит на сайте Steam. Мы не видим и не сохраняем твой пароль.</p>
+              <div className="profile-steam-dialog__privacy">
+                <strong>Перед подключением проверь приватность</strong>
+                <p>В Steam открой доступ к профилю и разделу «Сведения об играх», а также разреши показывать время игры. Отдельно скрытые игры не попадут в будущий импорт.</p>
+                <a href="https://steamcommunity.com/my/edit/settings/" target="_blank" rel="noopener noreferrer">
+                  Открыть настройки приватности Steam <Icon name="external-link" size={15} />
+                </a>
+              </div>
+              <p className="profile-steam-dialog__hint">После подключения мы пока не импортируем игры. В следующем этапе покажем предварительный список, сохраним существующие оценки и отдельно отметим только игры, действительно добавленные из Steam.</p>
+              {steamConnected && steamId && <p className="profile-steam-dialog__id">SteamID: {steamId}</p>}
+              {steamError && <p className="profile-steam-dialog__error" role="alert">{steamError}</p>}
+              {steamConnected
+                ? <button type="button" className="profile-steam-dialog__action profile-steam-dialog__action--disconnect" disabled={steamBusy} onClick={() => void disconnectSteam()}>Отвязать Steam</button>
+                : <a className="profile-steam-dialog__action" href="/api/steam/connect">Войти через Steam</a>}
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <section className="profile-settings" aria-label="Настройки профиля"
         style={{ '--profile-accent-color': chosenTint.color, '--profile-tint-rgb': chosenTint.rgb } as CSSProperties}>
         <div className="profile-settings__tabs" data-active={settingsTab} role="tablist" aria-label="Разделы настроек">
