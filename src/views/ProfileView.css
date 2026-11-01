@@ -872,3 +872,17 @@
   padding: 0;
   text-align: center;
 }
+
+/* The footer is viewport-anchored immediately over the fixed bottom nav.
+   Reserve scrolling room so the footer never hides the last settings row. */
+.page--viewport .page-motion:has(> .profile-glass-header) > .app-build-version {
+  position:fixed; z-index:19;
+  bottom:calc(var(--bottom-nav-height,62px) + var(--safe-bottom,0px) + 1px);
+  left:0; right:0;
+  margin:0; padding:0;
+  pointer-events:none;
+}
+.page--viewport .page-motion:has(> .profile-glass-header) > .app-build-version button {
+  pointer-events:auto;
+}
+.page--viewport:has(.profile-glass-header) { padding-bottom:calc(var(--bottom-nav-height) + var(--safe-bottom) + 68px); }
