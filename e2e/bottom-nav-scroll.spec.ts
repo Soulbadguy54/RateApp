@@ -30,7 +30,8 @@ test('fixed bottom navigation survives a scrolled My Games to Database switch', 
     const sample = () => {
       if (!probe.running) return
       probe.frames.push(fixedButtons.map(button => {
-        const matrix = new DOMMatrixReadOnly(getComputedStyle(button).transform)
+        const t = getComputedStyle(button).transform
+        const matrix = new DOMMatrixReadOnly(t === 'none' ? undefined : t)
         return {
           projection: Math.max(
             Math.abs(matrix.m41), Math.abs(matrix.m42),
