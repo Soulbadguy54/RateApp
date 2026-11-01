@@ -1,10 +1,6 @@
-"""One-table URL ownership, GPT result persistence and date-based queue."""
+"""Owner-scoped saved bookmarks, deduplication, safe previews and deletion."""
 import secrets
-import io
-import os
-from contextlib import redirect_stdout, redirect_stderr
 import unittest
-from datetime import timedelta
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -12,10 +8,8 @@ from sqlalchemy import select
 
 from api.database import SessionLocal
 from api.index import app
-from api.models import Game, GameAlias, SavedLink, User
+from api.models import Game, SavedLink, User
 from api.saved_links_routes import canonical_url
-from api.saved_links_worker import _find_top_game_id, claim_jobs, resolve_games, submit_result, main as worker_main
-from api.security import _now
 
 
 class SavedLinkTests(unittest.TestCase):
@@ -50,56 +44,36 @@ class SavedLinkTests(unittest.TestCase):
         self.assertEqual(result.status_code, 201, result.text)
         return result.json()
 
-    def test_staging_cli_can_claim_only_qa_link_without_touching_any_other_link(self):
-        own = self.save("cli-isolated")
-        with patch.dict(os.environ, {"VERCEL_ENV": "staging", "SAFE_BROWSING_API_KEY": "test-only"}), patch(
-            "sys.argv", ["worker", "claim", "--limit", "1",
-                         "--only-id", str(own["id"]), "--expect-environment", "staging"],
-        ), redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()):
-            worker_main()
-        import json
-        data = json.loads(output.getvalue())
-        self.assertEqual(data["jobs"][0]["id"], own["id"])
+    def test_saving_is_immediate_deduplicated_and_no_worker_metadata(self):
+        for url in ("file:///etc/passwd", "http://127.0.0.1/",
+                    "https://localhost/", "https://foo.test/",
+                    "https://user:password@example.org/"):
+            self.assertEqual(self.client.post("/api/saved-links",
+                             json={"url": url}).status_code, 422)
+        self.assertEqual(canonical_url("HTTPS://EXAMPLE.ORG/Page#fragment"),
+                         "https://example.org/Page")
+        self.assertEqual(TestClient(app).get("/api/saved-links").status_code, 401)
+        first = self.save()
+        self.assertEqual(set(first), {"id", "url", "title", "createdAt", "updatedAt"})
+        self.assertEqual(self.save()["id"], first["id"])
         with SessionLocal() as session:
-            self.assertEqual(session.get(SavedLink, own["id"]).attempts, 1)
+            record = session.get(SavedLink, first["id"])
+            self.assertEqual(record.status, "ready")
+            self.assertEqual(record.gpt_names, [])
+        self.assertEqual(self.client.post(f'/api/saved-links/{first["id"]}/retry').status_code, 404)
+        self.assertEqual(self.client.post(f'/api/saved-links/{first["id"]}/refresh').status_code, 404)
 
-    def test_cli_rejects_targeted_processing_in_production(self):
-        with patch.dict(os.environ, {"VERCEL_ENV": "production"}), patch(
-            "sys.argv", ["worker", "claim", "--only-id", "1",
-                         "--expect-environment", "production"],
-        ), redirect_stderr(io.StringIO()):
-            with self.assertRaises(SystemExit):
-                worker_main()
-
-    def test_exact_match_resolver_rejects_short_fuzzy_neighbor(self):
-        """SOMA must not silently become Middle-earth: Shadow of Mordor."""
-        with patch("api.games_routes._local_game_search", return_value={
-            "items": [{"id": self.igdb_id}],
-        }), patch("api.games_routes._ranked_igdb_search_rows", return_value=([
-            {"id": 101, "name": "SOMA", "alternative_names": []},
-            {"id": 3025, "name": "Middle-earth: Shadow of Mordor"},
-        ], False)), patch("api.games_routes._cache_igdb_games", return_value=[
-            {"id": 101},
-        ]) as cache:
-            self.assertEqual(_find_top_game_id("SOMA"), 101)
-            cache.assert_called_once()
-        with patch("api.games_routes._local_game_search", return_value={
-            "items": [{"id": self.igdb_id}],
-        }), patch("api.games_routes._ranked_igdb_search_rows", return_value=([
-            {"id": 3025, "name": "Middle-earth: Shadow of Mordor"},
-        ], False)), patch("api.games_routes._cache_igdb_games",
-                          side_effect=AssertionError("not an exact match")):
-            self.assertIsNone(_find_top_game_id("SOMA"))
-
-    def test_local_alias_punctuation_is_exact_match(self):
-        with SessionLocal() as session:
-            session.add(GameAlias(game_id=self.game_pk, name="Мор. Утопия"))
-            session.commit()
-        with patch("api.games_routes._local_game_search", return_value={
-            "items": [{"id": self.igdb_id}],
-        }), patch("api.games_routes._ranked_igdb_search_rows",
-                  side_effect=AssertionError("alias already matched")):
-            self.assertEqual(_find_top_game_id("Мор (Утопия)"), self.igdb_id)
+    def test_bookmarks_list_newest_first_no_games_or_gpt_status(self):
+        first = self.save("older")
+        second = self.save("newer")
+        page = self.client.get("/api/saved-links")
+        self.assertEqual(page.status_code, 200)
+        ids = [item["id"] for item in page.json()["items"]]
+        self.assertLess(ids.index(second["id"]), ids.index(first["id"]))
+        for item in page.json()["items"]:
+            self.assertNotIn("games", item)
+            self.assertNotIn("status", item)
+            self.assertNotIn("gptNames", item)
 
     def test_similar_games_uses_existing_igdb_payload_without_network(self):
         target_id = self.igdb_id + 1
@@ -125,64 +99,6 @@ class SavedLinkTests(unittest.TestCase):
                 related = session.scalar(select(Game).where(Game.igdb_id == target_id))
                 if related: session.delete(related)
                 session.commit()
-
-    def test_url_and_owner_unique_and_null_distinct_from_empty(self):
-        for url in ("file:///etc/passwd", "http://127.0.0.1/",
-                    "https://localhost/", "https://foo.test/",
-                    "https://user:password@example.org/"):
-            self.assertEqual(self.client.post("/api/saved-links",
-                             json={"url":url}).status_code, 422)
-        self.assertEqual(canonical_url("HTTPS://EXAMPLE.ORG/Page#fragment"),
-                         "https://example.org/Page")
-        self.assertEqual(TestClient(app).get("/api/saved-links").status_code, 401)
-        first = self.save()
-        self.assertIsNone(first["gptNames"])
-        self.assertEqual(first["gameIds"], [])
-        self.assertEqual(self.save()["id"], first["id"])
-        claim = claim_jobs(only_id=first["id"])["jobs"][0]
-        result = submit_result({"id": first["id"], "leaseToken": claim["leaseToken"],
-                                "games": []})
-        self.assertEqual(result["status"], "ready")
-        finished = self.client.get(f'/api/saved-links/{first["id"]}').json()
-        self.assertEqual(finished["gptNames"], [])
-        self.assertEqual(claim_jobs(only_id=first["id"])["jobs"], [])
-
-    def test_oldest_url_first_and_list_newest_first(self):
-        first = self.save("old")
-        second = self.save("new")
-        # A shared staging DB may contain an older pending user's link.
-        # Scope the claim to this test user rather than consuming their work.
-        got = claim_jobs(only_id=first["id"])["jobs"][0]
-        self.assertEqual(got["id"], first["id"])
-        links = self.client.get("/api/saved-links").json()["items"]
-        self.assertEqual([x["id"] for x in links[:2]],
-                         [second["id"], first["id"]])
-        with self.assertRaises(ValueError):
-            claim_jobs(limit=2)
-
-    def test_names_and_local_ids_remain_until_link_is_deleted(self):
-        link = self.save()
-        claim = claim_jobs(only_id=link["id"])["jobs"][0]
-        submitted = submit_result({"id":link["id"], "leaseToken":claim["leaseToken"],
-                                   "games":["Hollow Knight Test","Outer Wilds"]})
-        self.assertEqual(submitted["gamesCount"], 2)
-        self.assertTrue(submit_result({"id":link["id"], "leaseToken":claim["leaseToken"],
-                                       "games":["Hollow Knight Test"]})["idempotent"])
-        with patch("api.saved_links_worker._find_top_game_id",
-                   side_effect=lambda n: self.igdb_id if n == "Hollow Knight Test" else None):
-            result = resolve_games(only_id=link["id"])
-        self.assertTrue(result["complete"])
-        fetched = self.client.get(f'/api/saved-links/{link["id"]}').json()
-        self.assertEqual(fetched["status"], "ready")
-        self.assertEqual(fetched["gptNames"], ["Hollow Knight Test", "Outer Wilds"])
-        self.assertEqual(fetched["gameIds"], [self.game_pk])
-        self.assertEqual(fetched["games"][0]["igdbId"], self.igdb_id)
-        self.assertEqual(self.client.delete(f'/api/saved-links/{link["id"]}').status_code, 204)
-        with SessionLocal() as session:
-            self.assertIsNone(session.get(SavedLink, link["id"]))
-        with self.assertRaises(ValueError):
-            submit_result({"id":link["id"], "leaseToken":claim["leaseToken"],
-                           "games":["Hollow Knight Test"]})
 
     def test_preview_only_after_save_and_reputation_checked(self):
         link = self.save("preview")
@@ -286,52 +202,6 @@ class SavedLinkTests(unittest.TestCase):
         self.assertEqual(self.client.get(f'/api/saved-links/{keeper["id"]}').status_code, 200)
         with SessionLocal() as session:
             self.assertIsNotNone(session.get(Game, self.game_pk))
-
-    def test_expired_claim_retry_failed_and_explicit_refresh(self):
-        link = self.save()
-        first = claim_jobs(only_id=link["id"])["jobs"][0]
-        with SessionLocal() as session:
-            row = session.get(SavedLink, link["id"])
-            row.lease_until = _now() - timedelta(minutes=1)
-            session.commit()
-        second = claim_jobs(only_id=link["id"])["jobs"][0]
-        self.assertNotEqual(first["leaseToken"], second["leaseToken"])
-        with self.assertRaises(ValueError):
-            submit_result({"id":link["id"], "leaseToken":first["leaseToken"],
-                           "games":["Hades"]})
-        self.assertEqual(submit_result({
-            "id":link["id"], "leaseToken":second["leaseToken"],
-            "error":"Источник недоступен",
-        })["status"], "pending")
-        third = claim_jobs(only_id=link["id"])["jobs"][0]
-        self.assertEqual(submit_result({
-            "id":link["id"], "leaseToken":third["leaseToken"],
-            "error":"Источник недоступен",
-        })["status"], "failed")
-        self.assertEqual(claim_jobs(only_id=link["id"])["jobs"], [])
-        retry = self.client.post(f'/api/saved-links/{link["id"]}/retry')
-        self.assertEqual(retry.json()["status"], "pending")
-        fourth = claim_jobs(only_id=link["id"])["jobs"][0]
-        submit_result({"id":link["id"], "leaseToken":fourth["leaseToken"], "games":[]})
-        refreshed = self.client.post(f'/api/saved-links/{link["id"]}/refresh')
-        self.assertEqual(refreshed.json()["status"], "pending")
-        self.assertIsNone(refreshed.json()["gptNames"])
-        self.assertEqual(refreshed.json()["gameIds"], [])
-        self.assertEqual(claim_jobs(only_id=link["id"])["jobs"][0]["attempt"], 1)
-
-    def test_catalog_delete_trigger_removes_ids_not_url_or_names(self):
-        link = self.save()
-        claim = claim_jobs(only_id=link["id"])["jobs"][0]
-        submit_result({"id":link["id"], "leaseToken":claim["leaseToken"],
-                       "games":["Hollow Knight Test"]})
-        with patch("api.saved_links_worker._find_top_game_id", return_value=self.igdb_id):
-            self.assertTrue(resolve_games(only_id=link["id"])["complete"])
-        with SessionLocal() as session:
-            session.delete(session.get(Game, self.game_pk))
-            session.commit()
-        fetched = self.client.get(f'/api/saved-links/{link["id"]}').json()
-        self.assertEqual(fetched["gameIds"], [])
-        self.assertEqual(fetched["gptNames"], ["Hollow Knight Test"])
 
     def test_another_user_cannot_read_or_modify(self):
         link = self.save()
