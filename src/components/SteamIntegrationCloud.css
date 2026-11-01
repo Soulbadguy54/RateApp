@@ -357,3 +357,63 @@
   border-color: rgba(255,112,128,.46);
   background: rgba(255,80,99,.095);
 }
+
+
+/* Stable compact glass: network responses change only the contents, never
+   the dialog footprint. Sync expands this SAME surface, not a replacement. */
+.steam-integration__backdrop {
+  padding: max(6px, env(safe-area-inset-top)) 8px max(6px, env(safe-area-inset-bottom));
+}
+.steam-integration__panel {
+  box-sizing: border-box;
+  height: min(535px, calc(100dvh - 36px));
+  max-height: 100%;
+  min-height: 0;
+  width: min(100%, 440px);
+  overflow-x: hidden;
+  overflow-y: auto; /* preserve touch scrolling for long lists */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  transition: height .53s cubic-bezier(.22, 1, .36, 1),
+              padding .53s cubic-bezier(.22, 1, .36, 1);
+  box-shadow:
+    0 20px 90px rgba(0,0,0,.53),
+    inset 0 1px 0 rgba(255,255,255,.15),
+    0 0 40px rgba(var(--steam-accent-rgb,140,242,125),.09);
+}
+.steam-integration__panel::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.steam-integration__panel--connected:not(.steam-integration__panel--expanded) {
+  height: min(445px, calc(100dvh - 36px));
+}
+.steam-integration__panel--expanded {
+  height: calc(100dvh - max(6px, env(safe-area-inset-top)) - max(6px, env(safe-area-inset-bottom)));
+  padding-inline: clamp(14px, 4.4vw, 22px);
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  border-color: rgba(var(--steam-accent-rgb,140,242,125),.43);
+}
+.steam-integration__status-space {
+  min-height: 28px;
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 5px;
+}
+.steam-integration__status-space > * { margin: 0; width: 100%; }
+.steam-integration__status-space .steam-integration__muted {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #cbd6e6;
+}
+.steam-integration__profile {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .2s ease, border-color .2s ease;
+}
+.steam-integration__profile > svg { opacity: .9; }
+.steam-integration__profile:active {
+  background: rgba(var(--steam-accent-rgb,140,242,125),.13);
+  border-color: rgba(var(--steam-accent-rgb,140,242,125),.55);
+}
+@media (prefers-reduced-motion: reduce) {
+  .steam-integration__panel { transition: none; }
+  .steam-integration__profile { transition: none; }
+}
