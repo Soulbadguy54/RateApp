@@ -363,7 +363,7 @@ export default function SteamIntegrationCloud({
                 style={{ ...panelStyle, ...(hasVisibleGames && expandedHeight !== null ? { height: expandedHeight + 'px' } : {}) }}
                 data-mode={hasVisibleGames ? 'results' : 'compact'}
                 initial={reducedMotion ? false : { opacity: .65, scale: .16, x, y, borderRadius: 32 }}
-                animate={{ opacity: 1, scale: 1, x: 0, y: 0, borderRadius: expanded ? 14 : 21 }}
+                animate={{ opacity: 1, scale: 1, x: 0, y: 0, borderRadius: hasVisibleGames ? 14 : 21 }}
                 exit={reducedMotion ? { opacity: 0 } : { opacity: .6, scale: .16, x, y, borderRadius: 32 }}
                 transition={reducedMotion ? { duration: 0 } : {
                   type: 'spring', stiffness: 300, damping: 32, mass: .86,
