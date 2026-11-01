@@ -802,3 +802,31 @@
     rgba(var(--profile-tint-rgb,14,19,32),var(--profile-tint-alpha,0)),
     transparent 65%);
 }
+
+
+/* Version is a quiet but accessible 44px touch target. Only the public
+   release number is accented; the internal SHA is never shown here. */
+.app-build-version__trigger {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 5px; min-height: 44px;
+  padding: 8px 12px;
+  border: 0; border-radius: 12px; background: transparent;
+  color: #a8b4c6; font-size: 11px; font-weight: 550;
+  cursor: pointer;
+}
+.app-build-version__trigger span {
+  color: var(--profile-accent-color, var(--accent));
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  text-decoration: underline;
+  text-decoration-color: rgba(var(--profile-accent-rgb,140,242,125),.47);
+  text-underline-offset: 3px;
+}
+.app-build-version__trigger:focus-visible {
+  outline: 2px solid var(--profile-accent-color, var(--accent));
+  outline-offset: 2px;
+}
+.app-build-version__trigger:active { transform: scale(.98); }
+@media (prefers-reduced-motion: reduce) {
+  .app-build-version__trigger:active { transform: none; }
+}

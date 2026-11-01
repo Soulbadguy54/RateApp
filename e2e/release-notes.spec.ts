@@ -1,0 +1,68 @@
+import { test, expect } from '@playwright/test'
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('rateapp-install-confirmed', 'yes'))
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    const data = path === '/api/bootstrap'
+      ? { user: { id: 936, nickname: 'releases_qa', email: 'qa@example.test',
+          profileTint: 'violet', avatarVersion: 0, createdAt: '2026-10-01T00:00:00Z' },
+          library: [], collections: [] }
+      : path === '/api/steam/connection' ? { connected: false, steamId64: null }
+      : path === '/api/push/config' ? { enabled: false, publicKey: '', devices: 0 }
+      : {}
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
+  })
+})
+
+test('public version number opens business-only notes and arrows browse production batches', async ({ page }) => {
+  await page.goto('/?tab=profile')
+  const version = page.getByRole('button', { name: 'История обновлений, версия 26.11.001' })
+  await expect(version).toBeVisible()
+  await expect(version.locator('span')).toHaveText('26.11.001')
+  await version.click()
+
+  const dialog = page.getByRole('dialog', { name: 'История обновлений' })
+  const previous = dialog.getByRole('button', { name: 'Предыдущая версия' })
+  const next = dialog.getByRole('button', { name: 'Следующая версия' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('.release-notes__version strong')).toHaveText('26.11.001')
+  await expect(dialog).toContainText('Подключение Steam')
+  await expect(dialog).toContainText('Мои ссылки')
+  await expect(dialog).not.toContainText('миграц')
+  await expect(dialog).not.toContainText('GitHub')
+  await expect(next).toBeDisabled()
+
+  await previous.click()
+  await expect(dialog.locator('.release-notes__version strong')).toHaveText('26.10.012')
+  await expect(dialog).toContainText('возвращаться назад')
+  await previous.click()
+  await expect(dialog.locator('.release-notes__version strong')).toHaveText('26.10.011')
+  await expect(dialog).toContainText('не было крупных изменений')
+  await next.click()
+  await expect(dialog.locator('.release-notes__version strong')).toHaveText('26.10.012')
+
+  // Check the remote boundary without a long chain of WebKit click animations.
+  await page.keyboard.press('End')
+  await expect(dialog.locator('.release-notes__version strong')).toHaveText('26.10.001')
+  await expect(previous).toBeDisabled()
+  await next.click()
+  await expect(dialog.locator('.release-notes__version strong')).toHaveText('26.10.002')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(version).toBeFocused()
+})
+
+test('version history consumes native Back without leaving the profile', async ({ page }) => {
+  await page.goto('/?tab=profile')
+  await page.getByRole('button', { name: 'История обновлений, версия 26.11.001' }).click()
+  const dialog = page.getByRole('dialog', { name: 'История обновлений' })
+  await expect(dialog).toBeVisible()
+  await page.evaluate(() => {
+    const back = new Event('rateapp:cancel-transient', { cancelable: true })
+    window.dispatchEvent(back)
+    if (!back.defaultPrevented) throw new Error('Version dialog did not consume Back')
+  })
+  await expect(dialog).toHaveCount(0)
+  await expect(page).toHaveURL(/tab=profile/)
+})
