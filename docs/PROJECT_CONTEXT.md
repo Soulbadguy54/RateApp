@@ -1,3 +1,5 @@
+**Staging CI infrastructure (01.11.2026, main workflow PR):** GitHub `workflow_run` читает определение `.github/workflows/vps-stage.yml` из default branch `main`, даже если собирает SHA из `develop`. Гардированный `scripts/ssh_deploy_retry.py` повторяет **только** SSH pre-auth reset (exit 255; `kex_exchange_identification`), паузы 90/180 секунд, максимум 3 попытки, отправляя промежуточные Telegram-уведомления. При отказе ключа, remote deploy или timeout повтора нет. Окончательный статус — привычный trusted `telegram_ci_notify.py`. Не меняет Steam UI, production app/DB или настройки sshd.
+
 # Rate APP — единый контекст проекта
 
 **Срез на 19.10.2026 · проверенная основа:** `main` по коммиту `33056bdc` (PR #35). История: [CHANGELOG](../CHANGELOG.md), правила: [AGENTS](../AGENTS.md), решения: [DECISIONS](DECISIONS.md). После этой даты сначала проверить фактический HEAD/production. Проект существует **как работающее приложение**, старый `README.md` ранее отставал от реализации.

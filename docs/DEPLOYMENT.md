@@ -1,3 +1,9 @@
+## Автоповтор pre-auth SSH для staging (инфраструктура main, 01.11.2026)
+
+При ошибках `kex_exchange_identification: read: Connection reset by peer` со статусом SSH 255, характерных для sshd `MaxStartups` под бот-сканированием (run #41307737805), `scripts/ssh_deploy_retry.py` в GitHub staging deploy выполняет максимум 3 строго ограниченные попытки (задержки 90/180 сек). Telegram сообщает о каждом назначенном повторе и об исчерпании. Ошибки ключа, remote deployment/migration и таймауты не повторяются, чтобы не удвоить изменение БД. SSH host-key pin и restricted `deploy-stage` сохраняются.
+
+GitHub `workflow_run` использует default-branch `main` версию workflow, но `actions/checkout` берет выбранный `develop` SHA; поэтому инфраструктурные файлы нужно иметь и там, и там. Эта запись относится только к staging CI и не меняет production deploy, схемы или пользовательские данные. После слияния инфраструктурного PR в main необходимо сверить pipeline/повторные сообщения Telegram и конкретный stage image SHA.
+
 # RateApp: safe schema changes and deploys
 
 ## Required order

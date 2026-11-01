@@ -1,3 +1,8 @@
+## 1 ноября 2026 — инфраструктура staging SSH retries (PR на main, без изменений продукта)
+
+- Только `.github/workflows/vps-stage.yml`, `scripts/ssh_deploy_retry.py` и unit-тесты: pre-auth SSH reset (exit 255) повторяется до трех попыток с паузами 90/180 секунд. При старте retry и исчерпании попыток Telegram явно пишет о сбросе SSH/возможном MaxStartups; штатное итоговое уведомление остается.
+- Не повторяем успешный/частично начатый remote deploy, ошибки ключей, миграции или timeout. SSH-конфигурация VPS и production workflow не меняются. Это инфраструктурная активация на default branch, без переноса Steam/UI из develop.
+
 ## 27 октября 2026 — защита production от перепутанного upstream Docker DNS (PR после #85)
 
 - После выпуска #85 run #40458962549: publish и deploy успешно обновили VPS до `f0b2b92273cb`, но прямой Telegram job вернул failure и отправил предупреждение, потому что публичный `r-app.ru/api/health` в тот момент представился как `staging`; сообщение успешно доставлено.

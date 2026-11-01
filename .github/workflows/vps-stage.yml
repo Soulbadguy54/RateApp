@@ -88,13 +88,18 @@ jobs:
           cp deploy/ssh_known_hosts ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
           test -s ~/.ssh/id_ed25519 && test -s ~/.ssh/known_hosts
+      # Retry strictly pre-auth SSH resets (e.g. MaxStartups under bot traffic).
+      # Never retry remote migration/deploy failures, key errors, or timeouts.
+      - name: Validate staging SSH retry guard
+        run: python3 -m unittest discover -s tests -p 'test_ssh_deploy_retry.py' -v
       - name: Deploy isolated staging revision
+        timeout-minutes: 20
         env:
           DEPLOY_SHA: ${{ needs.publish.outputs.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
-          printf '%s\n' "$GH_TOKEN" | ssh -T -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o BatchMode=yes "rateapp-deploy@111.88.215.215" "deploy-stage $DEPLOY_SHA"
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ vars.TG_CHAT_ID }}
+        run: python3 scripts/ssh_deploy_retry.py
       - name: Verify staging health and registration policy
         run: |
           curl -fsS --retry 8 --retry-delay 5 https://dev.r-app.ru/api/health |
