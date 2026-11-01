@@ -54,7 +54,7 @@ test('public version number opens business-only notes and arrows browse producti
   await expect(dialog).toContainText('Октябрь 2026')
   await expect(dialog).toContainText('персональный Tinder')
   await expect(dialog).toContainText('Интерактивная история обновлений')
-  await expect(dialog.evaluate(el => el.offsetHeight)).resolves.toBe(glassHeight)
+  expect(await dialog.evaluate(el => el.offsetHeight)).toBe(glassHeight)
   await expect(previous).toBeDisabled()
   await next.click()
   await expect(dialog.locator('.release-notes__version strong')).toHaveText('26.11.001')
