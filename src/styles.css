@@ -41,7 +41,11 @@ html, body {
   --section-caption-gap: 4px;
   --section-header-height: 54px;
   --section-header-bottom-gap: 14px;
-  --nav-liquid-fill: rgba(16, 24, 41, .5);
+  --nav-liquid-fill: rgba(16, 24, 41, .82);
+  /* One actual glass material for both bottom navigation and its popovers. */
+  --nav-glass-background: linear-gradient(150deg, rgba(14,19,32,.86), rgba(16,24,41,.83) 52%, rgba(10,17,31,.89));
+  --nav-glass-filter: blur(32px) saturate(135%);
+  --nav-glass-stroke: rgba(180, 193, 210, .25);
   --text-field-height: 52px;
   --text-field-radius: 14px;
   --text-field-font-size: 14px;
@@ -4319,11 +4323,11 @@ body:has(.auth-shell) .install-prompt { display: none; }
    One full-width, square strip; scrollable content continues behind it. */
 .bottom-nav {
   border: 0;
-  border-top: 1px solid var(--header-glass-stroke);
+  border-top: 1px solid var(--nav-glass-stroke);
   border-radius: 0;
-  background: var(--header-glass-background);
-  -webkit-backdrop-filter: var(--header-glass-filter);
-  backdrop-filter: var(--header-glass-filter);
+  background: var(--nav-glass-background);
+  -webkit-backdrop-filter: var(--nav-glass-filter);
+  backdrop-filter: var(--nav-glass-filter);
   box-shadow: 0 -9px 20px rgba(3,8,20,.12);
 }
 @media (min-width: 700px) {
