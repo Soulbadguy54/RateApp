@@ -24,6 +24,13 @@ type NewGame = { igdbId: number; title: string; coverUrl: string | null; status:
 type Unresolved = { appid: number; name: string; reason?: string }
 type Preview = { token: string; items: NewGame[]; unresolved: Unresolved[]; nextSyncAt?: string }
 type SyncResult = { created: { igdbId: number; title: string; status: 'playing' | 'wishlist' }[]; unresolved: Unresolved[] }
+export type SteamSearchSnapshot = {
+  overview: Overview | null
+  preview: Preview | null
+  result: SyncResult | null
+  nextSyncAt: string | null
+  dismissed: number[]
+}
 
 const STEAM_PRIVACY_URL = 'https://steamcommunity.com/my/edit/settings'
 const messages: Record<string, string> = {
@@ -73,34 +80,39 @@ export default function SteamIntegrationCloud({
   onSynced,
   tint = 'default',
   disabled = false,
+  restoreSnapshot,
+  onRestoredClose,
 }: {
   disabled?: boolean
-  onFindUnmatched?: (name: string, appid: number) => void
+  restoreSnapshot?: SteamSearchSnapshot | null
+  onRestoredClose?: () => void
+  onFindUnmatched?: (name: string, appid: number, snapshot: SteamSearchSnapshot) => void
   onSynced?: () => void
   tint?: ProfileTint
 }) {
   const [connection, setConnection] = useState<SteamConnection | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(Boolean(restoreSnapshot))
+  const wasRestoredRef = useRef(Boolean(restoreSnapshot))
   const [expandedHeight, setExpandedHeight] = useState<number | null>(null)
   const panelRef = useRef<HTMLElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [unlinking, setUnlinking] = useState(false)
-  const [overview, setOverview] = useState<Overview | null>(null)
+  const [overview, setOverview] = useState<Overview | null>(restoreSnapshot?.overview ?? null)
   const [avatarFailed, setAvatarFailed] = useState(false)
   const [overviewError, setOverviewError] = useState(false)
   const [checking, setChecking] = useState(false)
   const [dismissBusy, setDismissBusy] = useState<number | null>(null)
-  const [dismissed, setDismissed] = useState<number[]>([])
+  const [dismissed, setDismissed] = useState<number[]>(restoreSnapshot?.dismissed ?? [])
   const [syncing, setSyncing] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
   const [secondsNow, setSecondsNow] = useState(() => Date.now())
-  const [nextSyncAt, setNextSyncAt] = useState<string | null>(null)
+  const [nextSyncAt, setNextSyncAt] = useState<string | null>(restoreSnapshot?.nextSyncAt ?? null)
   const pendingRef = useRef(false)
   const checkingGeneration = useRef(0)
-  const [preview, setPreview] = useState<Preview | null>(null)
-  const [result, setResult] = useState<SyncResult | null>(null)
+  const [preview, setPreview] = useState<Preview | null>(restoreSnapshot?.preview ?? null)
+  const [result, setResult] = useState<SyncResult | null>(restoreSnapshot?.result ?? null)
   const cloudRef = useRef<HTMLButtonElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
   const reducedMotion = useReducedMotion()
@@ -184,6 +196,12 @@ export default function SteamIntegrationCloud({
     setSecondsNow(Date.now())
     const timer = window.setInterval(() => setSecondsNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
+  }, [open])
+
+  useEffect(() => {
+    if (open || !wasRestoredRef.current) return
+    wasRestoredRef.current = false
+    onRestoredClose?.()
   }, [open])
 
   useEffect(() => {
@@ -463,7 +481,12 @@ export default function SteamIntegrationCloud({
                             </a>
                             <div className="steam-integration__unresolved-actions">
                               <button type="button" className="steam-integration__unresolved-search" aria-label={'Найти в базе Rate APP: ' + item.name}
-                                title="Найти в Rate APP" onClick={() => { onFindUnmatched?.(item.name, item.appid); setOpen(false) }}>
+                                title="Найти в Rate APP" onClick={() => {
+                                  onFindUnmatched?.(item.name, item.appid, {
+                                    overview, preview, result, nextSyncAt, dismissed,
+                                  })
+                                  setOpen(false)
+                                }}>
                                 <Icon name="search" size={17} />
                               </button>
                               <button type="button" className="steam-integration__unresolved-dismiss" aria-label={'Больше не показывать: ' + item.name}
