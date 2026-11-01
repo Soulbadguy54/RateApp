@@ -830,3 +830,20 @@
 @media (prefers-reduced-motion: reduce) {
   .app-build-version__trigger:active { transform: none; }
 }
+
+
+/* The whole Steam cloud is the hit target. Decorative surroundings never
+   route a tap through to the avatar or a neighbouring game cloud. */
+.profile-glass-header__hero .profile-steam-cloud-launch {
+  pointer-events: auto;
+  isolation: isolate;
+  z-index: 4;
+  touch-action: manipulation;
+}
+.profile-glass-header__hero .profile-steam-cloud {
+  cursor: pointer;
+  pointer-events: auto;
+  width: 100%;
+  height: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
