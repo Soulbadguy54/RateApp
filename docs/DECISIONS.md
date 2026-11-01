@@ -1,3 +1,11 @@
+## ADR-079 · Ограниченные повторы SSH только до начала staging deploy (01.11.2026, принято для develop)
+
+**Проблема.** GitHub Actions staging deployment #41307737805 дважды получил `kex_exchange_identification: read: Connection reset by peer` до проверки ключа; в это время VPS sshd логировал массовые подключения и `MaxStartups throttling` (49 сброшенных соединений). Образы были собраны, но stage не обновился. Простой повтор всего pipeline пересобирает образы и создает задержки.
+
+**Решение.** Запустить pinned `deploy-stage <sha>` через `scripts/ssh_deploy_retry.py` в одном job только при достоверном reset до аутентификации с exit 255. Три попытки, 90/180 секунд, с жёстким SSH ConnectTimeout; удаленные ошибки, SSH host-key/auth failures и таймауты не повторяются, потому что сервер мог начать миграцию. Telegram сообщает о начале повторов и их исчерпании, обычный доверенный notifier сообщает конечный статус. Не расширять `MaxStartups` и не отключать SSH-защиту ради CI.
+
+**Граница workflow:** GitHub `workflow_run` берет конфигурацию из default branch `main`. Для реальной автоматической активации требуется отдельный контролируемый PR workflow+script в `main`; код Steam из develop в production таким PR не переносится.
+
 ## ADR-078 · Steam AppID mapping + ручной двухфазный импорт (01.11.2026, develop feature)
 
 **Решение.** Один user_games остаётся единственной связью владельца и каталожной игры; steam_data JSONB хранит импорт/дополнительные метаданные. Не создавать постоянные steam_library_items или user_game_sources. AppID игры не равен SteamID64 пользователя. Общий game_external_ids(provider, external_id) допускает несколько Steam AppID на один IGDB ID и TTL для отрицательного ответа; единый пакетный IGDB resolver работает в BACKGROUND очереди.
