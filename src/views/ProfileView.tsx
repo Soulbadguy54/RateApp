@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import type { AuthUser } from '../AuthScreen'
 import PushSettings from '../PushSettings'
 import SteamIntegrationCloud from '../components/SteamIntegrationCloud'
+import ReleaseNotesDialog from '../components/ReleaseNotesDialog'
+import { CURRENT_RELEASE_VERSION } from '../releaseNotes'
 import Icon from '../components/Icon'
 import { Cover } from '../components/GameCard'
 import type { ProfileCloud } from '../profileTopGames'
@@ -56,6 +58,8 @@ export default function ProfileView({
   onSteamSynced?: () => void
 }) {
   const [settingsTab, setSettingsTab] = useState<'notifications' | 'security'>('notifications')
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
+  const closeReleaseNotes = useCallback(() => setReleaseNotesOpen(false), [])
   const notificationsTabRef = useRef<HTMLButtonElement>(null)
   const securityTabRef = useRef<HTMLButtonElement>(null)
   const [editing, setEditing] = useState(false)
@@ -421,7 +425,14 @@ export default function ProfileView({
           </AnimatePresence>
         </div>
       </section>
-      <p className="app-build-version">Версия приложения: {__RATEAPP_BUILD__}</p>
+      <p className="app-build-version">
+        <button type="button" className="app-build-version__trigger"
+          aria-label={'История обновлений, версия ' + CURRENT_RELEASE_VERSION}
+          onClick={() => setReleaseNotesOpen(true)}>
+          Версия приложения: <span>{CURRENT_RELEASE_VERSION}</span>
+        </button>
+      </p>
+      <ReleaseNotesDialog open={releaseNotesOpen} tint={tint} onClose={closeReleaseNotes} />
     </>
   )
 }
