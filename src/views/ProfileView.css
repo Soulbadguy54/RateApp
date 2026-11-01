@@ -568,37 +568,193 @@
 }
 
 
-/* Joined outline tabs: the active label opens into the full-width line. */
-.profile-settings__tab { background: transparent; box-shadow: none; color: var(--profile-accent-color, var(--accent)); }
-.profile-settings__tab--active { background: transparent; border: 1px solid var(--profile-accent-color, var(--accent)); border-bottom: 0; box-shadow: none; }
-.profile-settings__tab-active { background: transparent; box-shadow: none; }
-.profile-settings__tab--active::after { background: #111924; height: 2px; bottom: -1px; }
-.profile-settings__tabs { margin-bottom: -1px; }
-.profile-settings__folder { border: 0; border-top: 1px solid var(--profile-accent-color, var(--accent)); background: transparent; border-radius: 0; box-shadow: none; }
-.profile-settings .push-switch[aria-checked="true"] { background: var(--profile-accent-color, var(--accent)); }
-.profile-settings .push-settings__collection-link { color: var(--profile-accent-color, var(--accent)); }
-.profile-settings .push-settings__text h2 { color: var(--profile-accent-color, var(--accent)); font-size: 13px; margin-bottom: 4px; }
+/* Profile outline tabs: the selected three-sided tab connects to rails that
+   reach both VIEWPORT edges. One accent line only; no blue folder separator. */
+.profile-settings {
+  width: calc(100% + var(--page-inline-left) + var(--page-inline-right));
+  margin-left: calc(-1 * var(--page-inline-left));
+  margin-right: calc(-1 * var(--page-inline-right));
+}
+.profile-settings__tabs {
+  --profile-tab-gap: clamp(8px, 2.5vw, 12px);
+  --profile-first-end: calc((100% + var(--page-inline-left) - var(--page-inline-right) - var(--profile-tab-gap)) / 2);
+  --profile-second-start: calc(var(--profile-first-end) + var(--profile-tab-gap));
+  position: relative;
+  gap: var(--profile-tab-gap);
+  padding-inline: var(--page-inline-left) var(--page-inline-right);
+  margin-bottom: 0;
+}
+.profile-settings__tabs::before,
+.profile-settings__tabs::after {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--profile-accent-color, var(--accent));
+  transition: width .38s cubic-bezier(.22, 1, .36, 1);
+  pointer-events: none;
+}
+.profile-settings__tabs::before { left: 0; width: var(--page-inline-left); }
+.profile-settings__tabs::after { right: 0; width: calc(100% - var(--profile-first-end)); }
+.profile-settings__tabs[data-active="security"]::before { width: var(--profile-second-start); }
+.profile-settings__tabs[data-active="security"]::after { width: var(--page-inline-right); }
+.profile-settings__tab {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--profile-accent-color, var(--accent));
+}
+.profile-settings__tab--active {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.profile-settings__tab-active {
+  position: absolute;
+  inset: -1px -1px -1px;
+  z-index: -1;
+  border: 1px solid var(--profile-accent-color, var(--accent));
+  border-bottom: none;
+  border-radius: 15px 15px 0 0;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+.profile-settings__tab--active::after { display: none; }
+.profile-settings__folder {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  margin-top: 0;
+  overflow: visible;
+}
+.profile-settings__panel { padding-inline: var(--page-inline-left) var(--page-inline-right); }
+.profile-settings .push-settings.info-card {
+  gap: 8px;
+  margin: 7px 0 0;
+  padding: clamp(9px, 2.6vw, 13px) clamp(10px, 3vw, 15px);
+  border: 1px solid rgba(176, 188, 205, .32);
+  border-radius: 13px;
+  background: rgba(145, 157, 175, .035);
+  box-shadow: none;
+}
+.profile-settings .push-settings__collection-link,
+.profile-settings .push-settings__text h2 { color: var(--profile-accent-color, var(--accent)); }
+.profile-settings .push-settings__text h2 { font-size: 13px; margin-bottom: 4px; }
 .profile-security__row--backup .profile-security__identity { max-width: none; }
-.profile-security__row--backup .profile-security__details strong { white-space: nowrap; font-size: clamp(9px, 2.65vw, 12px); }
-.profile-security__backup-actions :is(a, button) { min-width: 34px; width: 34px; padding: 6px; color: var(--profile-accent-color, var(--accent)); }
+.profile-security__row--backup .profile-security__details strong {
+  white-space: nowrap;
+  font-size: clamp(9px, 2.65vw, 12px);
+}
+.profile-security__backup-actions :is(a, button) {
+  min-width: 34px;
+  width: 34px;
+  padding: 6px;
+  color: var(--profile-accent-color, var(--accent));
+}
 .profile-security__backup-actions a { border-color: currentColor; background: transparent; }
+
+/* Two independent transform layers avoid the prior launch/drift collision.
+   Outer wrappers launch once; inner controls drift from the first frame and
+   never reset at the hand-off. Reduced-motion disables both layers. */
 .profile-glass-header__hero { --profile-cloud-width: clamp(49px, 16vw, 67px); }
+.profile-top-games__item {
+  animation: profile-cloud-emerge .82s cubic-bezier(.20, .85, .34, 1) both;
+  will-change: transform;
+}
+.profile-top-games__item[data-slot="1"] {
+  animation-name: profile-cloud-emerge-middle;
+  animation-delay: .11s;
+}
+.profile-top-games__item[data-slot="2"] {
+  animation-name: profile-cloud-emerge-low;
+  animation-delay: .21s;
+}
 .profile-top-game {
-  animation: profile-cloud-emerge .8s cubic-bezier(.2,1.3,.33,1) var(--cloud-delay, 0s) both,
-    profile-cloud-drift 7.3s ease-in-out calc(.85s + var(--cloud-delay, 0s)) infinite alternate;
+  animation: profile-cloud-drift 5.6s ease-in-out var(--cloud-delay, 0s) infinite alternate;
 }
-.profile-top-games__item[data-slot="1"] .profile-top-game { animation-name: profile-cloud-emerge-middle, profile-cloud-drift-middle; animation-duration: .85s, 7.7s; }
-.profile-top-games__item[data-slot="2"] .profile-top-game { animation-name: profile-cloud-emerge-low, profile-cloud-drift-low; animation-duration: .9s, 7.1s; }
+.profile-top-games__item[data-slot="1"] .profile-top-game {
+  animation-name: profile-cloud-drift-middle;
+  animation-duration: 5.9s;
+}
+.profile-top-games__item[data-slot="2"] .profile-top-game {
+  animation-name: profile-cloud-drift-low;
+  animation-duration: 5.4s;
+}
+.profile-steam-cloud-launch {
+  position: absolute;
+  z-index: 2;
+  top: calc((100% - var(--profile-cloud-height)) / 2);
+  right: max(0px, calc((50% - var(--profile-avatar-size) / 2 - var(--profile-cloud-width)) / 2));
+  width: var(--profile-cloud-width);
+  height: var(--profile-cloud-height);
+  pointer-events: none;
+  animation: profile-steam-emerge .87s cubic-bezier(.20, .85, .34, 1) .16s both;
+  will-change: transform;
+}
 .profile-steam-cloud {
-  animation: profile-steam-emerge .9s cubic-bezier(.2,1.3,.33,1) .22s both,
-    profile-steam-cloud-drift 8.3s ease-in-out 1.15s infinite alternate;
+  position: relative;
+  top: auto;
+  right: auto;
+  animation: profile-steam-cloud-drift 6.1s ease-in-out -2.2s infinite alternate;
 }
-@keyframes profile-cloud-emerge { from { transform: translate3d(65px,60px,0) scale(.25); opacity:0 } 75% {transform:translate3d(-7px,-4px,0) scale(1.08);opacity:1} to {transform:translate3d(0,0,0) scale(1);opacity:1} }
-@keyframes profile-cloud-emerge-middle { from { transform: translate3d(100px,0,0) scale(.25); opacity:0 } 75% {transform:translate3d(-7px,0,0) scale(1.08);opacity:1} to {transform:translate3d(0,0,0) scale(1);opacity:1} }
-@keyframes profile-cloud-emerge-low { from { transform: translate3d(65px,-60px,0) scale(.25); opacity:0 } 75% {transform:translate3d(-7px,4px,0) scale(1.08);opacity:1} to {transform:translate3d(0,0,0) scale(1);opacity:1} }
-@keyframes profile-steam-emerge { from {transform:translate3d(-65px,0,0) scale(.25);opacity:0} 75% {transform:translate3d(8px,-5px,0) scale(1.08);opacity:.55} to {transform:translate3d(0,0,0) scale(1);opacity:.55} }
-@keyframes profile-cloud-drift { from { transform:translate3d(-6px,6px,0) rotate(-5deg) } to {transform:translate3d(12px,-8px,0) rotate(5deg)} }
-@keyframes profile-cloud-drift-middle { from {transform:translate3d(-4px,-8px,0) rotate(4deg)} to {transform:translate3d(15px,8px,0) rotate(-4deg)} }
-@keyframes profile-cloud-drift-low { from {transform:translate3d(-9px,5px,0) rotate(-4deg)} to {transform:translate3d(13px,-8px,0) rotate(5deg)} }
-@keyframes profile-steam-cloud-drift { from {transform:translate3d(-10px,7px,0) rotate(-4deg)} to {transform:translate3d(9px,-8px,0) rotate(4deg)} }
-@media (prefers-reduced-motion: reduce) { .profile-top-game, .profile-steam-cloud { animation:none !important; opacity:1 } }
+@keyframes profile-cloud-emerge {
+  0% { transform: translate3d(55px, 54px, 0) scale(.28); opacity: 0; }
+  75% { transform: translate3d(-4px, -3px, 0) scale(1.045); opacity: 1; }
+  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+}
+@keyframes profile-cloud-emerge-middle {
+  0% { transform: translate3d(80px, 0, 0) scale(.28); opacity: 0; }
+  75% { transform: translate3d(-4px, 0, 0) scale(1.045); opacity: 1; }
+  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+}
+@keyframes profile-cloud-emerge-low {
+  0% { transform: translate3d(55px, -54px, 0) scale(.28); opacity: 0; }
+  75% { transform: translate3d(-4px, 3px, 0) scale(1.045); opacity: 1; }
+  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+}
+@keyframes profile-steam-emerge {
+  0% { transform: translate3d(-60px, 0, 0) scale(.28); opacity: 0; }
+  75% { transform: translate3d(4px, -2px, 0) scale(1.045); opacity: 1; }
+  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+}
+@keyframes profile-cloud-drift {
+  from { transform: translate3d(-4px, 4px, 0) rotate(-3deg); }
+  to { transform: translate3d(6px, -5px, 0) rotate(3deg); }
+}
+@keyframes profile-cloud-drift-middle {
+  from { transform: translate3d(-3px, -5px, 0) rotate(2.5deg); }
+  to { transform: translate3d(7px, 5px, 0) rotate(-3deg); }
+}
+@keyframes profile-cloud-drift-low {
+  from { transform: translate3d(-5px, 3px, 0) rotate(-2.5deg); }
+  to { transform: translate3d(6px, -5px, 0) rotate(3deg); }
+}
+@keyframes profile-steam-cloud-drift {
+  from { transform: translate3d(-5px, 4px, 0) rotate(-3deg); }
+  to { transform: translate3d(5px, -5px, 0) rotate(3deg); }
+}
+
+/* Pin the version label to the bottom of the available profile viewport,
+   just above the fixed navigation; grow naturally on short screens. */
+.page--viewport .page-motion:has(> .profile-settings) {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - var(--bottom-nav-height) - var(--safe-bottom) - var(--page-bottom-gap));
+}
+.page--viewport .page-motion:has(> .profile-settings) > .app-build-version {
+  flex: 0 0 auto;
+  align-self: stretch;
+  margin: auto auto 0;
+  padding-top: 12px;
+  padding-bottom: 2px;
+  color: #697585;
+  font-size: 9px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .profile-top-games__item, .profile-steam-cloud-launch { animation: none !important; will-change: auto; }
+  .profile-top-game, .profile-steam-cloud { animation: none !important; will-change: auto; }
+  .profile-settings__tabs::before, .profile-settings__tabs::after { transition: none !important; }
+}
