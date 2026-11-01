@@ -221,7 +221,10 @@ export default function ProfileView({
           {(editing || clouds.some(Boolean)) && (
             <ol className="profile-top-games" aria-label="Игры в облаках профиля">
               {clouds.map((cloud, index) => (
-                (editing || cloud) && <li className="profile-top-games__item" data-slot={index} key={index}>
+                (editing || cloud) && <motion.li className="profile-top-games__item" data-slot={index} key={index}
+                  initial={reducedMotion ? false : { opacity: 0, x: 110, y: index === 0 ? 62 : index === 2 ? -62 : 0, scale: .24 }}
+                  animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                  transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 270, damping: 17, delay: .09 + index * .1 }}>
                   <button type="button"
                     className={'profile-top-game' + (editing ? ' profile-top-game--editing' : '')}
                     title={cloud?.game.title ?? 'Выбрать игру'}
@@ -238,13 +241,18 @@ export default function ProfileView({
                     )}
                     {editing && <span className="profile-top-game__edit" aria-hidden="true"><Icon name="edit" size={15} /></span>}
                   </button>
-                </li>
+                </motion.li>
               ))}
             </ol>
           )}
-          <div className="profile-steam-cloud" role="img" aria-label="Steam — интеграция пока не подключена">
-            <img src="/brand/steam.svg" alt="" aria-hidden="true" draggable={false} />
-          </div>
+          <motion.div className="profile-steam-launch"
+            initial={reducedMotion ? false : { opacity: 0, x: -95, scale: .24 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 250, damping: 16, delay: .4 }}>
+            <div className="profile-steam-cloud" role="img" aria-label="Steam — интеграция пока не подключена">
+              <img src="/brand/steam.svg" alt="" aria-hidden="true" draggable={false} />
+            </div>
+          </motion.div>
           <div className="profile-glass-header__avatar-row">
             {editing && photo ? (
               <div ref={cropRef} className="profile-avatar-crop" role="button" tabIndex={0}
@@ -387,12 +395,12 @@ export default function ProfileView({
                       <span className="profile-security__details"><strong>Резервное копирование</strong></span>
                     </div>
                     <div className="profile-security__backup-actions">
-                      <button type="button" disabled title="Импорт пока не реализован">
-                        <Icon name="upload" size={15} /> Импорт
+                      <button type="button" disabled aria-label="Импорт резервной копии (недоступен)" title="Импорт пока не реализован">
+                        <Icon name="upload" size={18} /><span className="sr-only">Импорт</span>
                       </button>
                       <a href="/api/export" download="rateapp-export.json"
-                        title="Экспорт текущего JSON-файла аккаунта">
-                        <Icon name="download" size={15} /> Экспорт
+                        aria-label="Экспорт резервной копии" title="Экспорт текущего JSON-файла аккаунта">
+                        <Icon name="download" size={18} /><span className="sr-only">Экспорт</span>
                       </a>
                     </div>
                   </div>
