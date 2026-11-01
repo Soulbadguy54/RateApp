@@ -30,7 +30,7 @@ for (const slotName of ['games', 'collections'] as const) {
     await expect(bubble).toHaveCSS('background-color', 'rgba(10, 15, 27, 0.76)')
     await expect(bubble).toHaveCSS('border-radius', '16px')
     await expect(bubble).toHaveCSS('border-top-color', 'rgba(175, 187, 204, 0.27)')
-    await expect(bubble).toHaveCSS('backdrop-filter', /blur\\(38px\\)/)
+    await expect(bubble).toHaveCSS('backdrop-filter', /blur\(38px\)/)
     await expect(page.locator('[data-nav-slot="' + slotName + '"] .bottom-nav__liquid-path')).toHaveCSS('stroke', 'none')
     await expect(page.locator('[data-nav-slot="' + slotName + '"] .bottom-nav__liquid-rim')).toHaveCount(0)
     await expect.poll(async () => Number(await surface.evaluate(el => getComputedStyle(el).opacity)), { timeout: 4000 })
