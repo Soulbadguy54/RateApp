@@ -37,6 +37,7 @@ class SteamConnection(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
     steam_id64: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SteamLinkChallenge(Base):
@@ -68,6 +69,34 @@ class LoginThrottle(Base):
     failures: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class GameExternalId(Base):
+    """Shared provider-to-IGDB mapping. A Steam AppID is NOT a Steam user ID."""
+    __tablename__ = "game_external_ids"
+    __table_args__ = (UniqueConstraint("provider", "external_id", name="uq_game_external_provider_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(24), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    igdb_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    source: Mapped[str] = mapped_column(String(24), nullable=False)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SteamSyncPreview(Base):
+    """Expiring uncommitted preview; not a persistent owned-games table."""
+    __tablename__ = "steam_sync_previews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    steam_id64: Mapped[str] = mapped_column(String(20), nullable=False)
+    session_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    items: Mapped[list] = mapped_column(JSONB, nullable=False)
+    unresolved: Mapped[list] = mapped_column(JSONB, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class Game(Base):
@@ -140,6 +169,7 @@ class UserGame(Base):
     technology_score: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
     gameplay_score: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
     review: Mapped[str | None] = mapped_column(Text)
+    steam_data: Mapped[dict | None] = mapped_column(JSONB)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     game: Mapped[Game] = relationship()

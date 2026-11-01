@@ -85,3 +85,23 @@
 @media (prefers-reduced-motion: reduce) {
   .steam-integration__backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* Steam sync content shares the original animated glass dialog. */
+.steam-integration__profile { display: flex; align-items: center; gap: 12px; padding: 12px; margin: 8px 0; background: rgba(255,255,255,.05); border-radius: 12px; }
+.steam-integration__profile > img { width: 50px; height: 50px; border-radius: 10px; object-fit: cover; }
+.steam-integration__profile > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.steam-integration__profile strong { font-size: 14px; overflow-wrap: anywhere; }
+.steam-integration__profile a { font-size: 12px; color: #a9caff; }
+.steam-integration__muted { font-size: 11px; color: #bac9db; line-height: 1.5; }
+.steam-integration__warning { font-size: 12px; color: #ffbec0; background: rgba(255,97,110,.1); border: 1px solid rgba(255,97,110,.27); padding: 9px 10px; border-radius: 9px; }
+.steam-integration__results { padding-top: 10px; margin-top: 10px; border-top: 1px solid rgba(192,211,238,.2); }
+.steam-integration__results h3 { font-size: 13px; margin: 15px 0 8px; color: #f0f5ff; }
+.steam-integration__results p { font-size: 12px; color: #bac9db; }
+.steam-integration__game { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+.steam-integration__game img { width: 36px; height: 48px; border-radius: 5px; object-fit: cover; }
+.steam-integration__game div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.steam-integration__game strong { font-size: 12px; overflow-wrap: anywhere; }
+.steam-integration__game span { color: #a7d5b4; font-size: 11px; }
+.steam-integration__unresolved { display: flex; align-items: center; gap: 6px; width: 100%; padding: 11px 5px; text-align: left; font-size: 12px; color: #bad4ff; background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,.06); overflow-wrap: anywhere; }
+.steam-integration__unresolved small { color: #bac9db; white-space: nowrap; font-size: 10px; margin-left: auto; }
+.steam-integration__connect:disabled { opacity: .45; cursor: not-allowed; }

@@ -30,6 +30,7 @@ from api.games_routes import router as games_router, _cache_igdb_games
 from api.discovery_routes import router as discovery_router
 from api.saved_links_routes import router as saved_links_router
 from api.steam_routes import router as steam_router
+from api.steam_sync import router as steam_sync_router
 from api.library_service import (
     _community_rating_map, _game_payload, _collection_slugs,
     _serialize_entry, _collections_payload, _library_payload,
@@ -86,6 +87,7 @@ app.include_router(games_router)
 app.include_router(discovery_router)
 app.include_router(saved_links_router)
 app.include_router(steam_router)
+app.include_router(steam_sync_router)
 
 # Database schema is upgraded by `alembic upgrade head` outside the request path.
 # Never run schema changes at cold start: one malformed historic row can break login.

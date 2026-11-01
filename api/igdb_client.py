@@ -57,7 +57,7 @@ class IGDBClient:
     def request(
         self, endpoint: str, body: str, *, priority: Priority = Priority.DETAILS,
     ) -> list[dict[str, object]]:
-        if endpoint not in {"games", "genres", "search", "game_time_to_beats", "multiquery"}:
+        if endpoint not in {"games", "genres", "search", "game_time_to_beats", "multiquery", "external_games", "external_game_sources"}:
             raise ValueError("Unsupported IGDB endpoint")
         pending = _Pending(endpoint=endpoint, body=body, deadline=time.monotonic() + QUEUE_WAIT_SECONDS)
         with self._lock:
