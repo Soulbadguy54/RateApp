@@ -147,9 +147,24 @@ test('floating cloud cards only use personal completed/dropped scores and open t
   await expect(steam).toBeVisible()
   await expect(page.getByRole('button', { name: /Steam/ })).toHaveCount(0)
   await expect(steam).toHaveCSS('animation-name', 'profile-steam-cloud-drift')
-  await expect(steam).toHaveCSS('animation-duration', '8.3s')
+  await expect(steam).toHaveCSS('animation-duration', '6.1s')
+  // Launch and drift must not write transform on the same element.
+  await expect(page.locator('.profile-steam-cloud-launch')).toHaveCSS('animation-name', 'profile-steam-emerge')
+  await expect(page.locator('.profile-top-games__item').first()).toHaveCSS('animation-name', 'profile-cloud-emerge')
+  await expect(cards.first()).toHaveCSS('animation-name', 'profile-cloud-drift')
+  const independent = await page.evaluate(() => {
+    const cloud = document.querySelector<HTMLElement>('.profile-top-game')!
+    const parent = cloud.parentElement!
+    return {
+      outer: getComputedStyle(parent).animationName.split(','),
+      inner: getComputedStyle(cloud).animationName.split(','),
+    }
+  })
+  expect(independent.outer).toHaveLength(1)
+  expect(independent.inner).toHaveLength(1)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(steam).toHaveCSS('animation-name', 'none')
+  await expect(page.locator('.profile-steam-cloud-launch')).toHaveCSS('animation-name', 'none')
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await expect(steam).toHaveCSS('animation-name', 'profile-steam-cloud-drift')
   const avatarCenter = await page.locator('.profile-glass-header__avatar-row').boundingBox()
