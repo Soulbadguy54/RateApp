@@ -84,9 +84,10 @@ test('Steam lookup survives declined matches and native Back restores the exact 
     expect(linked).toBe(0)
 
     // Walk through actual browser history rather than selecting bottom tabs.
-    for (let step = 0; step < 4 && !(await search.isVisible().catch(() => false)); step++) {
-      await page.goBack()
-    }
+    await page.goBack()
+    // The destination mounts after AnimatePresence finishes the prior page's
+    // exit animation, so wait for visible search before another interaction.
+    await expect(search).toBeVisible()
     await expect(search).toHaveValue('Call of Duty Deluxe')
     if (index === 0) await expect(page.getByRole('button', { name: 'Открыть игру «' + games[1].title + '»' })).toBeVisible()
   }
