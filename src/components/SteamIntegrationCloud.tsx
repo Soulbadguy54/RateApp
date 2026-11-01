@@ -82,6 +82,7 @@ export default function SteamIntegrationCloud({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [unlinking, setUnlinking] = useState(false)
   const [origin, setOrigin] = useState<Origin>({ x: 0, y: 0 })
   const [overview, setOverview] = useState<Overview | null>(null)
@@ -207,6 +208,7 @@ export default function SteamIntegrationCloud({
     if (bounds) setOrigin({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 })
     setPreview(null)
     setResult(null)
+    setExpanded(false)
     setDismissed([])
     setError('')
     setOpen(true)
@@ -215,6 +217,9 @@ export default function SteamIntegrationCloud({
   const sync = async () => {
     if (pendingRef.current || !overview?.canSync || (!preview && nextSyncAt && Date.parse(nextSyncAt) > Date.now())) return
     pendingRef.current = true
+    // Expand the same glass surface immediately, before the network request.
+    // The compact dialog's layout must never depend on when Steam responds.
+    setExpanded(true)
     setSyncing(true)
     setError('')
     const controller = new AbortController()
@@ -300,7 +305,8 @@ export default function SteamIntegrationCloud({
     <>
       <button type="button" ref={cloudRef}
         className={'profile-steam-cloud' + (connected ? ' profile-steam-cloud--connected' : '')}
-        onClick={onOpen}
+        onClick={event => { event.stopPropagation(); onOpen() }}
+        onPointerDown={event => event.stopPropagation()}
         aria-label={loading ? 'Steam — проверяем подключение' : connected ? 'Steam подключен, открыть настройки' : 'Подключить Steam'}
         title={connected ? 'Steam подключен' : 'Подключить Steam'}>
         <img src="/brand/steam.svg" alt="" aria-hidden="true" draggable={false} />
@@ -320,10 +326,11 @@ export default function SteamIntegrationCloud({
               onPointerDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
               <motion.section role="dialog" aria-modal="true"
                 aria-label={connected ? 'Подключенный аккаунт Steam' : 'Подключение Steam'}
-                className="steam-integration__panel"
+                className={'steam-integration__panel' + (connected ? ' steam-integration__panel--connected' : '') + (expanded ? ' steam-integration__panel--expanded' : '')}
                 style={panelStyle}
+                data-mode={expanded ? 'expanded' : 'compact'}
                 initial={reducedMotion ? false : { opacity: .65, scale: .16, x, y, borderRadius: 32 }}
-                animate={{ opacity: 1, scale: 1, x: 0, y: 0, borderRadius: 21 }}
+                animate={{ opacity: 1, scale: 1, x: 0, y: 0, borderRadius: expanded ? 14 : 21 }}
                 exit={reducedMotion ? { opacity: 0 } : { opacity: .6, scale: .16, x, y, borderRadius: 32 }}
                 transition={reducedMotion ? { duration: 0 } : {
                   type: 'spring', stiffness: 300, damping: 32, mass: .86,
@@ -343,7 +350,12 @@ export default function SteamIntegrationCloud({
                     ? 'Игры синхронизируются только по вашему запросу.'
                     : 'Привяжите Steam, чтобы импортировать библиотеку в Rate APP.'}
                 </p>
-                {error && <p className="steam-integration__notice" role="status">{error}</p>}
+                <div className="steam-integration__status-space" aria-live="polite" aria-atomic="true">
+                  {error ? <p className="steam-integration__notice" role="status">{error}</p>
+                    : connected && checking && !expanded
+                      ? <p className="steam-integration__muted" role="status">Проверяем подключение и вашу библиотеку…</p>
+                      : null}
+                </div>
                 {connected ? (
                   <>
                     <a className="steam-integration__profile"
@@ -357,7 +369,7 @@ export default function SteamIntegrationCloud({
                         <strong>{overview?.profile?.name || 'Профиль Steam'}</strong>
                         <small>Steam ID: {connection?.steamId64}</small>
                       </span>
-                      {!preview && !result && <Icon name="external-link" size={17} />}
+                      <Icon name="external-link" size={17} />
                     </a>
                     {(preview || result) && overview && (overview.alreadyAddedCount ?? 0) > 0 && (
                       <div className="steam-integration__already-added" aria-label={'Уже добавлено: ' + overview.alreadyAddedCount}>
