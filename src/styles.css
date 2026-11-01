@@ -4629,3 +4629,20 @@ html::-webkit-scrollbar, body::-webkit-scrollbar,
 .app-shell--viewport:has(.profile-glass-header) > .page--viewport {
   background: transparent;
 }
+
+/* Steam provenance mark on a game detail is supplementary, not a CTA. */
+.detail-hero__steam-badge {
+  width:18px; height:18px; padding:3px; border-radius:6px; top:12px; right:12px;
+}
+/* Match prompt: content-fitted bubbles and compositor-only button feedback. */
+.steam-match-confirm__pair { grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr); align-items:center; gap:7px; }
+.steam-match-confirm__pair div {
+  height:auto; min-height:0; align-self:center; justify-content:center;
+  padding:9px 8px; gap:4px;
+}
+.steam-match-confirm__pair strong { line-height:1.4; }
+.steam-match-confirm__actions button {
+  transition:transform .2s cubic-bezier(.22,1,.36,1), background-color .2s, border-color .2s;
+}
+.steam-match-confirm__actions button:hover:not(:disabled) { transform:translateY(-2px); }
+.steam-match-confirm__actions button:active:not(:disabled) { transform:scale(.91); }
