@@ -23,7 +23,7 @@ class SteamLinkTests(unittest.TestCase):
         self.client = TestClient(app, base_url="https://testserver", follow_redirects=False)
         self.nickname = "s" + secrets.token_hex(4)
         response = self.client.post("/api/auth/register", json={
-            "email": self.nickname + "@example.test",
+            "email": self.nickname + "@example.com",
             "nickname": self.nickname,
             "pin": "12345678",
         })
