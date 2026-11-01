@@ -25,6 +25,17 @@ type Unresolved = { appid: number; name: string; reason?: string }
 type Preview = { token: string; items: NewGame[]; unresolved: Unresolved[]; nextSyncAt?: string }
 type SyncResult = { created: { igdbId: number; title: string; status: 'playing' | 'wishlist' }[]; unresolved: Unresolved[] }
 
+// The preview lives in the parent while the profile is unmounted for an
+// in-flow game search. It is intentionally session-only, never persisted.
+export type SteamResumeState = {
+  connection: SteamConnection | null
+  overview: Overview | null
+  preview: Preview | null
+  result: SyncResult | null
+  nextSyncAt: string | null
+  dismissed: number[]
+}
+
 const STEAM_PRIVACY_URL = 'https://steamcommunity.com/my/edit/settings'
 const messages: Record<string, string> = {
   connected: '',
@@ -71,36 +82,40 @@ function PrivacyChecklist({ compact = false }: { compact?: boolean }) {
 export default function SteamIntegrationCloud({
   onFindUnmatched,
   onSynced,
+  resume = null,
+  onResumeDismiss,
   tint = 'default',
   disabled = false,
 }: {
   disabled?: boolean
-  onFindUnmatched?: (name: string, appid: number) => void
+  onFindUnmatched?: (name: string, appid: number, snapshot: SteamResumeState) => void
+  resume?: SteamResumeState | null
+  onResumeDismiss?: () => void
   onSynced?: () => void
   tint?: ProfileTint
 }) {
-  const [connection, setConnection] = useState<SteamConnection | null>(null)
+  const [connection, setConnection] = useState<SteamConnection | null>(resume?.connection ?? null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(Boolean(resume))
   const [expandedHeight, setExpandedHeight] = useState<number | null>(null)
   const panelRef = useRef<HTMLElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [unlinking, setUnlinking] = useState(false)
-  const [overview, setOverview] = useState<Overview | null>(null)
+  const [overview, setOverview] = useState<Overview | null>(resume?.overview ?? null)
   const [avatarFailed, setAvatarFailed] = useState(false)
   const [overviewError, setOverviewError] = useState(false)
   const [checking, setChecking] = useState(false)
   const [dismissBusy, setDismissBusy] = useState<number | null>(null)
-  const [dismissed, setDismissed] = useState<number[]>([])
+  const [dismissed, setDismissed] = useState<number[]>(resume?.dismissed ?? [])
   const [syncing, setSyncing] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
   const [secondsNow, setSecondsNow] = useState(() => Date.now())
-  const [nextSyncAt, setNextSyncAt] = useState<string | null>(null)
+  const [nextSyncAt, setNextSyncAt] = useState<string | null>(resume?.nextSyncAt ?? null)
   const pendingRef = useRef(false)
   const checkingGeneration = useRef(0)
-  const [preview, setPreview] = useState<Preview | null>(null)
-  const [result, setResult] = useState<SyncResult | null>(null)
+  const [preview, setPreview] = useState<Preview | null>(resume?.preview ?? null)
+  const [result, setResult] = useState<SyncResult | null>(resume?.result ?? null)
   const cloudRef = useRef<HTMLButtonElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
   const reducedMotion = useReducedMotion()
@@ -186,15 +201,20 @@ export default function SteamIntegrationCloud({
     return () => window.clearInterval(timer)
   }, [open])
 
+  const closePanel = () => {
+    setOpen(false)
+    onResumeDismiss?.()
+  }
+
   useEffect(() => {
     if (!open) return
     closeRef.current?.focus()
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key === 'Escape') closePanel()
     }
     const onBack = (event: Event) => {
       event.preventDefault()
-      setOpen(false)
+      closePanel()
     }
     document.addEventListener('keydown', onEscape)
     window.addEventListener('rateapp:cancel-transient', onBack)
@@ -356,7 +376,7 @@ export default function SteamIntegrationCloud({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: reducedMotion ? 0 : .22 }}
-              onPointerDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
+              onPointerDown={event => { if (event.target === event.currentTarget) closePanel() }}>
               <motion.section role="dialog" aria-modal="true"
                 aria-label={connected ? 'Подключенный аккаунт Steam' : 'Подключение Steam'}
                 ref={panelRef}
@@ -376,7 +396,7 @@ export default function SteamIntegrationCloud({
                     <h2 aria-live="polite">{connected ? checking ? 'Проверка соединения' : 'Steam подключен' : 'Подключить Steam'}</h2>
                   </div>
                   <button ref={closeRef} type="button" aria-label="Закрыть подключение Steam"
-                    className="steam-integration__close" onClick={() => setOpen(false)}>
+                    className="steam-integration__close" onClick={closePanel}>
                     <Icon name="x" size={19} />
                   </button>
                 </div>
@@ -463,7 +483,12 @@ export default function SteamIntegrationCloud({
                             </a>
                             <div className="steam-integration__unresolved-actions">
                               <button type="button" className="steam-integration__unresolved-search" aria-label={'Найти в базе Rate APP: ' + item.name}
-                                title="Найти в Rate APP" onClick={() => { onFindUnmatched?.(item.name, item.appid); setOpen(false) }}>
+                                title="Найти в Rate APP" onClick={() => {
+                                  onFindUnmatched?.(item.name, item.appid, {
+                                    connection, overview, preview, result, nextSyncAt, dismissed,
+                                  })
+                                  setOpen(false)
+                                }}>
                                 <Icon name="search" size={17} />
                               </button>
                               <button type="button" className="steam-integration__unresolved-dismiss" aria-label={'Больше не показывать: ' + item.name}
