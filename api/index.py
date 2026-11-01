@@ -85,6 +85,7 @@ app.include_router(push_router)
 app.include_router(games_router)
 app.include_router(discovery_router)
 app.include_router(saved_links_router)
+app.include_router(steam_router)
 
 # Database schema is upgraded by `alembic upgrade head` outside the request path.
 # Never run schema changes at cold start: one malformed historic row can break login.
