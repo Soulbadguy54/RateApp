@@ -268,10 +268,14 @@ def _prepare(user_id: int, steam_id: str, games: list[dict]) -> tuple[list[dict]
         appid = row["appid"]
         if appid in user_matched_apps:
             continue
+        igdb_id = matches.get(appid)
+        # Existing Rate APP games must never appear in either block, even if
+        # Steam omitted playtime for this particular AppID.
+        if igdb_id and igdb_id in loaded and igdb_id in already:
+            continue
         if row["minutes"] is None:
             unresolved.append({"appid": appid, "name": row["name"], "reason": "playtime_unavailable"})
             continue
-        igdb_id = matches.get(appid)
         if not igdb_id or igdb_id not in loaded:
             unresolved.append({"appid": appid, "name": row["name"]})
             continue
