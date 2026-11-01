@@ -168,7 +168,8 @@ export default function SavedLinksView({ cacheNamespace }: {
         ? [...current.filter(item => !payload.items.some(next => next.id === item.id)), ...payload.items]
         : payload.items)
       setNextBefore(payload.nextBefore)
-      setError('')
+      // A shared-intent validation error belongs to the import flow and must
+      // not be erased by the initial GET racing with that flow.
     } catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Не удалось загрузить ссылки.')
     } finally {
