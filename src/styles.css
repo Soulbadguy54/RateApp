@@ -4646,3 +4646,28 @@ html::-webkit-scrollbar, body::-webkit-scrollbar,
 }
 .steam-match-confirm__actions button:hover:not(:disabled) { transform:translateY(-2px); }
 .steam-match-confirm__actions button:active:not(:disabled) { transform:scale(.91); }
+
+/* The profile cloud game picker is an independent mobile screen — never a
+   second library section appended underneath the profile's settings. */
+.library-cloud-picker--screen {
+  position: fixed;
+  z-index: 24;
+  inset: 0;
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  background: var(--background, #101522);
+  padding: 0 0 calc(var(--safe-bottom, 0px) + 18px);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.library-cloud-picker--screen::-webkit-scrollbar { display: none; }
+.library-cloud-picker--screen .library-sticky-stack {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .library-cloud-picker--screen { transition: none; }
+}
