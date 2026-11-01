@@ -263,6 +263,7 @@ export default function PushSettings({ user, onOpenWishlist }: { user: string; o
     <section className="info-card push-settings" aria-label="Настройки уведомлений">
       <div className="push-settings__row">
         <div className="push-settings__text">
+          <h2>Релизы игр</h2>
           <p>Уведомим о релизе игры из коллекции{' '}
             <button type="button" className="push-settings__collection-link" onClick={onOpenWishlist}>Хочу пройти</button>
           </p>
