@@ -156,7 +156,9 @@ test('floating cloud cards only use personal completed/dropped scores and open t
   const hero = await page.locator('.profile-glass-header__hero').boundingBox()
   expect(avatarCenter && hero).toBeTruthy()
   expect(Math.abs(avatarCenter!.x + avatarCenter!.width / 2 - hero!.x - hero!.width / 2)).toBeLessThan(2)
-  await cards.first().click()
+  // A continuously drifting cloud has no stable bounding box for Playwright;
+  // the user can still tap it, so click its current position directly.
+  await cards.first().click({ force: true })
   await expect(page).toHaveURL(/game=102/)
 })
 

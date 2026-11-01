@@ -261,6 +261,7 @@ export default function PushSettings({ user, onOpenWishlist }: { user: string; o
 
   return (
     <section className="info-card push-settings" aria-label="Настройки уведомлений">
+      <h2 className="push-settings__title">Релизы игр</h2>
       <div className="push-settings__row">
         <div className="push-settings__text">
           <p>Уведомим о релизе игры из коллекции{' '}
@@ -282,8 +283,8 @@ export default function PushSettings({ user, onOpenWishlist }: { user: string; o
             className="push-switch__track"
             initial={false}
             animate={{
-              backgroundColor: enabled ? '#8cf27d' : '#424753',
-              borderColor: enabled ? '#8cf27d' : 'rgba(255,255,255,.22)',
+              backgroundColor: enabled ? 'var(--profile-accent-color, #8cf27d)' : '#424753',
+              borderColor: enabled ? 'var(--profile-accent-color, #8cf27d)' : 'rgba(255,255,255,.22)',
             }}
             transition={shouldReduceMotion ? { duration: 0 } : { duration: .2, ease: 'easeOut' }}
           >

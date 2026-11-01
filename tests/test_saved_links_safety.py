@@ -12,8 +12,8 @@ from api.saved_links_safety import (
     _fetch_once,
     _public_address,
     _read_text,
+    _safe_page_response,
     check_safe_browsing,
-    prepare_source,
     preview_source,
 )
 
@@ -311,8 +311,8 @@ class SavedLinksSafetyTests(unittest.TestCase):
                 (200, {"content-type": "text/html"}, b"<main>Hollow Knight</main>"),
             ],
         ) as fetch:
-            result = prepare_source("https://example.org/start")
-        self.assertEqual(result["text"], "Hollow Knight")
+            body, headers = _safe_page_response("https://example.org/start")
+        self.assertEqual(_read_text(body, headers), "Hollow Knight")
         self.assertEqual(checked, ["https://example.org/start",
                                    "https://destination.example.org/article"])
         self.assertEqual(fetch.call_count, 2)
@@ -322,7 +322,7 @@ class SavedLinksSafetyTests(unittest.TestCase):
             return_value=(302, {"location": "http://127.0.0.1/admin"}, b""),
         ):
             with self.assertRaises(SourceSafetyError) as caught:
-                prepare_source("https://example.org/start")
+                _safe_page_response("https://example.org/start")
         self.assertTrue(caught.exception.terminal)
         self.assertEqual(checked, ["https://example.org/start"])
 
