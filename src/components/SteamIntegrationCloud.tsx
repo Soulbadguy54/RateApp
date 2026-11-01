@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { sessionFetch } from '../sessionFetch'
 import Icon from './Icon'
+import { profileTintOption, type ProfileTint } from '../profilePalette'
 import './SteamIntegrationCloud.css'
 
 type SteamConnection = { connected: boolean; steamId64: string | null }
@@ -10,6 +12,7 @@ type Origin = { x: number; y: number }
 type Overview = {
   steamId64: string
   configured: boolean
+  privacyIssue?: boolean
   profile: { name: string; avatarUrl: string | null; profileUrl: string; profilePublic: boolean | null }
   gameCount: number
   canSync: boolean
@@ -34,12 +37,28 @@ const messages: Record<string, string> = {
 
 const displayStatus = (status: 'playing' | 'wishlist') => status === 'playing' ? 'Прохожу' : 'Хочу пройти'
 
+function PrivacyChecklist({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={'steam-integration__requirements' + (compact ? ' steam-integration__requirements--compact' : '')}>
+      <p>Откройте <a href={STEAM_PRIVACY_URL} target="_blank" rel="noopener noreferrer"
+        className="steam-integration__privacy-link">настройки приватности Steam</a> и установите:</p>
+      <ul>
+        <li>Мой профиль — <strong>Открытый</strong></li>
+        <li>Доступ к игровой информации — <strong>Открытый</strong></li>
+        <li>Скрывать общее время в играх, даже если видны другие данные о них — <strong>снимите галочку</strong></li>
+      </ul>
+    </div>
+  )
+}
+
 export default function SteamIntegrationCloud({
   onFindUnmatched,
   onSynced,
+  tint = 'default',
 }: {
   onFindUnmatched?: (name: string, appid: number) => void
   onSynced?: () => void
+  tint?: ProfileTint
 }) {
   const [connection, setConnection] = useState<SteamConnection | null>(null)
   const [loading, setLoading] = useState(true)
@@ -48,6 +67,8 @@ export default function SteamIntegrationCloud({
   const [unlinking, setUnlinking] = useState(false)
   const [origin, setOrigin] = useState<Origin>({ x: 0, y: 0 })
   const [overview, setOverview] = useState<Overview | null>(null)
+  const [avatarFailed, setAvatarFailed] = useState(false)
+  const [overviewError, setOverviewError] = useState(false)
   const [checking, setChecking] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -71,12 +92,14 @@ export default function SteamIntegrationCloud({
 
   const refreshOverview = async () => {
     setChecking(true)
+    setOverviewError(false)
     try {
       const response = await sessionFetch('/api/steam/overview', { cache: 'no-store' })
       if (!response.ok) throw new Error('Не удалось проверить библиотеку Steam.')
       setOverview(await response.json() as Overview)
+      setAvatarFailed(false)
     } catch {
-      setError('Не удалось проверить библиотеку Steam. Попробуйте снова.')
+      setOverviewError(true)
     } finally {
       setChecking(false)
     }
@@ -134,8 +157,10 @@ export default function SteamIntegrationCloud({
         body: JSON.stringify(preview ? { token: preview.token } : {}),
       })
       if (!response.ok) {
-        const body = await response.json().catch(() => null) as { detail?: string } | null
-        throw new Error(body?.detail || 'Не удалось синхронизировать Steam.')
+        // API details are diagnostic, not display copy (may contain internals).
+        throw new Error(response.status === 409
+          ? 'Доступ к библиотеке Steam изменился. Проверьте настройки приватности и повторите попытку.'
+          : 'Не получилось синхронизировать игры. Попробуйте ещё раз.')
       }
       if (preview) {
         setResult(await response.json() as SyncResult)
@@ -171,6 +196,16 @@ export default function SteamIntegrationCloud({
   }
 
   const connected = connection?.connected === true
+  const selectedTint = profileTintOption(tint)
+  // Portaled panel cannot inherit the profile header's custom properties.
+  const panelStyle = {
+    '--steam-accent': selectedTint.color,
+    '--steam-accent-rgb': selectedTint.accentRgb,
+    '--steam-tint-rgb': selectedTint.rgb,
+    '--steam-tint-strength': tint === 'default' ? '.08' : '.26',
+  } as CSSProperties
+  const privacyBlocked = Boolean(overview?.privacyIssue)
+  const showAccessHelp = connected && (privacyBlocked || overviewError || Boolean(overview?.redFlags?.length))
   const x = origin.x ? origin.x - window.innerWidth / 2 : 0
   const y = origin.y ? origin.y - window.innerHeight / 2 : 0
   const items = preview?.items ?? result?.created ?? []
@@ -201,6 +236,7 @@ export default function SteamIntegrationCloud({
               <motion.section role="dialog" aria-modal="true"
                 aria-label={connected ? 'Подключённый аккаунт Steam' : 'Подключение Steam'}
                 className="steam-integration__panel"
+                style={panelStyle}
                 initial={reducedMotion ? false : { opacity: .65, scale: .16, x, y, borderRadius: 32 }}
                 animate={{ opacity: 1, scale: 1, x: 0, y: 0, borderRadius: 21 }}
                 exit={reducedMotion ? { opacity: 0 } : { opacity: .6, scale: .16, x, y, borderRadius: 32 }}
@@ -208,46 +244,60 @@ export default function SteamIntegrationCloud({
                   type: 'spring', stiffness: 300, damping: 32, mass: .86,
                 }}>
                 <div className="steam-integration__heading">
-                  <span className="steam-integration__brand"><img src="/brand/steam.svg" alt="" /> Steam</span>
+                  <div className="steam-integration__brand">
+                    <img src="/brand/steam.svg" alt="" />
+                    <h2>{connected ? 'Steam подключён' : 'Подключить Steam'}</h2>
+                  </div>
                   <button ref={closeRef} type="button" aria-label="Закрыть подключение Steam"
                     className="steam-integration__close" onClick={() => setOpen(false)}>
                     <Icon name="x" size={19} />
                   </button>
                 </div>
-                <h2>{connected ? 'Steam подключён' : 'Подключить Steam'}</h2>
                 <p className="steam-integration__intro">
                   {connected
-                    ? 'Игры загружаются только по вашему запросу. Существующие оценки, статусы и коллекции не изменяются.'
-                    : 'Привяжите Steam, чтобы импортировать библиотеку и время игры в Rate APP.'}
+                    ? 'Игры синхронизируются только по вашему запросу.'
+                    : 'Привяжите Steam, чтобы импортировать библиотеку в Rate APP.'}
                 </p>
                 {error && <p className="steam-integration__notice" role="status">{error}</p>}
                 {connected ? (
                   <>
-                    {overview?.profile && (
-                      <div className="steam-integration__profile">
-                        {overview.profile.avatarUrl
-                          ? <img src={overview.profile.avatarUrl} alt="" />
-                          : <Icon name="user" size={28} />}
-                        <div>
-                          <strong>{overview.profile.name}</strong>
-                          <a href={overview.profile.profileUrl} target="_blank" rel="noopener noreferrer">Открыть профиль Steam</a>
-                        </div>
+                    <a className="steam-integration__profile"
+                      href={overview?.profile?.profileUrl || 'https://steamcommunity.com/profiles/' + connection?.steamId64 + '/'}
+                      target="_blank" rel="noopener noreferrer"
+                      aria-label="Открыть профиль Steam" title="Открыть профиль Steam">
+                      {overview?.profile?.avatarUrl && !avatarFailed
+                        ? <img src={overview.profile.avatarUrl} alt="" onError={() => setAvatarFailed(true)} />
+                        : <span className="steam-integration__avatar-fallback"><img src="/brand/steam.svg" alt="" /></span>}
+                      <span className="steam-integration__profile-info">
+                        <strong>{overview?.profile?.name || 'Профиль Steam'}</strong>
+                        <small>Steam ID: {connection?.steamId64}</small>
+                      </span>
+                      <Icon name="arrow" size={17} />
+                    </a>
+                    {checking && <p className="steam-integration__muted" role="status">Проверяем доступность библиотеки…</p>}
+                    {overview && (
+                      <div className="steam-integration__stats">
+                        <p>Игр доступно: <strong>{overview.gameCount}</strong></p>
+                        <p>Последняя синхронизация: <strong>{overview.lastSyncedAt
+                          ? new Date(overview.lastSyncedAt).toLocaleString('ru-RU')
+                          : '—'}</strong></p>
                       </div>
                     )}
-                    <p className="steam-integration__account">SteamID: <strong>{connection?.steamId64}</strong></p>
-                    {checking && <p className="steam-integration__muted" role="status">Проверяем доступность библиотеки Steam…</p>}
-                    {overview && (
-                      <p className="steam-integration__muted">
-                        Игр доступно: {overview.gameCount} · Последняя синхронизация: {overview.lastSyncedAt
-                          ? new Date(overview.lastSyncedAt).toLocaleString('ru-RU')
-                          : 'ещё не проводилась'}
-                      </p>
+                    {showAccessHelp && (
+                      <div className="steam-integration__access-warning" role="alert">
+                        <div className="steam-integration__warning-title">
+                          <Icon name="alert-triangle" size={19} />
+                          <strong>{privacyBlocked
+                            ? 'Проверьте настройки приватности Steam'
+                            : 'Пока не удаётся проверить доступ к библиотеке Steam'}</strong>
+                        </div>
+                        <PrivacyChecklist compact />
+                        <button type="button" className="steam-integration__recheck"
+                          onClick={() => void refreshOverview()} disabled={checking}>
+                          {checking ? 'Проверяем…' : 'Проверить доступ снова'}
+                        </button>
+                      </div>
                     )}
-                    {overview?.redFlags.map(flag => (
-                      <p className="steam-integration__warning" role="alert" key={flag}>{flag}</p>
-                    ))}
-                    <a className="steam-integration__privacy-link" href={STEAM_PRIVACY_URL}
-                      target="_blank" rel="noopener noreferrer">Настройки приватности Steam <Icon name="arrow" size={16}/></a>
                     {(preview || result) && (
                       <div className="steam-integration__results" aria-label={preview ? 'Предпросмотр Steam' : 'Результат синхронизации'}>
                         <h3>{preview ? 'Будут добавлены' : 'Добавлены'} · {items.length}</h3>
@@ -274,6 +324,7 @@ export default function SteamIntegrationCloud({
                     <button type="button" className="steam-integration__connect"
                       disabled={checking || syncing || !overview?.canSync}
                       onClick={() => void sync()}>
+                      <Icon name="refresh" size={19} />
                       {syncing ? 'Синхронизируем…' : 'Синхронизировать'}
                     </button>
                     <button type="button" className="steam-integration__disconnect"
@@ -283,29 +334,20 @@ export default function SteamIntegrationCloud({
                   </>
                 ) : (
                   <>
-                    <div className="steam-integration__requirements">
-                      <strong>Перед подключением</strong>
-                      <p>В Steam откройте настройки приватности и установите:</p>
-                      <ul>
-                        <li>«Мой профиль» — <strong>Открытый</strong>.</li>
-                        <li>«Сведения об играх» — <strong>Открытые</strong>.</li>
-                        <li>Отключите «Всегда скрывать общее время игры», если включено.</li>
-                      </ul>
-                      <a href={STEAM_PRIVACY_URL} target="_blank" rel="noopener noreferrer"
-                        className="steam-integration__privacy-link">Открыть настройки приватности Steam <Icon name="arrow" size={16} /></a>
+                    <div className="steam-integration__requirements-wrap">
+                      <p className="steam-integration__lead">Перед подключением к Steam:</p>
+                      <PrivacyChecklist />
                     </div>
                     <p className="steam-integration__safety">
-                      Вход проходит на сайте Steam. Rate APP не получает пароль или код Steam Guard и не имеет доступа к закрытым играм.
+                      Вход проходит на сайте Steam. Rate APP не получает пароль или код Steam Guard.
                     </p>
                     <a className="steam-integration__connect" href="/api/steam/connect">
                       <img src="/brand/steam.svg" alt="" />
                       Войти в Steam
                     </a>
+                    <p className="steam-integration__footnote">Синхронизация запускается только вручную.</p>
                   </>
                 )}
-                <p className="steam-integration__footnote">
-                  Синхронизация запускается только вручную и никогда не перезаписывает ваши оценки, даты или статусы.
-                </p>
               </motion.section>
             </motion.div>
           )}

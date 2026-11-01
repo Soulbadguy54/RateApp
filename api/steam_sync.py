@@ -6,6 +6,7 @@ existing playthroughs, ratings, dates, or collections.
 """
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -30,6 +31,7 @@ from api.security import SESSION_COOKIE, _current_user, _hash_token, _now, _sess
 from api.steam_routes import _origin
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 STEAM_API = "https://api.steampowered.com"
 APPID_RE = re.compile(r"^[1-9][0-9]{0,9}$")
 STORE_APP_RE = re.compile(r"^/app/([1-9][0-9]{0,9})(?:/|$)")
@@ -95,7 +97,7 @@ def _owned_games(steam_id: str) -> tuple[list[dict], str | None]:
     # Empty response {} typically indicates hidden game details. A legitimate
     # empty library can produce game_count=0; neither permits importing.
     if "games" not in data:
-        return [], "Список игр Steam пуст или скрыт настройками приватности «Сведения об играх»."
+        return [], "Steam не открыл доступ к списку игр. Проверьте настройки приватности."
     raw = data["games"]
     if not isinstance(raw, list) or len(raw) > MAX_OWNED:
         raise HTTPException(422, "Steam вернул слишком большую или некорректную библиотеку.")
@@ -130,17 +132,35 @@ def _profile(steam_id: str) -> dict:
     player = next((p for p in players if isinstance(p, dict)
                    and p.get("steamid") == steam_id), {}) if isinstance(players, list) else {}
     profile_url = str(player.get("profileurl") or "")
-    if not profile_url.startswith(("https://steamcommunity.com/id/", "https://steamcommunity.com/profiles/")):
+    try:
+        profile_parts = urlsplit(profile_url)
+        safe_profile = (
+            profile_parts.scheme == "https" and profile_parts.hostname == "steamcommunity.com"
+            and profile_parts.port in (None, 443)
+            and profile_parts.path.startswith(("/id/", "/profiles/"))
+        )
+    except ValueError:
+        safe_profile = False
+    if not safe_profile:
         profile_url = "https://steamcommunity.com/profiles/" + steam_id + "/"
-    avatar_url = str(player.get("avatarfull") or "")
-    if not (avatar_url.startswith("https://avatars.steamstatic.com/")
-            or avatar_url.startswith("https://steamcdn-a.akamaihd.net/")):
+    avatar_url = str(player.get("avatarfull") or player.get("avatarmedium") or "")
+    try:
+        avatar_parts = urlsplit(avatar_url)
+        safe_avatar = (
+            avatar_parts.scheme == "https" and avatar_parts.hostname in {
+                "avatars.steamstatic.com", "avatars.akamai.steamstatic.com",
+                "avatars.fastly.steamstatic.com", "steamcdn-a.akamaihd.net",
+            } and avatar_parts.port in (None, 443) and not avatar_parts.username
+        )
+    except ValueError:
+        safe_avatar = False
+    if not safe_avatar:
         avatar_url = None
     return {
-        "name": str(player.get("personaname") or "Steam")[:100],
+        "name": str(player.get("personaname") or "Профиль Steam")[:100],
         "profileUrl": profile_url,
         "avatarUrl": avatar_url,
-        "profilePublic": player.get("communityvisibilitystate") == 3,
+        "profilePublic": player.get("communityvisibilitystate") == 3 if player else None,
     }
 
 
@@ -304,30 +324,41 @@ def steam_overview(request: Request) -> dict:
     profile = None
     red_flags = []
     game_count = 0
+    privacy_issue = False
+    service_unavailable = False
     configured = bool(os.getenv("STEAM_WEB_API_KEY", "").strip())
     if configured:
         try:
             profile = _profile(steam_id)
-        except HTTPException:
-            red_flags.append("Не удалось загрузить публичный профиль Steam.")
+        except HTTPException as exc:
+            # Keep diagnostic error classifications in logs, never in UI.
+            logger.warning("steam_profile_unavailable status=%s", exc.status_code)
         try:
             games, problem = _owned_games(steam_id)
             game_count = len(games)
             if problem:
-                red_flags.append(problem)
-            if profile and not profile["profilePublic"]:
-                red_flags.append("Профиль Steam не общедоступен.")
-        except HTTPException:
-            red_flags.append("Не удалось проверить библиотеку Steam.")
+                privacy_issue = True
+                red_flags.append("Проверьте доступ к игровой информации и видимость часов в Steam.")
+            if profile and profile["profilePublic"] is False:
+                privacy_issue = True
+                red_flags.append("Профиль Steam закрыт настройками приватности.")
+        except HTTPException as exc:
+            logger.warning("steam_library_unavailable status=%s", exc.status_code)
+            service_unavailable = True
+            red_flags.append("Пока не удаётся проверить библиотеку Steam. Попробуйте позже.")
     else:
-        red_flags.append("Администратору нужно настроить STEAM_WEB_API_KEY на сервере.")
+        # Configuration state belongs in logs, not in a user-facing warning.
+        logger.warning("steam_library_unavailable reason=server_not_configured")
+        service_unavailable = True
+        red_flags.append("Пока не удаётся проверить библиотеку Steam. Попробуйте позже.")
     return {
         "profile": profile or {
-            "name": "Steam", "profileUrl": "https://steamcommunity.com/profiles/" + steam_id + "/",
+            "name": "Профиль Steam", "profileUrl": "https://steamcommunity.com/profiles/" + steam_id + "/",
             "avatarUrl": None, "profilePublic": None,
         },
         "steamId64": steam_id, "configured": configured, "gameCount": game_count,
-        "canSync": configured and not red_flags,
+        "canSync": configured and not privacy_issue and not service_unavailable,
+        "privacyIssue": privacy_issue,
         "redFlags": red_flags, "lastSyncedAt": last,
     }
 

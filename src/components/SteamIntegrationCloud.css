@@ -25,6 +25,8 @@
   /* Steam's original vector is black. Illuminate it on the dark glass. */
   filter: brightness(0) invert(1) drop-shadow(0 0 5px rgba(188,224,255,.75));
 }
+/* Portal dialog: pass the user's profile palette explicitly, do not inherit
+   from the header (the modal is mounted directly under document.body). */
 .steam-integration__backdrop {
   position: fixed;
   z-index: 5000;
@@ -33,75 +35,159 @@
   align-items: center;
   justify-content: center;
   padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom));
-  overflow-y: auto;
-  background: rgba(6,10,18,.73);
+  background: rgba(5, 9, 18, .76);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
 .steam-integration__panel {
   width: min(100%, 410px);
-  max-height: min(92dvh, 800px);
+  max-height: min(92dvh, 840px);
   overflow-y: auto;
-  padding: clamp(17px,4vw,24px);
-  border: 1px solid rgba(192,211,238,.24);
+  padding: clamp(18px, 4.5vw, 24px);
   border-radius: 21px;
-  background: linear-gradient(147deg, #1d2b40 0%, #101a29 100%);
-  color: #f3f6fc;
-  box-shadow: 0 24px 90px rgba(0,0,0,.55);
-  transform-origin: center;
+  border: 1px solid rgba(var(--steam-accent-rgb, 140,242,125), .38);
+  color: #f6f8fe;
+  background:
+    linear-gradient(150deg, rgba(var(--steam-tint-rgb, 14,19,32), var(--steam-tint-strength, .08)), transparent 65%),
+    linear-gradient(154deg, rgba(37, 45, 63, .96), rgba(13, 20, 34, .97));
+  -webkit-backdrop-filter: blur(28px) saturate(135%);
+  backdrop-filter: blur(28px) saturate(135%);
+  box-shadow: 0 20px 90px rgba(0,0,0,.53), inset 0 1px 0 rgba(255,255,255,.08),
+    0 0 38px rgba(var(--steam-accent-rgb, 140,242,125), .08);
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  transform-origin: center;
 }
-.steam-integration__heading { display: flex; justify-content: space-between; align-items: center; }
-.steam-integration__brand { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #d7e5f8; font-weight: 750; }
-.steam-integration__brand img { width: 23px; height: 23px; filter: brightness(0) invert(1); }
-.steam-integration__close { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid rgba(255,255,255,.12); border-radius: 11px; color: #e8effb; background: rgba(255,255,255,.05); }
-.steam-integration__panel h2 { margin: 5px 0 7px; font-size: clamp(22px,6vw,28px); line-height: 1.1; letter-spacing: -.04em; }
-.steam-integration__intro { color: #b9c6d7; line-height: 1.5; font-size: 13px; margin: 0 0 15px; }
-.steam-integration__requirements {
-  padding: 13px 13px 15px;
-  border-radius: 14px;
-  border: 1px solid rgba(192,211,238,.23);
+.steam-integration__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.steam-integration__brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.steam-integration__brand img { width: 29px; height: 29px; flex-shrink: 0; filter: brightness(0) invert(1); }
+.steam-integration__brand h2 {
+  margin: 0;
+  font-size: clamp(20px, 5.5vw, 25px);
+  color: var(--steam-accent, var(--accent));
+  font-weight: 760;
+  letter-spacing: -.035em;
+  line-height: 1.2;
+}
+.steam-integration__close {
+  display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px;
+  padding: 0; border: 1px solid rgba(255,255,255,.15); border-radius: 12px;
+  background: rgba(255,255,255,.05); color: #f5f7fd;
+}
+.steam-integration__intro { margin: 12px 0 18px; line-height: 1.5; font-size: 13px; color: #d1d9e7; }
+.steam-integration__lead { font-size: 13px; color: #f2f5ff; font-weight: 650; margin: 0 0 2px; }
+.steam-integration__requirements-wrap {
+  border: 1px solid rgba(var(--steam-accent-rgb,140,242,125),.20);
+  border-radius: 15px; padding: 14px 13px 15px;
   background: rgba(255,255,255,.035);
-  font-size: 12px;
-  line-height: 1.5;
 }
-.steam-integration__requirements > strong { font-size: 13px; }
-.steam-integration__requirements p { margin: 6px 0; color: #b9c6d7; }
-.steam-integration__requirements ul { padding-left: 19px; margin: 8px 0 12px; }
-.steam-integration__requirements li + li { margin-top: 5px; }
-.steam-integration__privacy-link { color: #9fc3ff; text-underline-offset: 3px; display: inline-flex; gap: 4px; align-items: center; font-size: 12px; font-weight: 700; }
-.steam-integration__safety, .steam-integration__footnote { font-size: 11px; line-height: 1.5; color: #a9b7cb; }
-.steam-integration__safety { margin: 13px 0; }
-.steam-integration__footnote { margin: 12px 0 0; }
-.steam-integration__connect { display: flex; justify-content: center; align-items: center; gap: 9px; min-height: 47px; border-radius: 12px; padding: 10px 12px; color: #0c1525; background: #a9caff; font-size: 13px; font-weight: 790; text-decoration: none; }
-.steam-integration__connect img { width: 23px; height: 23px; filter: brightness(0); }
-.steam-integration__account { color: #b9c6d7; font-size: 12px; }
-.steam-integration__account strong { color: #eef4ff; }
-.steam-integration__disconnect { display: block; width: 100%; min-height: 42px; margin-top: 16px; border: 1px solid rgba(255,130,140,.35); border-radius: 11px; color: #ffc2c7; background: rgba(255,100,120,.09); font-size: 12px; font-weight: 700; }
+.steam-integration__requirements { font-size: 12px; line-height: 1.6; color: #e2e8f5; }
+.steam-integration__requirements p { margin: 5px 0 9px; }
+.steam-integration__requirements ul { margin: 0; padding: 0; list-style: none; }
+.steam-integration__requirements li {
+  position: relative;
+  padding-left: 15px;
+  margin: 8px 0 0;
+}
+.steam-integration__requirements li::before {
+  content: '•'; color: var(--steam-accent, var(--accent));
+  position: absolute; left: 0; top: 0;
+  font-size: 16px; line-height: 1.25;
+}
+.steam-integration__requirements li strong { color: #fff; }
+.steam-integration__privacy-link {
+  color: var(--steam-accent, var(--accent));
+  text-decoration: underline; text-decoration-thickness: 1px;
+  text-underline-offset: 3px; font-size: inherit; font-weight: 750;
+}
+.steam-integration__safety { font-size: 12px; line-height: 1.55; color: #cdd6e5; margin: 15px 0 17px; }
+.steam-integration__footnote { font-size: 11px; line-height: 1.5; color: #b1bfd0; margin: 12px 0 0; text-align: center; }
+.steam-integration__connect {
+  display: flex; width: 100%; min-height: 48px; justify-content: center; align-items: center;
+  gap: 9px; padding: 11px 12px; border-radius: 12px; border: 0;
+  background: var(--steam-accent, var(--accent)); color: #101a22;
+  font-weight: 800; font-size: 14px; text-decoration: none;
+  box-shadow: 0 6px 22px rgba(var(--steam-accent-rgb, 140,242,125),.15);
+}
+.steam-integration__connect img { width: 22px; height: 22px; filter: brightness(0); }
+.steam-integration__connect:disabled { opacity: .46; cursor: not-allowed; }
+.steam-integration__disconnect {
+  display: block; min-height: 32px; margin: 6px auto 0; padding: 6px 10px;
+  width: fit-content; border: 0; border-radius: 8px; background: transparent;
+  color: #ff9fa9; font-size: 11px; text-align: center; text-decoration: underline;
+  text-underline-offset: 3px; cursor: pointer;
+}
 .steam-integration__disconnect:disabled { opacity: .5; }
-.steam-integration__notice { padding: 9px 11px; border: 1px solid rgba(139,171,222,.28); border-radius: 10px; background: rgba(139,171,222,.08); color: #d6e6ff; font-size: 11px; line-height: 1.45; }
-.steam-integration__panel :is(a,button):focus-visible { outline: 2px solid #a9caff; outline-offset: 3px; }
-@media (prefers-reduced-motion: reduce) {
-  .steam-integration__backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.steam-integration__profile {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; min-height: 76px; padding: 11px;
+  border-radius: 14px; text-decoration: none;
+  border: 1px solid rgba(var(--steam-accent-rgb,140,242,125),.20);
+  color: inherit; background: rgba(255,255,255,.055);
 }
-
-/* Steam sync content shares the original animated glass dialog. */
-.steam-integration__profile { display: flex; align-items: center; gap: 12px; padding: 12px; margin: 8px 0; background: rgba(255,255,255,.05); border-radius: 12px; }
-.steam-integration__profile > img { width: 50px; height: 50px; border-radius: 10px; object-fit: cover; }
-.steam-integration__profile > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
-.steam-integration__profile strong { font-size: 14px; overflow-wrap: anywhere; }
-.steam-integration__profile a { font-size: 12px; color: #a9caff; }
-.steam-integration__muted { font-size: 11px; color: #bac9db; line-height: 1.5; }
-.steam-integration__warning { font-size: 12px; color: #ffbec0; background: rgba(255,97,110,.1); border: 1px solid rgba(255,97,110,.27); padding: 9px 10px; border-radius: 9px; }
-.steam-integration__results { padding-top: 10px; margin-top: 10px; border-top: 1px solid rgba(192,211,238,.2); }
-.steam-integration__results h3 { font-size: 13px; margin: 15px 0 8px; color: #f0f5ff; }
-.steam-integration__results p { font-size: 12px; color: #bac9db; }
-.steam-integration__game { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+.steam-integration__profile > img, .steam-integration__avatar-fallback {
+  flex: 0 0 52px; width: 52px; height: 52px; border-radius: 10px; object-fit: cover;
+}
+.steam-integration__avatar-fallback {
+  display: grid; place-items: center; background: rgba(255,255,255,.08);
+}
+.steam-integration__avatar-fallback img {
+  width: 31px; height: 31px; filter: brightness(0) invert(1);
+}
+.steam-integration__profile-info {
+  display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 4px;
+}
+.steam-integration__profile-info strong { font-size: 14px; color: #fff; overflow-wrap: anywhere; }
+.steam-integration__profile-info small {
+  font-size: 11px; color: #bfcde2; overflow-wrap: anywhere;
+}
+.steam-integration__profile > svg { color: var(--steam-accent, var(--accent)); flex-shrink: 0; }
+.steam-integration__profile:hover { background: rgba(255,255,255,.09); }
+.steam-integration__stats { margin: 13px 0 17px; display: flex; flex-direction: column; gap: 6px; }
+.steam-integration__stats p { margin: 0; color: #c6d0e1; font-size: 12px; line-height: 1.5; }
+.steam-integration__stats strong { color: #f7f9ff; font-weight: 700; }
+.steam-integration__muted { font-size: 11px; line-height: 1.5; color: #c1cbda; }
+.steam-integration__notice {
+  padding: 10px 11px; margin: 9px 0;
+  background: rgba(var(--steam-accent-rgb,140,242,125),.085);
+  color: #edf4fd; border: 1px solid rgba(var(--steam-accent-rgb,140,242,125),.25);
+  border-radius: 11px; font-size: 12px; line-height: 1.5;
+}
+.steam-integration__access-warning {
+  margin: 12px 0 16px;
+  padding: 12px 13px;
+  background: rgba(255,99,112,.075);
+  border: 1px solid rgba(255,130,142,.34);
+  border-radius: 13px;
+}
+.steam-integration__warning-title {
+  display: flex; gap: 9px; align-items: flex-start;
+  color: #ffb3bc; line-height: 1.4; font-size: 12px;
+}
+.steam-integration__warning-title svg { flex-shrink: 0; }
+.steam-integration__requirements--compact { padding-top: 5px; }
+.steam-integration__requirements--compact li::before { color: #ffb3bc; }
+.steam-integration__recheck {
+  display: block; margin-top: 10px; padding: 6px 0 0; border: 0;
+  color: var(--steam-accent,var(--accent)); background: none;
+  font-size: 12px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px;
+}
+.steam-integration__results {
+  padding-top: 9px; margin: 11px 0 15px;
+  border-top: 1px solid rgba(var(--steam-accent-rgb,140,242,125),.22);
+}
+.steam-integration__results h3 { font-size: 13px; margin: 14px 0 9px; color: #f7f9ff; }
+.steam-integration__results p { font-size: 12px; color: #c5cfdd; }
+.steam-integration__game { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
 .steam-integration__game img { width: 36px; height: 48px; border-radius: 5px; object-fit: cover; }
 .steam-integration__game div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .steam-integration__game strong { font-size: 12px; overflow-wrap: anywhere; }
-.steam-integration__game span { color: #a7d5b4; font-size: 11px; }
-.steam-integration__unresolved { display: flex; align-items: center; gap: 6px; width: 100%; padding: 11px 5px; text-align: left; font-size: 12px; color: #bad4ff; background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,.06); overflow-wrap: anywhere; }
-.steam-integration__unresolved small { color: #bac9db; white-space: nowrap; font-size: 10px; margin-left: auto; }
-.steam-integration__connect:disabled { opacity: .45; cursor: not-allowed; }
+.steam-integration__game span { color: var(--steam-accent,var(--accent)); font-size: 11px; }
+.steam-integration__unresolved { display: flex; align-items: center; gap: 6px; width: 100%; padding: 11px 5px; text-align: left; font-size: 12px; color: var(--steam-accent,var(--accent)); background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,.06); overflow-wrap: anywhere; }
+.steam-integration__unresolved small { color: #bfcde2; white-space: nowrap; font-size: 10px; margin-left: auto; }
+.steam-integration__panel :is(a,button):focus-visible {
+  outline: 2px solid var(--steam-accent,var(--accent)); outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .steam-integration__backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}

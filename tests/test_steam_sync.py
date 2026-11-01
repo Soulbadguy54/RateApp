@@ -47,6 +47,29 @@ class SteamSyncTests(unittest.TestCase):
         self.assertIsNone(steam_sync._steam_appid("http://store.steampowered.com/app/620"))
         self.assertIsNone(steam_sync._steam_appid("https://store.steampowered.com/sub/620/"))
 
+    def test_profile_preserves_public_name_and_steam_avatar(self):
+        with patch.object(steam_sync, "_steam_api", return_value={
+            "players": [{"steamid": "76561198012345678",
+                         "personaname": "Profile Nick",
+                         "profileurl": "https://steamcommunity.com/id/test-person/",
+                         "avatarfull": "https://avatars.fastly.steamstatic.com/hash_full.jpg",
+                         "communityvisibilitystate": 3}]
+        }):
+            profile = steam_sync._profile("76561198012345678")
+        self.assertEqual(profile["name"], "Profile Nick")
+        self.assertEqual(profile["avatarUrl"], "https://avatars.fastly.steamstatic.com/hash_full.jpg")
+        self.assertEqual(profile["profileUrl"], "https://steamcommunity.com/id/test-person/")
+
+    def test_profile_rejects_untrusted_avatar_and_link(self):
+        with patch.object(steam_sync, "_steam_api", return_value={
+            "players": [{"steamid": "76561198012345678", "personaname": "Test",
+                         "profileurl": "https://steamcommunity.com.evil.example/profiles/hack",
+                         "avatarfull": "https://evil.example/pixel"}]
+        }):
+            profile = steam_sync._profile("76561198012345678")
+        self.assertIsNone(profile["avatarUrl"])
+        self.assertEqual(profile["profileUrl"], "https://steamcommunity.com/profiles/76561198012345678/")
+
     def test_key_not_configured(self):
         with patch.dict(os.environ, {"STEAM_WEB_API_KEY": ""}):
             with self.assertRaises(HTTPException) as raised:
@@ -178,3 +201,12 @@ class SteamDatabaseSyncTests(unittest.TestCase):
             ])
         self.assertEqual([item["igdbId"] for item in added], [700002])
         self.assertEqual(unknown, [])
+
+    def test_overview_missing_key_does_not_expose_internal_names(self):
+        with patch.dict(os.environ, {"STEAM_WEB_API_KEY": ""}):
+            response = self.client.get("/api/steam/overview")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(response.json()["canSync"])
+        self.assertFalse(response.json()["privacyIssue"])
+        self.assertNotIn("STEAM_WEB_API_KEY", response.text)
+        self.assertNotIn("Администратору", response.text)

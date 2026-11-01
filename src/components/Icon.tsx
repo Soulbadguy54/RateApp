@@ -36,6 +36,7 @@ export type IconName =
   | 'bell'
   | 'shield'
   | 'alert-triangle'
+  | 'refresh'
   | 'chevron-left'
   | 'chevron-right'
 
@@ -86,6 +87,7 @@ export default function Icon({ name, size = 22 }: { name: IconName; size?: numbe
     'chevron-left': <path d="m15 6-6 6 6 6"/>,
     'chevron-right': <path d="m9 6 6 6-6 6"/>,
     'alert-triangle': <><path d="M10.2 4.3a2.1 2.1 0 0 1 3.6 0l8 14a2.1 2.1 0 0 1-1.8 3.2H4a2.1 2.1 0 0 1-1.8-3.2l8-14Z"/><path d="M12 9v5m0 3h.01"/></>,
+    refresh: <><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M5.8 9a7.5 7.5 0 0 1 12.4-2L20 12"/><path d="M4 12l1.8 5a7.5 7.5 0 0 0 12.4-2"/></>,
     download: <><path d="M12 3v12m-5-5 5 5 5-5"/><path d="M4 17v3h16v-3"/></>,
     upload: <><path d="M12 17V3m-5 5 5-5 5 5"/><path d="M4 17v3h16v-3"/></>,
     bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></>,
