@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import type { AuthUser } from '../AuthScreen'
 import PushSettings from '../PushSettings'
 import SteamIntegrationCloud from '../components/SteamIntegrationCloud'
+import type { SteamSearchSnapshot } from '../components/SteamIntegrationCloud'
 import ReleaseNotesDialog from '../components/ReleaseNotesDialog'
 import { CURRENT_RELEASE_VERSION } from '../releaseNotes'
 import Icon from '../components/Icon'
@@ -44,7 +45,7 @@ type Point = { x: number; y: number }
 export default function ProfileView({
   user, savedClouds, editClouds, cloudDraftIds,
   onStartCloudEditing, onChooseCloud, onOpenGame, onOpenWishlist, onSaved,
-  onFindSteamGame, onSteamSynced,
+  onFindSteamGame, onSteamSynced, steamReturnSnapshot, onSteamReturnClosed,
 }: {
   user: AuthUser
   savedClouds: ProfileCloud[]
@@ -55,7 +56,9 @@ export default function ProfileView({
   onOpenGame: (gameId: number) => void
   onOpenWishlist: () => void
   onSaved: (user: AuthUser) => void
-  onFindSteamGame?: (name: string, appid: number) => void
+  onFindSteamGame?: (name: string, appid: number, snapshot: SteamSearchSnapshot) => void
+  steamReturnSnapshot?: SteamSearchSnapshot | null
+  onSteamReturnClosed?: () => void
   onSteamSynced?: () => void
 }) {
   const [settingsTab, setSettingsTab] = useState<'notifications' | 'security'>('notifications')
@@ -267,7 +270,9 @@ export default function ProfileView({
             </ol>
           )}
           <div className="profile-steam-cloud-launch">
-            <SteamIntegrationCloud onFindUnmatched={onFindSteamGame} onSynced={onSteamSynced} tint={tint} disabled={editing} />
+            <SteamIntegrationCloud onFindUnmatched={onFindSteamGame} onSynced={onSteamSynced}
+              restoreSnapshot={steamReturnSnapshot} onRestoredClose={onSteamReturnClosed}
+              tint={tint} disabled={editing} />
           </div>
           <div className="profile-glass-header__avatar-row">
             {editing && photo ? (
