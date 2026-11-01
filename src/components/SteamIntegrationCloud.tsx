@@ -8,7 +8,6 @@ import { profileTintOption, type ProfileTint } from '../profilePalette'
 import './SteamIntegrationCloud.css'
 
 type SteamConnection = { connected: boolean; steamId64: string | null }
-type Origin = { x: number; y: number }
 type Overview = {
   steamId64: string
   configured: boolean
@@ -86,7 +85,6 @@ export default function SteamIntegrationCloud({
   const panelRef = useRef<HTMLElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [unlinking, setUnlinking] = useState(false)
-  const [origin, setOrigin] = useState<Origin>({ x: 0, y: 0 })
   const [overview, setOverview] = useState<Overview | null>(null)
   const [avatarFailed, setAvatarFailed] = useState(false)
   const [overviewError, setOverviewError] = useState(false)
@@ -206,8 +204,6 @@ export default function SteamIntegrationCloud({
   }, [open])
 
   const onOpen = () => {
-    const bounds = cloudRef.current?.getBoundingClientRect()
-    if (bounds) setOrigin({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 })
     setPreview(null)
     setResult(null)
     setOverview(null)
