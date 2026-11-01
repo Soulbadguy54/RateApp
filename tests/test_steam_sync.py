@@ -101,7 +101,11 @@ class SteamDatabaseSyncTests(unittest.TestCase):
             user = db.get(User, self.user_id)
             if user:
                 db.delete(user)
-                db.commit()
+                db.flush()
+            from api.models import Game
+            from sqlalchemy import delete
+            db.execute(delete(Game).where(Game.igdb_id.in_([700001, 700002, 700003, 700004])))
+            db.commit()
 
     def _mock_owned(self, _steam_id):
         return [
