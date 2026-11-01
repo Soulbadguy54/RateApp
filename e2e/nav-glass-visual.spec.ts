@@ -60,3 +60,38 @@ test('Steam cloud emerges without overshoot or a competing transform', async ({ 
   expect(result.frames.map(frame => frame.offset)).toEqual([0, 1])
   expect(result.frames[1].transform).toContain('scale(1)')
 })
+
+test('nav liquid grows from the droplet and retracts through intermediate silhouettes', async ({ page }) => {
+  await page.goto('/?tab=profile')
+  const slot = page.locator('[data-nav-slot="games"] > button')
+  const box = await slot.boundingBox()
+  if (!box) throw new Error('Missing slot')
+  await page.evaluate(() => {
+    const frames: { width: number; opacity: number }[] = []
+    ;(window as Window & { __steamNavMorphFrames?: typeof frames }).__steamNavMorphFrames = frames
+    const started = performance.now()
+    const sample = () => {
+      const surface = document.querySelector<SVGSVGElement>('.bottom-nav__liquid-surface')
+      const shape = surface?.querySelector<SVGGraphicsElement>('.bottom-nav__liquid-path')
+      if (surface && shape) frames.push({
+        width: shape.getBBox().width,
+        opacity: Number(getComputedStyle(surface).opacity),
+      })
+      if (performance.now() - started < 2700) requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  })
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  const liquid = page.locator('[data-nav-slot="games"] .bottom-nav__liquid-surface')
+  await expect(liquid).toBeVisible({ timeout: 4000 })
+  await expect.poll(async () => liquid.evaluate(el =>
+    (el.querySelector('path') as SVGGraphicsElement).getBBox().width), { timeout: 3000 }).toBeGreaterThan(185)
+  await page.mouse.up()
+  await expect(liquid).toHaveCount(0, { timeout: 3000 })
+  const frames = await page.evaluate(() => (window as Window & {
+    __steamNavMorphFrames?: Array<{ width: number; opacity: number }>
+  }).__steamNavMorphFrames ?? [])
+  expect(frames.some(frame => frame.width < 85 && frame.opacity > .35)).toBe(true)
+  expect(frames.some(frame => frame.width > 175 && frame.opacity > .35)).toBe(true)
+})
