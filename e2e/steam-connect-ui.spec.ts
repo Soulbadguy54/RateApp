@@ -547,6 +547,12 @@ test('Steam compact dialog reserves space while overview loads and never navigat
   await expect(dialog).toContainText('Последняя синхронизация:')
   await expect(dialog.getByRole('link', { name: 'Открыть профиль Steam' })).toContainText('Мой Steam')
   await expect(dialog).not.toContainText('Последняя синхронизация: —')
+  const bottomSpacing = await dialog.evaluate(panel => {
+    const unlink = panel.querySelector('.steam-integration__disconnect')!
+    return panel.getBoundingClientRect().bottom - unlink.getBoundingClientRect().bottom
+  })
+  expect(bottomSpacing).toBeGreaterThan(6)
+  expect(bottomSpacing).toBeLessThan(90)
   const loadedHeight = await dialog.evaluate(el => el.offsetHeight)
   expect(Math.abs(loadedHeight - initialHeight)).toBeLessThan(2)
   await expect(dialog).toHaveAttribute('data-mode', 'compact')
