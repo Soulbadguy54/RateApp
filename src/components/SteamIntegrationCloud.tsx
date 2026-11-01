@@ -418,7 +418,7 @@ export default function SteamIntegrationCloud({
                         ? relativeSyncTime(overview.lastSyncedAt, secondsNow)
                         : '—'}
                     </p>
-                    {error && <p className="steam-integration__notice" role="status">{error}</p>
+                    {error && <p className="steam-integration__notice" role="status">{error}</p>}
                     {showAccessHelp && (
                       <div className="steam-integration__access-warning" role="alert">
                         <div className="steam-integration__warning-title">
