@@ -144,7 +144,7 @@ export default function SteamIntegrationCloud() {
                   <>
                     <p className="steam-integration__account">SteamID: <strong>{connection?.steamId64}</strong></p>
                     <a className="steam-integration__privacy-link" href={STEAM_PRIVACY_URL}
-                      target="_blank" rel="noopener noreferrer">Настройки приватности Steam <Icon name="external-link" size={16}/></a>
+                      target="_blank" rel="noopener noreferrer">Настройки приватности Steam <Icon name="arrow" size={16}/></a>
                     <button type="button" className="steam-integration__disconnect"
                       disabled={unlinking} onClick={() => void unlink()}>
                       {unlinking ? 'Отключаем…' : 'Отвязать Steam'}
@@ -161,7 +161,7 @@ export default function SteamIntegrationCloud() {
                         <li>Отключите «Всегда скрывать общее время игры», если включено.</li>
                       </ul>
                       <a href={STEAM_PRIVACY_URL} target="_blank" rel="noopener noreferrer"
-                        className="steam-integration__privacy-link">Открыть настройки приватности Steam <Icon name="external-link" size={16} /></a>
+                        className="steam-integration__privacy-link">Открыть настройки приватности Steam <Icon name="arrow" size={16} /></a>
                     </div>
                     <p className="steam-integration__safety">
                       Вход проходит на сайте Steam. Rate APP не получает пароль или код Steam Guard и не имеет доступа к закрытым играм. Позже по вашему подтверждению мы сможем получать общедоступную библиотеку и суммарные часы игры.
