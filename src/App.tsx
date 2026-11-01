@@ -3770,6 +3770,8 @@ function App() {
     </Suspense>
   )
 
+  // Show the existing My Games tab as active while it is in cloud-pick mode
+  const navActiveTab: Tab = profileCloudPickerSlot !== null ? 'library' : activeTab
   const nav: { id: Tab; label: string; icon: IconName }[] = [
     { id: 'library', label: 'Мои игры', icon: 'gamepad' },
     { id: 'add', label: 'База игр', icon: 'library' },
