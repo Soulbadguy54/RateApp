@@ -30,7 +30,7 @@ for (const slotName of ['games', 'collections'] as const) {
     const background = await page.locator('.bottom-nav').evaluate(el => getComputedStyle(el).backgroundImage)
     await expect(bubble).toHaveCSS('background-image', background)
     await expect(bubble).toHaveCSS('border-radius', '16px')
-    await expect(bubble).toHaveCSS('border-top-color', 'rgba(175, 187, 204, 0.27)')
+    await expect(bubble).toHaveCSS('border-top-color', 'rgba(180, 193, 210, 0.25)')
     await expect(bubble).toHaveCSS('backdrop-filter', /blur\(32px\)/)
     await expect(page.locator('[data-nav-slot="' + slotName + '"] .bottom-nav__liquid-path')).toHaveCSS('stroke', 'none')
     await expect(page.locator('[data-nav-slot="' + slotName + '"] .bottom-nav__liquid-rim')).toHaveCount(0)
